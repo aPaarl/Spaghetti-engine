@@ -5,7 +5,7 @@ import {
   X, Lock, Unlock, Info, ClipboardPaste, Check,
   Undo2, Redo2, Copy, Maximize2, HelpCircle, SlidersHorizontal,
   BarChart3, LayoutGrid, GitBranch, Shuffle, MousePointer2, Activity, FlaskConical, TrendingUp,
-  Eye, EyeOff, Route, Layers,
+  Eye, EyeOff, Route, Layers, Waypoints,
 } from "lucide-react";
 import {
   LineChart, Line, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
@@ -6026,6 +6026,632 @@ function classifySynergy(rows, epsilon) {
   return { type: "No Synergy", improve, worsen, total };
 }
 
+// ============================================================================
+// Transition Pathway Analysis (Transition Pathways tab)
+// ============================================================================
+// Extends Transition Point Analysis from single levers to ordered sequences
+// of levers, following the methods text "Transition Pathway Analysis". A
+// pathway is a sequence of stages. Each stage implements one lever (by
+// default up to its conditional transition point, the intensity at which
+// one more step of effort gives the largest improvement in the nexus
+// outcomes from the state reached so far), the system settles to
+// equilibrium, and that equilibrium is the starting point of the next
+// stage. Implemented levers stay in place.
+//
+// One analysis runs thousands of simulations, so the equilibrium operator
+// below is simulate() in a compact typed-array form: the same update rule,
+// squash function, clamping, locking, and convergence test, always
+// synchronous (the methods require deterministic, reproducible pathways).
+// The equivalence with simulate() is checked in the test harness.
+
+const DEFAULT_PATHWAY_CONFIG = {
+  outcomes: [],          // [{ id, direction: 1 | -1, weight: 1, target: "" }]
+  levers: [],            // [{ id, direction: "increase" | "decrease", effort: 1 }]
+  maxLength: 3,
+  rule: "tp",            // "tp": up to the conditional transition point; "full": intensity 1
+  allowScaleUp: false,   // TP rule only: a lever may return once, raised to full intensity
+  strategy: "exhaustive", // "exhaustive" | "beam" | "greedy"
+  beamWidth: 10,
+  beamCriterion: "tng",  // "tng" | "pei"
+  resolution: 20,
+  flatThreshold: 0.015,
+  minGainShare: 0.25,
+  // Near a transition point the model settles slowly (critical slowing
+  // down), and every stage is placed at one, so pathway runs allow more
+  // iterations than the global default before calling a run non-convergent.
+  maxIterations: 500,
+  precedence: [],        // [{ before, after }]
+  robustness: false,
+};
+const PATHWAY_CONFIG_KEY = "spaghetti-engine:pathways-setup:v1";
+// The remembered setup, checked field by field so a damaged or older saved
+// copy falls back to the defaults instead of breaking the tab.
+function readPathwayConfig() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(PATHWAY_CONFIG_KEY) || "null");
+    if (!raw || typeof raw !== "object") return DEFAULT_PATHWAY_CONFIG;
+    const list = (v, ok) => (Array.isArray(v) ? v.filter((x) => x && typeof x === "object" && ok(x)) : []);
+    return {
+      ...DEFAULT_PATHWAY_CONFIG,
+      ...Object.fromEntries(Object.entries(raw).filter(([k]) => k in DEFAULT_PATHWAY_CONFIG && !["outcomes", "levers", "precedence"].includes(k))),
+      outcomes: list(raw.outcomes, (o) => typeof o.id === "string"),
+      levers: list(raw.levers, (l) => typeof l.id === "string"),
+      precedence: list(raw.precedence, (p) => typeof p.before === "string" && typeof p.after === "string"),
+    };
+  } catch {
+    return DEFAULT_PATHWAY_CONFIG;
+  }
+}
+const PATHWAY_EXHAUSTIVE_LIMIT = 20000;
+const PATHWAY_TOP_N = 5;
+const PATHWAY_ARCHETYPE_KEYS = ["lhf", "hi", "ef", "di"];
+
+function makePathwayEngine(concepts, edges, settings) {
+  const n = concepts.length;
+  const index = new Map(concepts.map((c, i) => [c.id, i]));
+  const incoming = Array.from({ length: n }, () => []);
+  edges.forEach((e) => {
+    const s = index.get(e.source), t = index.get(e.target);
+    if (s === undefined || t === undefined) return;
+    incoming[t].push([s, Number(e.weight) || 0]);
+  });
+  const start = new Int32Array(n + 1);
+  const src = [], wts = [];
+  incoming.forEach((list, t) => {
+    start[t] = src.length;
+    list.forEach(([s, w]) => { src.push(s); wts.push(w); });
+  });
+  start[n] = src.length;
+  const SRC = Int32Array.from(src), W = Float64Array.from(wts);
+  const squash = makeSquash(settings.squashFunction, settings.lambda);
+  const relative = settings.updateRule !== "absolute";
+  const maxIter = settings.maxIterations ?? 100;
+  const threshold = settings.convergenceThreshold ?? 0.001;
+  const initial = Float64Array.from(concepts, (c) => (Number.isFinite(c.initialValue) ? c.initialValue : 0));
+  let runs = 0;
+  // The equilibrium operator: iterate from A0 with the concepts in lockIdx
+  // held at lockVal, until the largest change falls below the threshold.
+  function equilibrate(A0, lockIdx, lockVal) {
+    runs += 1;
+    let cur = Float64Array.from(A0);
+    let next = new Float64Array(n);
+    const locked = new Uint8Array(n);
+    const lv = new Float64Array(n);
+    for (let k = 0; k < lockIdx.length; k++) {
+      locked[lockIdx[k]] = 1;
+      lv[lockIdx[k]] = lockVal[k];
+      cur[lockIdx[k]] = lockVal[k];
+    }
+    let converged = false, t;
+    for (t = 1; t <= maxIter; t++) {
+      let maxDelta = 0;
+      for (let j = 0; j < n; j++) {
+        let v;
+        if (locked[j]) v = lv[j];
+        else {
+          let sum = 0;
+          for (let p = start[j]; p < start[j + 1]; p++) sum += cur[SRC[p]] * W[p];
+          v = clamp(squash((relative ? cur[j] : 0) + sum));
+        }
+        next[j] = v;
+        const d = Math.abs(v - cur[j]);
+        if (d > maxDelta) maxDelta = d;
+      }
+      const tmp = cur; cur = next; next = tmp;
+      if (maxDelta < threshold) { converged = true; break; }
+    }
+    return { state: cur, converged, iterations: Math.min(t, maxIter) };
+  }
+  return { n, index, initial, equilibrate, runs: () => runs };
+}
+
+// The simulation settings a pathway analysis runs under: the global ones,
+// always synchronous, with the analysis's own iteration limit.
+function pathwaySimSettings(settings, config) {
+  const it = Math.round(Number(config?.maxIterations));
+  return { ...settings, mode: "synchronous", maxIterations: Number.isFinite(it) && it >= 1 ? it : (settings.maxIterations ?? 100) };
+}
+
+// Linear-interpolation quantile of an ascending array (the usual definition).
+function pathwayQuantile(sorted, p) {
+  if (!sorted.length) return NaN;
+  const pos = (sorted.length - 1) * p;
+  const lo = Math.floor(pos), hi = Math.ceil(pos);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
+}
+// Percentile rank of x in an ascending array: share of values below x, with
+// ties counted half.
+function pathwayPercentRank(sorted, x) {
+  if (!sorted.length || x === null || x === undefined) return 0;
+  const tol = 1e-12;
+  let lo = 0, hi = sorted.length;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (sorted[m] < x - tol) lo = m + 1; else hi = m; }
+  const below = lo;
+  hi = sorted.length;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (sorted[m] <= x + tol) lo = m + 1; else hi = m; }
+  return (below + (lo - below) / 2) / sorted.length;
+}
+
+// Number of ordered pathways exhaustive enumeration would evaluate (every
+// prefix is itself a pathway), without simulating anything. Stops counting
+// once `limit` is passed.
+function countExhaustivePathways(leverIds, maxLength, allowScaleUp, precedence, limit = PATHWAY_EXHAUSTIVE_LIMIT) {
+  const prec = (precedence || []).filter((p) => leverIds.includes(p.before) && leverIds.includes(p.after) && p.before !== p.after);
+  let count = 0;
+  const walk = (counts, depth) => {
+    if (depth >= maxLength || count > limit) return;
+    for (const id of leverIds) {
+      const c = counts.get(id) || 0;
+      const ok = c === 0 ? prec.every((p) => p.after !== id || counts.has(p.before)) : allowScaleUp && c === 1;
+      if (!ok) continue;
+      count += 1;
+      if (count > limit) return;
+      const next = new Map(counts);
+      next.set(id, c + 1);
+      walk(next, depth + 1);
+    }
+  };
+  walk(new Map(), 0);
+  return count;
+}
+
+// Steps 1 to 4 of the workflow: lever profiles from BAU, candidate pathway
+// construction with sequential simulation, and the pathway metrics. A
+// generator, so the tab can run it in slices and keep the page responsive;
+// it yields a progress object after every sweep.
+function* pathwayEnumeration(concepts, edges, settings, config, phase = "") {
+  const eng = makePathwayEngine(concepts, edges, pathwaySimSettings(settings, config));
+  const N = Math.max(2, Math.round(Number(config.resolution) || 20));
+  const eps = Math.max(0, Number(config.flatThreshold) || 0);
+  const J = Math.max(1, Math.min(6, Math.round(Number(config.maxLength) || 1)));
+  const outcomes = (config.outcomes || []).filter((o) => eng.index.has(o.id)).map((o) => ({
+    id: o.id, idx: eng.index.get(o.id), d: Number(o.direction) === -1 ? -1 : 1,
+    w: Number.isFinite(Number(o.weight)) && Number(o.weight) >= 0 ? Number(o.weight) : 1,
+    target: o.target === "" || o.target === null || o.target === undefined || !Number.isFinite(Number(o.target)) ? null : Number(o.target),
+  }));
+  const outcomeIds = new Set(outcomes.map((o) => o.id));
+  const levers = (config.levers || []).filter((l) => eng.index.has(l.id) && !outcomeIds.has(l.id)).map((l) => ({
+    id: l.id, idx: eng.index.get(l.id), decrease: l.direction === "decrease",
+    effort: Number.isFinite(Number(l.effort)) && Number(l.effort) > 0 ? Number(l.effort) : 1,
+  }));
+  const bau = eng.equilibrate(eng.initial, [], []);
+  const B = bau.state;
+  const gain = (st) => { let g = 0; for (const o of outcomes) g += o.w * o.d * (st[o.idx] - B[o.idx]); return g; };
+  const act = (lever, u) => (lever.decrease ? 1 - u : u);
+
+  // Sweep one lever over the grid from index s0 to N, starting every run
+  // from state A with the locks (li, lv) already in place.
+  function sweep(A, li, lv, lever, s0) {
+    const pos = li.indexOf(lever.idx);
+    const pts = [];
+    for (let s = s0; s <= N; s++) {
+      const u = s / N;
+      const L = li.slice(), V = lv.slice();
+      if (pos >= 0) V[pos] = act(lever, u); else { L.push(lever.idx); V.push(act(lever, u)); }
+      const r = eng.equilibrate(A, L, V);
+      pts.push({ u, state: r.state, converged: r.converged, g: gain(r.state), L, V });
+    }
+    // The transition point: the step with the largest POSITIVE marginal
+    // return in nexus gain, reported at the upper end of that step.
+    let best = -1, bestR = 1e-9;
+    for (let k = 0; k < pts.length - 1; k++) {
+      const r = (pts[k + 1].g - pts[k].g) * N;
+      if (r > bestR) { bestR = r; best = k; }
+    }
+    return { pts, tpAt: best >= 0 ? best + 1 : -1, tau: best >= 0 ? pts[best + 1].u : null, maxReturn: best >= 0 ? bestR : null };
+  }
+
+  const progress = { phase, stage: "Lever profiles", done: 0, total: levers.length };
+
+  // ---- Step 1: every lever on its own, from BAU -------------------------------
+  const iso = new Map();
+  for (const lever of levers) {
+    const sw = sweep(B, [], [], lever, 0);
+    const outcomeRows = outcomes.map((o) => {
+      const ys = sw.pts.map((p) => p.state[o.idx]);
+      let best = -1, bestR = 1e-9;
+      for (let k = 0; k < ys.length - 1; k++) {
+        const r = o.d * (ys[k + 1] - ys[k]) * N;
+        if (r > bestR) { bestR = r; best = k; }
+      }
+      return { id: o.id, tp: best >= 0 ? sw.pts[best + 1].u : null, effect: o.d * (ys[ys.length - 1] - B[o.idx]), range: Math.max(...ys) - Math.min(...ys) };
+    });
+    const flat = outcomeRows.every((r) => r.range < eps);
+    const gains = sw.pts.map((p) => p.g);
+    iso.set(lever.id, {
+      id: lever.id, decrease: lever.decrease, effort: lever.effort,
+      gains, tau: sw.tau, maxReturn: sw.maxReturn, gainAtFull: gains[gains.length - 1],
+      outcomeRows, flat, included: sw.tau !== null && !flat,
+      reason: flat ? "Flat: no outcome moves more than the flat-response threshold" : sw.tau === null ? "No step of this lever improves the nexus outcomes" : "",
+      responseType: flat ? "Flat" : sw.tau === null ? "No improvement" : sw.tau <= 1 / 3 ? "Front-Loaded" : sw.tau > 2 / 3 ? "Back-Loaded" : "Threshold-Type",
+      synergy: classifySynergy(outcomeRows, eps),
+      nonConverged: sw.pts.filter((p) => !p.converged).length,
+    });
+    progress.done += 1;
+    yield progress;
+  }
+  const isoGainAt = (id, u) => iso.get(id).gains[Math.round(u * N)];
+
+  // ---- Steps 2 and 3: build pathways stage by stage ----------------------------
+  const pool = levers.filter((l) => iso.get(l.id).included);
+  const poolIds = pool.map((l) => l.id);
+  const prec = (config.precedence || []).filter((p) => poolIds.includes(p.before) && poolIds.includes(p.after) && p.before !== p.after);
+  const rule = config.rule === "full" ? "full" : "tp";
+  const scaleUpAllowed = rule === "tp" && !!config.allowScaleUp;
+  const strategy = ["beam", "greedy"].includes(config.strategy) ? config.strategy : "exhaustive";
+  const candidates = [];
+  let blocked = 0, truncated = false, seq = 0;
+
+  const nextOptions = (node) => pool.filter((l) => {
+    const cnt = node.countOf.get(l.id) || 0;
+    if (cnt === 0) return prec.every((p) => p.after !== l.id || node.countOf.has(p.before));
+    return scaleUpAllowed && cnt === 1 && (node.uOf.get(l.id) ?? 1) < 1 - 1e-9;
+  });
+
+  function expand(node, lever) {
+    const scaleUp = (node.countOf.get(lever.id) || 0) > 0;
+    const u0 = scaleUp ? node.uOf.get(lever.id) : 0;
+    const sw = sweep(node.state, node.li, node.lv, lever, Math.round(u0 * N));
+    let target;
+    if (scaleUp || rule === "full") target = sw.pts.length - 1;
+    else if (sw.tpAt < 0) { blocked += 1; return null; } else target = sw.tpAt;
+    const pt = sw.pts[target];
+    const base = iso.get(lever.id);
+    const stage = {
+      leverId: lever.id, scaleUp, uPrev: u0, u: pt.u, effort: lever.effort,
+      tauCond: sw.tau, tauIso: base.tau,
+      shift: !scaleUp && sw.tau !== null && base.tau !== null ? sw.tau - base.tau : null,
+      maxReturn: sw.maxReturn,
+      gainBefore: node.g, gainAfter: pt.g, ciiAfter: node.cii + lever.effort * (pt.u - u0),
+      converged: pt.converged, sweepNonConverged: sw.pts.filter((p) => !p.converged).length,
+      outcomes: outcomes.map((o) => ({ id: o.id, value: pt.state[o.idx], improvement: o.d * (pt.state[o.idx] - B[o.idx]) })),
+      // the benefit accrual curve inside this stage, at the sweep resolution
+      segment: sw.pts.slice(0, target + 1).map((p) => [node.cii + lever.effort * (p.u - u0), p.g]),
+    };
+    const uOf = new Map(node.uOf); uOf.set(lever.id, pt.u);
+    const countOf = new Map(node.countOf); countOf.set(lever.id, (countOf.get(lever.id) || 0) + 1);
+    seq += 1;
+    const child = {
+      id: seq, depth: node.depth + 1, stages: [...node.stages, stage],
+      li: pt.L, lv: pt.V, uOf, countOf, state: pt.state,
+      g: pt.g, cii: stage.ciiAfter, converged: node.converged && pt.converged,
+    };
+    candidates.push(child);
+    return child;
+  }
+
+  const root = { id: 0, depth: 0, stages: [], li: [], lv: [], uOf: new Map(), countOf: new Map(), state: B, g: 0, cii: 0, converged: bau.converged };
+  const beamWidth = strategy === "greedy" ? 1 : Math.max(1, Math.round(Number(config.beamWidth) || 10));
+  progress.stage = "Building pathways";
+  progress.done = 0;
+  progress.total = strategy === "exhaustive"
+    ? Math.min(PATHWAY_EXHAUSTIVE_LIMIT, countExhaustivePathways(poolIds, J, scaleUpAllowed, prec))
+    : Math.max(1, pool.length) * (1 + (J - 1) * Math.min(beamWidth, 50));
+  yield progress;
+
+  if (strategy === "exhaustive") {
+    const stack = [root];
+    while (stack.length && !truncated) {
+      const node = stack.pop();
+      for (const lever of nextOptions(node)) {
+        const child = expand(node, lever);
+        progress.done += 1;
+        yield progress;
+        if (child) { if (child.depth < J) stack.push(child); else child.state = null; }
+        if (candidates.length >= PATHWAY_EXHAUSTIVE_LIMIT) { truncated = true; break; }
+      }
+      node.state = null;
+    }
+  } else {
+    let frontier = [root];
+    for (let depth = 1; depth <= J && frontier.length; depth++) {
+      const children = [];
+      for (const node of frontier) {
+        for (const lever of nextOptions(node)) {
+          const child = expand(node, lever);
+          progress.done += 1;
+          yield progress;
+          if (child) children.push(child);
+        }
+        node.state = null;
+      }
+      if (depth === J) { children.forEach((c) => { c.state = null; }); break; }
+      const score = strategy === "greedy"
+        ? (c) => c.stages[c.stages.length - 1].maxReturn ?? -Infinity
+        : config.beamCriterion === "pei" ? (c) => (c.cii > 0 ? c.g / c.cii : -Infinity) : (c) => c.g;
+      const ranked = children.filter((c) => c.converged).sort((a, b) => score(b) - score(a) || b.g - a.g);
+      frontier = ranked.slice(0, beamWidth);
+      const keep = new Set(frontier);
+      children.forEach((c) => { if (!keep.has(c)) c.state = null; });
+    }
+  }
+
+  // ---- Step 4: pathway metrics --------------------------------------------------
+  const nameCount = outcomes.length;
+  candidates.forEach((c) => {
+    const last = c.stages[c.stages.length - 1];
+    c.tng = c.g;
+    c.ss = last.outcomes.filter((o) => o.improvement > eps).length;
+    c.to = last.outcomes.filter((o) => o.improvement < -eps).length;
+    const taus = c.stages.map((s) => s.tauCond).filter((t) => t !== null);
+    c.avgTp = taus.length ? taus.reduce((a, b) => a + b, 0) / taus.length : null;
+    const shifts = c.stages.map((s) => s.shift).filter((t) => t !== null);
+    c.meanShift = shifts.length ? shifts.reduce((a, b) => a + b, 0) / shifts.length : null;
+    c.pei = c.cii > 0 ? c.g / c.cii : null;
+    // Early Benefit Index: area under the normalized accrual curve (cumulative
+    // effort against cumulative gain), traced at the sweep resolution.
+    if (c.g > 0 && c.cii > 0) {
+      let px = 0, py = 0, area = 0;
+      c.stages.forEach((s) => s.segment.forEach(([C, G]) => {
+        const x = C / c.cii, y = G / c.g;
+        area += (x - px) * (y + py) / 2;
+        px = x; py = y;
+      }));
+      c.ebi = area;
+    } else c.ebi = null;
+    let isoSum = 0;
+    c.uOf.forEach((u, id) => { isoSum += isoGainAt(id, u); });
+    c.ig = c.g - isoSum;
+    const withTarget = outcomes.filter((o) => o.target !== null);
+    c.targetsSet = withTarget.length;
+    c.targetsMet = withTarget.filter((o) => {
+      const v = last.outcomes.find((x) => x.id === o.id).value;
+      return o.d * (v - o.target) >= 0;
+    }).length;
+    c.final = Object.fromEntries(c.uOf);
+    c.sig = c.stages.map((s) => s.leverId + (s.scaleUp ? "+" : "")).join(">");
+    c.key = c.stages.map((s) => `${s.leverId}${s.scaleUp ? "+" : ""}@${round2(s.u)}`).join(">");
+    c.length = c.stages.length;
+    delete c.li; delete c.lv; delete c.state; delete c.uOf; delete c.countOf; delete c.g;
+  });
+
+  return {
+    engine: eng, simSettings: pathwaySimSettings(settings, config), B, N, eps, J, rule, strategy, scaleUpAllowed, outcomes, levers,
+    bauConverged: bau.converged,
+    iso: [...iso.values()], candidates, blocked, truncated,
+    poolIds, outcomeCount: nameCount,
+  };
+}
+
+// Step 5: admissibility, archetypes, primary archetype, efficient frontier,
+// and the rankings within each archetype.
+function classifyPathways(cands, outcomeCount, eps, minGainShare) {
+  const tol = 1e-9;
+  const conv = cands.filter((c) => c.converged);
+  const maxTng = conv.reduce((m, c) => Math.max(m, c.tng), -Infinity);
+  const gMin = Math.max((Number.isFinite(Number(minGainShare)) ? Number(minGainShare) : 0.25) * Math.max(0, maxTng), eps * outcomeCount);
+  cands.forEach((c) => {
+    c.admissible = c.converged && maxTng > 0 && c.tng >= gMin - tol && c.to === 0;
+    c.conditional = c.converged && maxTng > 0 && c.tng >= gMin - tol && c.to > 0;
+    c.memberships = [];
+    c.primary = null;
+    c.frontier = false;
+    c.ranks = {};
+  });
+  const adm = cands.filter((c) => c.admissible);
+  const asc = (arr) => arr.filter((v) => v !== null && Number.isFinite(v)).sort((a, b) => a - b);
+  const ciiS = asc(adm.map((c) => c.cii)), tngS = asc(adm.map((c) => c.tng));
+  const peiS = asc(adm.map((c) => c.pei)), ebiS = asc(adm.map((c) => c.ebi));
+  const q = {
+    cii25: pathwayQuantile(ciiS, 0.25), cii75: pathwayQuantile(ciiS, 0.75),
+    tng80: pathwayQuantile(tngS, 0.8), pei80: pathwayQuantile(peiS, 0.8),
+  };
+  adm.forEach((c) => {
+    const aff = {};
+    if (c.cii <= q.cii25 + tol && c.avgTp !== null && c.avgTp <= 1 / 3 + tol && c.ebi !== null && c.ebi > 0.5) {
+      c.memberships.push("lhf"); aff.lhf = 1 - pathwayPercentRank(ciiS, c.cii);
+    }
+    if (c.tng >= q.tng80 - tol && c.ss === outcomeCount) {
+      c.memberships.push("hi"); aff.hi = pathwayPercentRank(tngS, c.tng);
+    }
+    if (c.pei !== null && c.pei >= q.pei80 - tol && c.cii > q.cii25 + tol && c.cii < q.cii75 - tol) {
+      c.memberships.push("ef"); aff.ef = pathwayPercentRank(peiS, c.pei);
+    }
+    if (c.cii >= q.cii75 - tol && c.avgTp !== null && c.avgTp > 0.5 && c.ebi !== null && c.ebi < 0.5) {
+      c.memberships.push("di"); aff.di = 1 - pathwayPercentRank(ebiS, c.ebi);
+    }
+    c.primary = c.memberships.reduce((best, k) => (best === null || aff[k] > aff[best] ? k : best), null);
+  });
+  // efficient frontier: no other admissible pathway has more gain for less effort
+  let best = -Infinity;
+  [...adm].sort((a, b) => a.cii - b.cii || b.tng - a.tng).forEach((c) => {
+    if (c.tng > best + tol) { c.frontier = true; best = c.tng; }
+  });
+  // For each archetype, how many admissible pathways meet each condition on
+  // its own, so an empty archetype can say which condition nobody meets.
+  const why = {
+    lhf: { "Effort in the lowest quarter": adm.filter((c) => c.cii <= q.cii25 + tol).length, "Average TP at most 1/3": adm.filter((c) => c.avgTp !== null && c.avgTp <= 1 / 3 + tol).length, "EBI above 0.5": adm.filter((c) => c.ebi !== null && c.ebi > 0.5).length },
+    hi: { "Gain in the top fifth": adm.filter((c) => c.tng >= q.tng80 - tol).length, "Every outcome improved": adm.filter((c) => c.ss === outcomeCount).length },
+    ef: { "Efficiency in the top fifth": adm.filter((c) => c.pei !== null && c.pei >= q.pei80 - tol).length, "Moderate effort (between the lowest and highest quarter)": adm.filter((c) => c.cii > q.cii25 + tol && c.cii < q.cii75 - tol).length, "Both together": adm.filter((c) => c.pei !== null && c.pei >= q.pei80 - tol && c.cii > q.cii25 + tol && c.cii < q.cii75 - tol).length },
+    di: { "Effort in the highest quarter": adm.filter((c) => c.cii >= q.cii75 - tol).length, "Average TP above 1/2": adm.filter((c) => c.avgTp !== null && c.avgTp > 0.5).length, "EBI below 0.5": adm.filter((c) => c.ebi !== null && c.ebi < 0.5).length },
+  };
+  const tie = (a, b) => b.ss - a.ss || (b.ebi ?? -1) - (a.ebi ?? -1) || a.length - b.length;
+  const order = {
+    lhf: (a, b) => a.cii - b.cii || tie(a, b),
+    hi: (a, b) => b.tng - a.tng || tie(a, b),
+    ef: (a, b) => b.pei - a.pei || tie(a, b),
+    di: (a, b) => b.tng - a.tng || tie(a, b),
+  };
+  const ranked = {};
+  PATHWAY_ARCHETYPE_KEYS.forEach((k) => {
+    ranked[k] = adm.filter((c) => c.memberships.includes(k)).sort(order[k]);
+    ranked[k].forEach((c, i) => { c.ranks[k] = i + 1; });
+  });
+  const topIds = new Set();
+  PATHWAY_ARCHETYPE_KEYS.forEach((k) => ranked[k].slice(0, PATHWAY_TOP_N).forEach((c) => topIds.add(c.id)));
+  return {
+    gMin, maxTng: Number.isFinite(maxTng) ? maxTng : null, q, ranked, topIds, why,
+    counts: {
+      total: cands.length, converged: conv.length, admissible: adm.length,
+      conditional: cands.filter((c) => c.conditional).length,
+      nonConverged: cands.length - conv.length,
+      intermediate: adm.filter((c) => !c.memberships.length).length,
+      ...Object.fromEntries(PATHWAY_ARCHETYPE_KEYS.map((k) => [k, ranked[k].length])),
+    },
+  };
+}
+
+// Step 6 (portfolios): which opening moves keep the best pathways within
+// reach. Regret of a prefix = the largest nexus gain of any candidate minus
+// the largest nexus gain among the candidates that start with that prefix.
+function pathwayPortfolios(cands, summary) {
+  const conv = cands.filter((c) => c.converged);
+  const tngStar = conv.reduce((m, c) => Math.max(m, c.tng), -Infinity);
+  const group = (keyOf, minLength) => {
+    const map = new Map();
+    conv.forEach((c) => {
+      if (c.length < minLength) return;
+      const k = keyOf(c);
+      if (!map.has(k)) map.set(k, []);
+      map.get(k).push(c);
+    });
+    return [...map.entries()].map(([k, list]) => {
+      const bestTng = list.reduce((m, c) => Math.max(m, c.tng), -Infinity);
+      const bestBy = {};
+      PATHWAY_ARCHETYPE_KEYS.forEach((a) => {
+        const hit = summary.ranked[a].find((c) => c.length >= minLength && keyOf(c) === k);
+        bestBy[a] = hit ? hit.id : null;
+      });
+      return {
+        key: k, stages: list.find((c) => c.length === minLength)?.stages.slice(0, minLength) || list[0].stages.slice(0, minLength),
+        count: list.length, opens: list.filter((c) => summary.topIds.has(c.id)).length,
+        bestTng, regret: tngStar - bestTng, bestBy,
+      };
+    }).sort((a, b) => a.regret - b.regret || b.opens - a.opens);
+  };
+  const firstKey = (c) => `${c.stages[0].leverId}@${round2(c.stages[0].u)}`;
+  const twoKey = (c) => `${firstKey(c)}>${c.stages[1].leverId}${c.stages[1].scaleUp ? "+" : ""}@${round2(c.stages[1].u)}`;
+  return {
+    tngStar: Number.isFinite(tngStar) ? tngStar : null,
+    firstMoves: group(firstKey, 1),
+    openings: group(twoKey, 2).sort((a, b) => b.opens - a.opens || a.regret - b.regret).slice(0, 10),
+  };
+}
+
+// Invariance test (section 3.5 of the methods): for the lever sets of the
+// top-ranked pathways, every order of the same levers at the same final
+// intensities is simulated stage by stage. Different end states reveal path
+// dependence (more than one equilibrium for the same set of levers).
+// A run stops once no concept changes by more than the convergence threshold
+// per iteration, and near a transition point (or for a concept without
+// incoming relationships, which under the relative rule decays towards zero
+// very slowly) that can leave it a few hundredths short of its equilibrium,
+// differently for different orders. Differences up to the tolerance below
+// are therefore read as settling, not as path dependence; genuinely
+// different equilibria in a saturating map differ by far more.
+const PATHWAY_INVARIANCE_TOLERANCE = 0.1;
+function* pathwayInvarianceTest(base, summary, maxSets = 12) {
+  const eng = base.engine;
+  const leverById = new Map(base.levers.map((l) => [l.id, l]));
+  const sets = new Map();
+  const consider = [...PATHWAY_ARCHETYPE_KEYS.flatMap((k) => summary.ranked[k].slice(0, PATHWAY_TOP_N)), ...base.candidates.filter((c) => c.frontier)];
+  for (const c of consider) {
+    const ids = Object.keys(c.final).sort();
+    if (ids.length < 2) continue;
+    const key = ids.map((id) => `${id}@${round2(c.final[id])}`).join("|");
+    if (!sets.has(key)) sets.set(key, { ids, final: c.final, fromId: c.id });
+    if (sets.size >= maxSets) break;
+  }
+  const permute = (arr) => {
+    if (arr.length <= 1) return [arr];
+    const out = [];
+    arr.forEach((x, i) => permute([...arr.slice(0, i), ...arr.slice(i + 1)]).forEach((p) => out.push([x, ...p])));
+    return out;
+  };
+  const progress = { phase: "", stage: "Invariance test", done: 0, total: sets.size };
+  const rows = [];
+  for (const set of sets.values()) {
+    const perms = permute(set.ids).slice(0, 24);
+    const ends = [];
+    let allConverged = true;
+    perms.forEach((perm) => {
+      let state = base.B;
+      const li = [], lv = [];
+      perm.forEach((id) => {
+        const l = leverById.get(id);
+        li.push(l.idx);
+        lv.push(l.decrease ? 1 - set.final[id] : set.final[id]);
+        const r = eng.equilibrate(state, li, lv);
+        state = r.state;
+        allConverged = allConverged && r.converged;
+      });
+      ends.push(state);
+    });
+    let maxDiff = 0;
+    ends.forEach((e) => { for (let i = 0; i < e.length; i++) maxDiff = Math.max(maxDiff, Math.abs(e[i] - ends[0][i])); });
+    rows.push({ ids: set.ids, final: set.final, perms: perms.length, maxDiff, pathDependent: allConverged && maxDiff > PATHWAY_INVARIANCE_TOLERANCE, allConverged });
+    progress.done += 1;
+    yield progress;
+  }
+  return { tested: rows.length, pathDependent: rows.filter((r) => r.pathDependent).length, unresolved: rows.filter((r) => !r.allConverged).length, rows };
+}
+
+// Rank robustness (section 7.3): the whole analysis is repeated under
+// alternative simulation settings, and the top-ranked pathways (matched by
+// the order of their levers) are checked for keeping their archetype and
+// their place among the top pathways of that archetype.
+function pathwayAlternativeSettings(settings) {
+  const lam = settings.lambda > 0 ? settings.lambda : 1;
+  const alts = [];
+  if (settings.squashFunction !== "trivalent") {
+    alts.push({ label: `Steepness halved (λ = ${round2(lam / 2)})`, settings: { ...settings, lambda: lam / 2 } });
+    alts.push({ label: `Steepness doubled (λ = ${round2(lam * 2)})`, settings: { ...settings, lambda: lam * 2 } });
+  }
+  if (settings.squashFunction === "sigmoid") alts.push({ label: "Hyperbolic tangent instead of sigmoid", settings: { ...settings, squashFunction: "tanh" } });
+  else if (settings.squashFunction !== "trivalent") alts.push({ label: "Sigmoid instead of hyperbolic tangent", settings: { ...settings, squashFunction: "sigmoid" } });
+  alts.push(settings.updateRule === "absolute"
+    ? { label: "Relative update rule", settings: { ...settings, updateRule: "relative" } }
+    : { label: "Absolute update rule", settings: { ...settings, updateRule: "absolute" } });
+  return alts;
+}
+
+function* pathwayRobustness(concepts, edges, settings, config, summary) {
+  const tracked = [];
+  PATHWAY_ARCHETYPE_KEYS.forEach((k) => summary.ranked[k].slice(0, PATHWAY_TOP_N).forEach((c) => {
+    if (c.primary === k) tracked.push({ id: c.id, sig: c.sig, archetype: k, rank: c.ranks[k] });
+  }));
+  const alts = pathwayAlternativeSettings(settings);
+  const configs = [];
+  const hits = tracked.map(() => ({ admissible: 0, sameArchetype: 0, top: 0 }));
+  for (let a = 0; a < alts.length; a++) {
+    const alt = alts[a];
+    const run = yield* pathwayEnumeration(concepts, edges, alt.settings, config, `Robustness ${a + 1} of ${alts.length}: ${alt.label}`);
+    const s = classifyPathways(run.candidates, run.outcomeCount, run.eps, config.minGainShare);
+    const bySig = new Map(run.candidates.map((c) => [c.sig, c]));
+    tracked.forEach((t, i) => {
+      const c = bySig.get(t.sig);
+      if (!c || !c.admissible) return;
+      hits[i].admissible += 1;
+      if (c.primary === t.archetype) hits[i].sameArchetype += 1;
+      if (c.ranks[t.archetype] && c.ranks[t.archetype] <= PATHWAY_TOP_N) hits[i].top += 1;
+    });
+    configs.push({ label: alt.label, candidates: run.candidates.length, admissible: s.counts.admissible, counts: s.counts });
+  }
+  return { configs, rows: tracked.map((t, i) => ({ ...t, ...hits[i], of: alts.length })) };
+}
+
+// The complete analysis, as one generator the tab runs in slices.
+function* runPathwayAnalysis(concepts, edges, settings, config) {
+  const base = yield* pathwayEnumeration(concepts, edges, settings, config, "Main analysis");
+  const summary = classifyPathways(base.candidates, base.outcomeCount, base.eps, config.minGainShare);
+  const portfolios = pathwayPortfolios(base.candidates, summary);
+  const invariance = yield* pathwayInvarianceTest(base, summary);
+  const mainRuns = base.engine.runs();
+  const robustness = config.robustness ? yield* pathwayRobustness(concepts, edges, settings, config, summary) : null;
+  return {
+    config: JSON.parse(JSON.stringify(config)),
+    settingsUsed: pathwaySimSettings(settings, config),
+    N: base.N, eps: base.eps, J: base.J, rule: base.rule, strategy: base.strategy, scaleUpAllowed: base.scaleUpAllowed,
+    outcomes: base.outcomes.map(({ id, d, w, target }) => ({ id, d, w, target })),
+    levers: base.levers.map(({ id, decrease, effort }) => ({ id, decrease, effort })),
+    bauConverged: base.bauConverged,
+    bauOutcomes: Object.fromEntries(base.outcomes.map((o) => [o.id, base.B[o.idx]])),
+    iso: base.iso, candidates: base.candidates, blocked: base.blocked, truncated: base.truncated,
+    poolIds: base.poolIds, summary, portfolios, invariance, robustness,
+    runs: mainRuns,
+  };
+}
+
 // Serializes a chart's rendered <svg> to a PNG with no external library:
 // XMLSerializer -> data URL -> draw onto an offscreen canvas -> toBlob.
 // Returns a Promise<{blob, width, height}> (null if no <svg> is currently
@@ -6239,6 +6865,7 @@ const CHART_TARGETS = {
   baselineConvergence: { selector: '[data-chart="baseline-convergence"]', mode: "svg" },
   scenarioComparison: { selector: '[data-chart="scenario-comparison"]', mode: "svg" },
   transitionCurves: { selector: '[data-chart="transition-curves"]', mode: "svg" },
+  pathwayPlane: { selector: '[data-chart="pathway-plane"]', mode: "svg" },
 };
 
 async function captureOneChart(selector, mode) {
@@ -6317,7 +6944,7 @@ function seriesFinalMaxDelta(series) {
 
 async function buildAnalysisWorkbook({
   concepts, edges, settings, scenarios, results,
-  baselineResult, sensitivityResult, transitionResult,
+  baselineResult, sensitivityResult, transitionResult, pathwayResult = null,
   metrics, systemStats, categoryStats, categoryMatrix, chartCache, modelVersion, resultsStale,
   analysisConcepts = concepts, analysisEdges = edges, viewInfo = null, multiScale = null, routeConfig = null,
 }) {
@@ -6534,6 +7161,109 @@ async function buildAnalysisWorkbook({
     }
   }
 
+  // ==== Optional: Transition Pathway Analysis ===============================
+  if (pathwayResult) {
+    const pr = pathwayResult;
+    const nm = new Map(concepts.map((c) => [c.id, c.name]));
+    const pn = (id) => nm.get(id) || id;
+    const ptext = (stages) => stages.map((st) => `${pn(st.leverId)} (${st.scaleUp ? "raised to " : ""}${round2(st.u)})`).join(" -> ");
+    const num = (v) => (v === null || v === undefined || !Number.isFinite(v) ? "" : round3(v));
+    const arch = (k) => PATHWAY_ARCHETYPES.find((a) => a.key === k)?.label || "";
+    const cfg = pr.config;
+    addDataSheet(workbook, "Pathway Analysis Setup", [{ header: "Item", key: "item" }, { header: "Value", key: "value" }], [
+      { item: "Stale (model edited since this ran)", value: isStale(pr) ? "Yes, re-run before relying on this" : "No" },
+      { item: "Nexus outcomes", value: pr.outcomes.map((o) => `${pn(o.id)} (${o.d === 1 ? "higher is better" : "lower is better"}, weight ${o.w}${o.target !== null ? `, desired level ${o.target}` : ""})`).join("; ") },
+      { item: "Levers", value: pr.levers.map((l) => `${pn(l.id)} (${l.decrease ? "decrease" : "increase"}, effort ${l.effort})`).join("; ") },
+      { item: "Maximum stages", value: pr.J },
+      { item: "Stage intensity", value: pr.rule === "tp" ? `Up to the conditional transition point${pr.scaleUpAllowed ? ", scale-up stages allowed" : ""}` : "Full implementation (intensity 1)" },
+      { item: "Pathway construction", value: pr.strategy === "exhaustive" ? "Every order (exhaustive)" : pr.strategy === "greedy" ? "Greedy (highest marginal return)" : `Beam search (width ${cfg.beamWidth}, by ${cfg.beamCriterion === "pei" ? "efficiency" : "nexus gain"})` },
+      { item: "Order constraints", value: (cfg.precedence || []).map((p) => `${pn(p.after)} after ${pn(p.before)}`).join("; ") || "None" },
+      { item: "Intensity resolution (steps)", value: pr.N },
+      { item: "Flat-response threshold", value: pr.eps },
+      { item: "Minimum gain (share of best)", value: cfg.minGainShare },
+      { item: "Simulation settings", value: `${pr.settingsUsed.squashFunction}, lambda ${pr.settingsUsed.lambda}, ${pr.settingsUsed.updateRule} rule, synchronous, up to ${pr.settingsUsed.maxIterations} iterations, threshold ${pr.settingsUsed.convergenceThreshold}` },
+      { item: "Pathways evaluated", value: pr.candidates.length },
+      { item: "Admissible pathways", value: pr.summary.counts.admissible },
+      { item: "Minimum meaningful gain", value: num(pr.summary.gMin) },
+      ...PATHWAY_ARCHETYPES.map((a) => ({ item: `${a.label} pathways`, value: pr.summary.counts[a.key] })),
+      { item: "Pathways that did not converge", value: pr.summary.counts.nonConverged },
+      { item: "Path dependence (invariance test)", value: `${pr.invariance.pathDependent} of ${pr.invariance.tested} lever sets` },
+      { item: "Simulation runs (main analysis)", value: pr.runs },
+    ], usedNames);
+    const rowOf = (c) => ({
+      pathway: ptext(c.stages), stages: c.length, tng: num(c.tng), cii: num(c.cii), pei: num(c.pei), avgTp: num(c.avgTp),
+      ss: c.ss, to: c.to, ebi: num(c.ebi), ig: num(c.ig), shift: num(c.meanShift),
+      converged: c.converged ? "Yes" : "No", admissible: c.admissible ? "Yes" : "No",
+      archetypes: c.memberships.map(arch).join("; "), primary: c.primary ? arch(c.primary) : pathwayStatus(c),
+      frontier: c.frontier ? "Yes" : "", targets: c.targetsSet ? `${c.targetsMet} of ${c.targetsSet}` : "",
+    });
+    const metricCols = [
+      { header: "Pathway", key: "pathway" }, { header: "Stages", key: "stages" },
+      { header: "Total Nexus Gain", key: "tng" }, { header: "Cumulative Intervention Intensity", key: "cii" },
+      { header: "Pathway Efficiency Index", key: "pei" }, { header: "Average Transition Point", key: "avgTp" },
+      { header: "Synergy Score", key: "ss" }, { header: "Trade-offs", key: "to" }, { header: "Early Benefit Index", key: "ebi" },
+      { header: "Interaction Gain", key: "ig" }, { header: "Mean TP Shift", key: "shift" },
+    ];
+    addDataSheet(workbook, "Transition Pathways", [
+      ...metricCols,
+      { header: "Converged", key: "converged" }, { header: "Admissible", key: "admissible" },
+      { header: "Archetypes", key: "archetypes" }, { header: "Primary Archetype / Status", key: "primary" },
+      { header: "Efficient Frontier", key: "frontier" }, { header: "Targets Met", key: "targets" },
+    ], [...pr.candidates].sort((a, b) => b.tng - a.tng).slice(0, 5000).map(rowOf), usedNames);
+    addDataSheet(workbook, "Pathway Rankings", [{ header: "Archetype", key: "archetype" }, { header: "Rank", key: "rank" }, ...metricCols],
+      PATHWAY_ARCHETYPES.flatMap((a) => pr.summary.ranked[a.key].slice(0, 10).map((c, i) => ({ archetype: a.label, rank: i + 1, ...rowOf(c) }))), usedNames);
+    const detailed = pr.candidates.filter((c) => pr.summary.topIds.has(c.id) || c.frontier);
+    addDataSheet(workbook, "Pathway Stages", [
+      { header: "Pathway", key: "pathway" }, { header: "Stage", key: "stage" }, { header: "Lever", key: "lever" },
+      { header: "Scale-up", key: "scaleUp" }, { header: "Intensity Before", key: "uPrev" }, { header: "Intensity", key: "u" },
+      { header: "Isolated TP", key: "tauIso" }, { header: "Conditional TP", key: "tauCond" }, { header: "TP Shift", key: "shift" },
+      { header: "Stage Gain", key: "dg" }, { header: "Nexus Gain After", key: "g" }, { header: "Cumulative Intensity", key: "cii" },
+      { header: "Converged", key: "converged" },
+      ...pr.outcomes.map((o) => ({ header: `${pn(o.id)} at Stage End`, key: `o_${o.id}` })),
+    ], detailed.flatMap((c) => c.stages.map((st, i) => ({
+      pathway: ptext(c.stages), stage: i + 1, lever: pn(st.leverId), scaleUp: st.scaleUp ? "Yes" : "",
+      uPrev: num(st.uPrev), u: num(st.u), tauIso: num(st.tauIso), tauCond: num(st.tauCond), shift: num(st.shift),
+      dg: num(st.gainAfter - st.gainBefore), g: num(st.gainAfter), cii: num(st.ciiAfter), converged: st.converged ? "Yes" : "No",
+      ...Object.fromEntries(st.outcomes.map((o) => [`o_${o.id}`, num(o.value)])),
+    }))), usedNames);
+    addDataSheet(workbook, "Pathway Lever Profiles", [
+      { header: "Lever", key: "lever" }, { header: "Direction", key: "dir" }, { header: "Effort Weight", key: "effort" },
+      { header: "Isolated TP", key: "tau" }, { header: "Response Type", key: "type" }, { header: "Max Marginal Return", key: "mr" },
+      { header: "Nexus Gain at Full Intensity", key: "full" }, { header: "Synergy", key: "syn" },
+      { header: "In Pathways", key: "inc" }, { header: "Reason", key: "reason" },
+      ...pr.outcomes.flatMap((o) => [{ header: `${pn(o.id)} Effect at Full Intensity`, key: `e_${o.id}` }, { header: `${pn(o.id)} TP`, key: `t_${o.id}` }]),
+    ], pr.iso.map((l) => ({
+      lever: pn(l.id), dir: l.decrease ? "Decrease (1 to 0)" : "Increase (0 to 1)", effort: l.effort, tau: num(l.tau), type: l.responseType,
+      mr: num(l.maxReturn), full: num(l.gainAtFull), syn: l.synergy.type, inc: l.included ? "Yes" : "No", reason: l.reason,
+      ...Object.fromEntries(l.outcomeRows.flatMap((r) => [[`e_${r.id}`, num(r.effect)], [`t_${r.id}`, num(r.tp)]])),
+    })), usedNames);
+    const byId = new Map(pr.candidates.map((c) => [c.id, c]));
+    addDataSheet(workbook, "Pathway Portfolios", [
+      { header: "Opening", key: "opening" }, { header: "Pathways Starting This Way", key: "count" },
+      { header: "Top-ranked Pathways Opened", key: "opens" }, { header: "Best Total Nexus Gain", key: "best" }, { header: "Regret", key: "regret" },
+      ...PATHWAY_ARCHETYPES.map((a) => ({ header: `Best ${a.label} Pathway`, key: `b_${a.key}` })),
+    ], [...pr.portfolios.firstMoves, ...pr.portfolios.openings].map((f) => ({
+      opening: ptext(f.stages), count: f.count, opens: f.opens, best: num(f.bestTng), regret: num(f.regret),
+      ...Object.fromEntries(PATHWAY_ARCHETYPES.map((a) => [`b_${a.key}`, f.bestBy[a.key] !== null && byId.get(f.bestBy[a.key]) ? ptext(byId.get(f.bestBy[a.key]).stages) : ""])),
+    })), usedNames);
+    addDataSheet(workbook, "Pathway Invariance Test", [
+      { header: "Levers (final intensity)", key: "levers" }, { header: "Orders Tested", key: "perms" },
+      { header: "Largest Difference Between End States", key: "diff" }, { header: "Result", key: "result" },
+    ], pr.invariance.rows.map((r) => ({
+      levers: r.ids.map((id) => `${pn(id)} (${round2(r.final[id])})`).join(", "), perms: r.perms, diff: num(r.maxDiff),
+      result: !r.allConverged ? "Not all orders converged: undecided" : r.pathDependent ? "Path dependent" : "Same end state in every order",
+    })), usedNames);
+    if (pr.robustness) {
+      addDataSheet(workbook, "Pathway Robustness", [
+        { header: "Pathway", key: "pathway" }, { header: "Archetype", key: "arch" }, { header: "Rank", key: "rank" },
+        { header: "Admissible (of alternatives)", key: "adm" }, { header: "Same Archetype", key: "same" }, { header: "Still Top 5", key: "top" },
+      ], pr.robustness.rows.map((r) => ({
+        pathway: byId.get(r.id) ? ptext(byId.get(r.id).stages) : r.sig, arch: arch(r.archetype), rank: r.rank,
+        adm: `${r.admissible} of ${r.of}`, same: `${r.sameArchetype} of ${r.of}`, top: `${r.top} of ${r.of}`,
+      })), usedNames);
+    }
+  }
+
   // ==== Feedback loops (analysed network) ================================
   {
     const fl = analyseFeedbackLoops(analysisConcepts, analysisEdges);
@@ -6703,6 +7433,7 @@ async function buildAnalysisWorkbook({
   await addChartSheet(workbook, "Baseline Convergence Plot", charts.baselineConvergence, notFound("Baseline Equilibrium") + " Also requires clicking Run there.", usedNames);
   await addChartSheet(workbook, "Scenario Comparison Plot", charts.scenarioComparison, notFound("Scenarios & Simulation") + " Also requires comparing and running at least one scenario.", usedNames);
   await addChartSheet(workbook, "Transition Point Curves", charts.transitionCurves, notFound("Transition Point Analysis") + " Also requires having run an analysis there.", usedNames);
+  if (pathwayResult) await addChartSheet(workbook, "Pathway Effort-Gain Plane", charts.pathwayPlane, notFound("Transition Pathways"), usedNames);
 
   return workbook.xlsx.writeBuffer();
 }
@@ -7148,6 +7879,982 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
 }
 
 // ============================================================================
+// Transition Pathways tab
+// ============================================================================
+const PATHWAY_ARCHETYPES = [
+  {
+    key: "lhf", label: "Low-Hanging Fruit", color: "#0f766e", badge: "bg-teal-50 text-teal-800 border-teal-200",
+    rule: "Effort in the lowest quarter, average transition point at most 1/3, and benefits arriving ahead of effort (EBI above 0.5).",
+    purpose: "Quick wins under resource constraints: meaningful gains at very low intervention intensity.",
+    ranking: "Lowest effort first",
+  },
+  {
+    key: "hi", label: "High-Impact", color: "#7c3aed", badge: "bg-violet-50 text-violet-800 border-violet-200",
+    rule: "Total nexus gain in the top fifth, and every nexus outcome improved.",
+    purpose: "The largest overall improvement across the nexus outcomes, whatever the effort.",
+    ranking: "Highest total nexus gain first",
+  },
+  {
+    key: "ef", label: "Efficiency", color: "#0369a1", badge: "bg-sky-50 text-sky-800 border-sky-200",
+    rule: "Efficiency (gain per unit of effort) in the top fifth, at moderate effort (between the lowest and the highest quarter).",
+    purpose: "The greatest nexus gain per unit of intervention.",
+    ranking: "Highest efficiency first",
+  },
+  {
+    key: "di", label: "Deep Investment", color: "#c2410c", badge: "bg-orange-50 text-orange-800 border-orange-200",
+    rule: "Effort in the highest quarter, average transition point above 1/2, and most of the gain arriving after most of the effort (EBI below 0.5).",
+    purpose: "Long-term transformation: sustained effort before substantial, possibly large, gains.",
+    ranking: "Highest total nexus gain first",
+  },
+];
+const PATHWAY_ARCHETYPE_BY_KEY = Object.fromEntries(PATHWAY_ARCHETYPES.map((a) => [a.key, a]));
+
+const PATHWAY_METRIC_HELP = {
+  tng: "Total Nexus Gain: the improvement of the nexus outcomes in the final state compared with Business-as-Usual, each outcome counted in its desirable direction and weighted.",
+  cii: "Cumulative Intervention Intensity: the total effort, as the sum of the final lever intensities (times their effort weights). 1 means one lever at full intensity.",
+  pei: "Pathway Efficiency Index: total nexus gain divided by cumulative intensity; nexus gain per unit of effort.",
+  avgTp: "Average Transition Point: the mean conditional transition point of the stages. Low values mean the levers deliver early in their range (front-loaded).",
+  ss: "Synergy Score: how many nexus outcomes the pathway improves by more than the flat-response threshold.",
+  ebi: "Early Benefit Index: the area under the benefit accrual curve (share of effort spent against share of gain realized). Above 0.5 the benefits come ahead of the effort; below 0.5 they come late.",
+  ig: "Interaction Gain: the pathway's nexus gain minus the sum of what each lever achieves on its own from Business-as-Usual at the same intensity. Positive: the levers reinforce each other.",
+  shift: "Mean TP shift: how much earlier (negative) or later (positive) the levers reach their peak return in this pathway than on their own.",
+};
+
+const PATHWAY_TABLE_COLUMNS = [
+  { key: "label", label: "Pathway", type: "text" },
+  { key: "length", label: "Stages", type: "num" },
+  { key: "tng", label: "TNG", type: "num", help: PATHWAY_METRIC_HELP.tng },
+  { key: "cii", label: "CII", type: "num", help: PATHWAY_METRIC_HELP.cii },
+  { key: "pei", label: "PEI", type: "num", help: PATHWAY_METRIC_HELP.pei },
+  { key: "avgTp", label: "Avg TP", type: "num", help: PATHWAY_METRIC_HELP.avgTp },
+  { key: "ss", label: "SS", type: "num", help: PATHWAY_METRIC_HELP.ss },
+  { key: "ebi", label: "EBI", type: "num", help: PATHWAY_METRIC_HELP.ebi },
+  { key: "ig", label: "IG", type: "num", help: PATHWAY_METRIC_HELP.ig },
+  { key: "meanShift", label: "TP shift", type: "num", help: PATHWAY_METRIC_HELP.shift },
+  { key: "status", label: "Archetype", type: "text" },
+];
+
+const fmtNum = (v, d = 2) => (v === null || v === undefined || !Number.isFinite(v) ? "n/a" : v.toFixed(d));
+const fmtSigned = (v, d = 2) => (v === null || v === undefined || !Number.isFinite(v) ? "n/a" : `${v > 0 ? "+" : ""}${v.toFixed(d)}`);
+
+function pathwayStatus(c) {
+  if (!c.converged) return "Did not converge";
+  if (c.primary) return PATHWAY_ARCHETYPE_BY_KEY[c.primary].label;
+  if (c.admissible) return "Intermediate";
+  if (c.conditional) return "Conditional (trade-off)";
+  return "Below minimum gain";
+}
+
+function PathwayStagesText({ c, nameOf, compact = false }) {
+  return (
+    <span className="inline-flex flex-wrap items-center gap-x-1 gap-y-0.5">
+      {c.stages.map((s, i) => (
+        <React.Fragment key={i}>
+          {i > 0 && <span className="text-slate-300">&rarr;</span>}
+          <span className="whitespace-nowrap">
+            {nameOf(s.leverId)}
+            <span className="font-mono text-slate-400"> {s.scaleUp ? "raised to " : ""}{round2(s.u)}</span>
+          </span>
+        </React.Fragment>
+      ))}
+      {!compact && c.length === 0 && <span className="text-slate-400">(none)</span>}
+    </span>
+  );
+}
+
+function ArchetypeBadges({ c }) {
+  if (!c.memberships?.length) return <span className="text-[10px] text-slate-400">{pathwayStatus(c)}</span>;
+  return (
+    <span className="inline-flex flex-wrap gap-1">
+      {c.memberships.map((k) => (
+        <span key={k} title={PATHWAY_ARCHETYPE_BY_KEY[k].rule} className={`text-[10px] px-1.5 py-0.5 rounded-full border ${PATHWAY_ARCHETYPE_BY_KEY[k].badge} ${c.primary === k ? "font-semibold" : "opacity-70"}`}>
+          {PATHWAY_ARCHETYPE_BY_KEY[k].label}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function TransitionPathwaysGuide() {
+  return (
+    <FoldableBox
+      storageKey="se.fold.pathwaysWhat"
+      icon={Waypoints}
+      title="What is Transition Pathway Analysis?"
+      summary="Finds the order in which interventions are best implemented: sequences of levers, each implemented up to its transition point, compared on how much they achieve, how much effort they need, and when the benefits arrive."
+    >
+      <div className="text-xs text-slate-600 space-y-2 leading-relaxed">
+        <p>Transition Point Analysis asks at what intensity a single intervention is most effective. <strong>Transition Pathway Analysis</strong> asks in what order interventions should be implemented. A <strong>transition pathway</strong> is an ordered sequence of interventions that guides the system from its Business-as-Usual state towards a desired state.</p>
+        <p><strong>How a pathway is simulated.</strong> The analysis starts from the Business-as-Usual equilibrium: the model's own starting values with no scenario applied. In each stage one lever is implemented up to its <em>conditional transition point</em>: the intensity at which, in the state the pathway has reached so far, one more step of effort gives the largest improvement in the nexus outcomes. The system then settles to equilibrium, the lever stays in place, and the next lever starts from that new state. Because every transition point is recomputed from the current state, the analysis shows how earlier levers make later ones more effective (their transition point moves earlier) or less effective (it moves later).</p>
+        <p className="font-medium text-slate-700">Steps</p>
+        <ol className="list-decimal pl-5 space-y-0.5">
+          <li>Choose the nexus outcomes, and for each whether higher or lower is better.</li>
+          <li>Choose the intervention levers that may be combined into pathways.</li>
+          <li>Choose how long pathways may be and how they are built (every order, or a guided search for larger problems).</li>
+          <li>Run the analysis. Every lever is first tested on its own (its transition point from Business-as-Usual), then pathways are built stage by stage.</li>
+          <li>Read the effort-gain plane, the four pathway archetypes, the rankings, and the implementation portfolios.</li>
+        </ol>
+        <p className="font-medium text-slate-700">The four pathway archetypes</p>
+        <ul className="space-y-1">
+          {PATHWAY_ARCHETYPES.map((a) => (
+            <li key={a.key}><span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${a.badge}`}>{a.label}</span> {a.purpose} <span className="text-slate-400">Rule: {a.rule}</span></li>
+          ))}
+        </ul>
+        <p>Thresholds such as "the lowest quarter" are computed across the admissible pathways of this analysis (those with a meaningful gain and no trade-offs), so an archetype describes a pathway compared with the other options, not an absolute standard. A pathway can belong to more than one archetype.</p>
+        <p>The analysis runs on the network in the current analysis scope. Results are implications of the causal structure as drawn, not forecasts, and a stage is an implementation phase, not a period of time.</p>
+      </div>
+    </FoldableBox>
+  );
+}
+
+function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, result, setResult, setChartCache, modelVersion }) {
+  useCachedChart(setChartCache, "pathwayPlane", '[data-chart="pathway-plane"]', "svg", [result]);
+  const [running, setRunning] = useState(false);
+  const [progress, setProgress] = useState(null);
+  const [selectedId, setSelectedId] = useState(null);
+  const [filter, setFilter] = useState("all");
+  const [showCount, setShowCount] = useState(50);
+  const runnerRef = useRef(null);
+  const planeRef = useRef(null);
+  const trajectoryRef = useRef(null);
+  useEffect(() => () => { if (runnerRef.current) runnerRef.current.cancelled = true; }, []);
+
+  const conceptById = useMemo(() => new Map(concepts.map((c) => [c.id, c])), [concepts]);
+  const nameOf = useCallback((id) => conceptById.get(id)?.name || id, [conceptById]);
+  const inScope = (id) => conceptById.has(id);
+  const outcomeIds = config.outcomes.map((o) => o.id);
+  const leverIds = config.levers.map((l) => l.id);
+
+  // ---- setup helpers -----------------------------------------------------------
+  const patch = (p) => setConfig((c) => ({ ...c, ...p }));
+  const addOutcome = (id) => { if (id && !outcomeIds.includes(id)) patch({ outcomes: [...config.outcomes, { id, direction: 1, weight: 1, target: "" }], levers: config.levers.filter((l) => l.id !== id) }); };
+  const updateOutcome = (id, p) => patch({ outcomes: config.outcomes.map((o) => (o.id === id ? { ...o, ...p } : o)) });
+  const removeOutcome = (id) => patch({ outcomes: config.outcomes.filter((o) => o.id !== id) });
+  const addLever = (id) => { if (id && !leverIds.includes(id) && !outcomeIds.includes(id)) patch({ levers: [...config.levers, { id, direction: "increase", effort: 1 }] }); };
+  const updateLever = (id, p) => patch({ levers: config.levers.map((l) => (l.id === id ? { ...l, ...p } : l)) });
+  const removeLever = (id) => patch({ levers: config.levers.filter((l) => l.id !== id), precedence: config.precedence.filter((p) => p.before !== id && p.after !== id) });
+  const suggestLevers = () => {
+    // Concepts nothing else acts on, that act on something: the usual shape
+    // of a policy instrument. Only a suggestion; review before running.
+    const hasIn = new Set(edges.map((e) => e.target));
+    const hasOut = new Set(edges.map((e) => e.source));
+    const add = concepts.filter((c) => !hasIn.has(c.id) && hasOut.has(c.id) && !outcomeIds.includes(c.id) && !leverIds.includes(c.id));
+    patch({ levers: [...config.levers, ...add.map((c) => ({ id: c.id, direction: "increase", effort: 1 }))] });
+  };
+  const addPrecedence = () => {
+    const ids = config.levers.map((l) => l.id).filter(inScope);
+    if (ids.length < 2) return;
+    patch({ precedence: [...config.precedence, { before: ids[0], after: ids[1] }] });
+  };
+
+  const scopedLevers = config.levers.filter((l) => inScope(l.id) && !outcomeIds.includes(l.id));
+  const scopedOutcomes = config.outcomes.filter((o) => inScope(o.id));
+  const outOfScope = [...config.levers, ...config.outcomes].filter((x) => !inScope(x.id));
+  const J = Math.max(1, Math.min(5, Number(config.maxLength) || 1));
+  const N = Math.max(2, Number(config.resolution) || 20);
+  const exhaustiveCount = useMemo(
+    () => countExhaustivePathways(scopedLevers.map((l) => l.id), J, config.rule === "tp" && config.allowScaleUp, config.precedence),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [JSON.stringify(scopedLevers.map((l) => l.id)), J, config.rule, config.allowScaleUp, JSON.stringify(config.precedence)]
+  );
+  const tooMany = config.strategy === "exhaustive" && exhaustiveCount > PATHWAY_EXHAUSTIVE_LIMIT;
+  const estPathways = config.strategy === "exhaustive" ? Math.min(exhaustiveCount, PATHWAY_EXHAUSTIVE_LIMIT)
+    : scopedLevers.length * (1 + (J - 1) * (config.strategy === "greedy" ? 1 : Math.max(1, Number(config.beamWidth) || 10)));
+  const estRuns = (scopedLevers.length + estPathways) * (N + 1) * (config.robustness ? 5 : 1);
+  const canRun = scopedLevers.length > 0 && scopedOutcomes.length > 0 && !tooMany && !running;
+
+  const run = () => {
+    if (!canRun) return;
+    const token = { cancelled: false };
+    runnerRef.current = token;
+    setRunning(true);
+    setProgress({ stage: "Starting", done: 0, total: 1 });
+    const gen = runPathwayAnalysis(concepts, edges, settings, config);
+    const started = performance.now();
+    const step = () => {
+      if (token.cancelled) { setRunning(false); setProgress(null); return; }
+      let r;
+      const t0 = performance.now();
+      try {
+        do { r = gen.next(); } while (!r.done && performance.now() - t0 < 40);
+      } catch (err) {
+        setRunning(false); setProgress(null);
+        alert("The pathway analysis stopped with an error: " + (err?.message || err));
+        return;
+      }
+      if (r.done) {
+        setResult({ ...r.value, seconds: (performance.now() - started) / 1000, __modelVersion: modelVersion });
+        const s = r.value.summary;
+        const first = s.ranked.hi[0] || s.ranked.ef[0] || s.ranked.lhf[0] || s.ranked.di[0] || r.value.candidates.find((c) => c.admissible) || r.value.candidates[0];
+        setSelectedId(first ? first.id : null);
+        setFilter("all");
+        setShowCount(50);
+        setRunning(false);
+        setProgress(null);
+      } else {
+        setProgress({ ...r.value });
+        setTimeout(step, 0);
+      }
+    };
+    setTimeout(step, 30);
+  };
+  const cancel = () => { if (runnerRef.current) runnerRef.current.cancelled = true; };
+
+  const isStale = !!result && result.__modelVersion !== modelVersion;
+  const configChanged = !!result && JSON.stringify(result.config) !== JSON.stringify(config);
+
+  // ---- derived views of the result ----------------------------------------------
+  const candById = useMemo(() => new Map((result?.candidates || []).map((c) => [c.id, c])), [result]);
+  const tableRows = useMemo(() => {
+    if (!result) return [];
+    const keep = (c) => filter === "all" ? true
+      : filter === "admissible" ? c.admissible
+      : filter === "frontier" ? c.frontier
+      : filter === "conditional" ? c.conditional
+      : filter === "other" ? !c.admissible && !c.conditional
+      : c.memberships.includes(filter);
+    return result.candidates.filter(keep).map((c) => ({
+      id: c.id, c, label: c.stages.map((s) => `${nameOf(s.leverId)} ${round2(s.u)}`).join(" > "),
+      length: c.length, tng: c.tng, cii: c.cii, pei: c.pei, avgTp: c.avgTp, ss: c.ss, ebi: c.ebi, ig: c.ig, meanShift: c.meanShift,
+      status: pathwayStatus(c),
+    }));
+  }, [result, filter, nameOf]);
+  const { sorted, sortKey, sortDir, onSort } = useTableSort(tableRows, PATHWAY_TABLE_COLUMNS, { key: "tng", dir: "desc" });
+
+  const plane = useMemo(() => {
+    if (!result) return null;
+    const pt = (c) => ({ x: round3(c.cii), y: round3(c.tng), id: c.id });
+    const series = PATHWAY_ARCHETYPES.map((a) => ({ ...a, data: result.candidates.filter((c) => c.primary === a.key).map(pt) }));
+    const intermediate = result.candidates.filter((c) => c.admissible && !c.primary).map(pt);
+    const other = result.candidates.filter((c) => c.converged && !c.admissible).map(pt);
+    const frontier = result.candidates.filter((c) => c.frontier).sort((a, b) => a.cii - b.cii).map(pt);
+    // Axis range with a margin of 8% of the spread on both sides, so no point
+    // sits on the edge, and zoomed to the data rather than forced through 0.
+    const ys = result.candidates.filter((c) => c.converged).map((c) => c.tng);
+    const lo = ys.length ? Math.min(...ys) : 0, hi = ys.length ? Math.max(...ys) : 1;
+    const pad = Math.max(0.02, (hi - lo) * 0.08);
+    const raw = (hi - lo + 2 * pad) / 8;
+    const mag = 10 ** Math.floor(Math.log10(raw));
+    const step = [1, 2, 2.5, 5, 10].map((f) => f * mag).find((v) => v >= raw);
+    const y0 = Math.floor((lo - pad) / step) * step, y1 = Math.ceil((hi + pad) / step) * step;
+    const yTicks = [];
+    for (let v = y0; v <= y1 + step / 2; v += step) yTicks.push(Math.round(v * 1e6) / 1e6);
+    return { series, intermediate, other, frontier, yDomain: [y0, y1], yTicks };
+  }, [result]);
+
+  const selected = selectedId !== null ? candById.get(selectedId) : null;
+  const trajectory = useMemo(() => {
+    if (!selected || !result) return null;
+    const rows = [{ stage: "BAU", total: 0, ...Object.fromEntries(result.outcomes.map((o) => [o.id, 0])) }];
+    selected.stages.forEach((s, i) => {
+      const row = { stage: `Stage ${i + 1}`, total: round3(s.gainAfter) };
+      s.outcomes.forEach((o) => { row[o.id] = round3(o.improvement); });
+      rows.push(row);
+    });
+    const accrual = [{ x: 0, y: 0 }];
+    if (selected.tng > 0 && selected.cii > 0) {
+      selected.stages.forEach((s) => s.segment.forEach(([C, G]) => accrual.push({ x: round3(C / selected.cii), y: round3(G / selected.tng) })));
+    }
+    return { rows, accrual };
+  }, [selected, result]);
+
+  const lineColors = ["#0f766e", "#c2410c", "#7c3aed", "#0369a1", "#be123c", "#4d7c0f", "#a16207", "#0e7490"];
+  const selectPathway = (id) => {
+    setSelectedId(id);
+    setTimeout(() => document.querySelector('[data-pathway-detail]')?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+  };
+
+  // ---- exports --------------------------------------------------------------------
+  const pathwayCsvRow = (c) => [
+    c.stages.map((s) => `${nameOf(s.leverId)} (${s.scaleUp ? "raised to " : ""}${round2(s.u)})`).join(" -> "), c.length,
+    round3(c.tng), round3(c.cii), c.pei === null ? "" : round3(c.pei), c.avgTp === null ? "" : round3(c.avgTp), c.ss, c.to,
+    c.ebi === null ? "" : round3(c.ebi), round3(c.ig), c.meanShift === null ? "" : round3(c.meanShift),
+    c.converged ? "Yes" : "No", c.admissible ? "Yes" : "No", c.memberships.map((k) => PATHWAY_ARCHETYPE_BY_KEY[k].label).join("; "),
+    c.primary ? PATHWAY_ARCHETYPE_BY_KEY[c.primary].label : pathwayStatus(c), c.frontier ? "Yes" : "",
+    c.targetsSet ? `${c.targetsMet} of ${c.targetsSet}` : "",
+  ];
+  const PATHWAY_CSV_HEADER = ["Pathway", "Stages", "Total Nexus Gain", "Cumulative Intervention Intensity", "Pathway Efficiency Index", "Average Transition Point", "Synergy Score", "Trade-offs", "Early Benefit Index", "Interaction Gain", "Mean TP Shift", "Converged", "Admissible", "Archetypes", "Primary Archetype / Status", "Efficient Frontier", "Targets Met"];
+  const exportPathwaysCSV = () => {
+    if (!result) return;
+    downloadCSV([PATHWAY_CSV_HEADER, ...[...result.candidates].sort((a, b) => b.tng - a.tng).map(pathwayCsvRow)], "transition-pathways.csv");
+  };
+  const exportStagesCSV = () => {
+    if (!selected || !result) return;
+    const header = ["Stage", "Lever", "Scale-up", "Intensity Before", "Intensity", "Isolated TP", "Conditional TP", "TP Shift", "Stage Gain", "Nexus Gain After", "Cumulative Intensity", "Stage Efficiency", "Converged",
+      ...result.outcomes.map((o) => `${nameOf(o.id)} at stage end`)];
+    const rows = selected.stages.map((s, i) => [
+      i + 1, nameOf(s.leverId), s.scaleUp ? "Yes" : "", round3(s.uPrev), round3(s.u), s.tauIso === null ? "" : round3(s.tauIso), s.tauCond === null ? "" : round3(s.tauCond),
+      s.shift === null ? "" : round3(s.shift), round3(s.gainAfter - s.gainBefore), round3(s.gainAfter), round3(s.ciiAfter),
+      s.u - s.uPrev > 0 ? round3((s.gainAfter - s.gainBefore) / (s.effort * (s.u - s.uPrev))) : "", s.converged ? "Yes" : "No",
+      ...s.outcomes.map((o) => round3(o.value)),
+    ]);
+    downloadCSV([header, ...rows], "transition-pathway-stages.csv");
+  };
+  const exportLeversCSV = () => {
+    if (!result) return;
+    const header = ["Lever", "Direction", "Effort Weight", "Isolated TP", "Response Type", "Max Marginal Return", "Nexus Gain at Full Intensity", "Synergy", "Included", "Reason",
+      ...result.outcomes.flatMap((o) => [`${nameOf(o.id)} effect at full intensity`, `${nameOf(o.id)} TP`])];
+    const rows = result.iso.map((l) => [nameOf(l.id), l.decrease ? "Decrease (1 to 0)" : "Increase (0 to 1)", l.effort, l.tau === null ? "" : round3(l.tau), l.responseType,
+      l.maxReturn === null ? "" : round3(l.maxReturn), round3(l.gainAtFull), l.synergy.type, l.included ? "Yes" : "No", l.reason,
+      ...l.outcomeRows.flatMap((r) => [round3(r.effect), r.tp === null ? "" : round3(r.tp)])]);
+    downloadCSV([header, ...rows], "transition-pathway-lever-profiles.csv");
+  };
+  const exportPortfoliosCSV = () => {
+    if (!result) return;
+    const bestLabel = (id) => { const c = candById.get(id); return c ? c.stages.map((s) => `${nameOf(s.leverId)} (${round2(s.u)})`).join(" -> ") : ""; };
+    const header = ["Opening", "Pathways Starting This Way", "Top-ranked Pathways Opened", "Best Total Nexus Gain", "Regret", ...PATHWAY_ARCHETYPES.map((a) => `Best ${a.label} Continuation`)];
+    const rows = [...result.portfolios.firstMoves, ...result.portfolios.openings].map((f) => [
+      f.stages.map((s) => `${nameOf(s.leverId)} (${round2(s.u)})`).join(" -> "), f.count, f.opens, round3(f.bestTng), round3(f.regret),
+      ...PATHWAY_ARCHETYPES.map((a) => bestLabel(f.bestBy[a.key])),
+    ]);
+    downloadCSV([header, ...rows], "transition-pathway-portfolios.csv");
+  };
+
+  const s = result?.summary;
+  const pct = progress ? Math.min(100, Math.round((100 * progress.done) / Math.max(1, progress.total))) : 0;
+
+  return (
+    <div className="space-y-5">
+      <TransitionPathwaysGuide />
+
+      {/* ============================ setup ============================ */}
+      <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-4">
+        <h3 className="font-semibold text-sm">Set up the analysis</h3>
+
+        <div>
+          <div className="flex items-center gap-2 mb-1.5">
+            <label className="text-xs text-slate-500 font-medium">1. Nexus outcomes</label>
+            <select value="" onChange={(e) => addOutcome(e.target.value)} className="text-xs border border-slate-200 rounded px-2 py-1">
+              <option value="">Add an outcome…</option>
+              {concepts.filter((c) => !outcomeIds.includes(c.id)).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <span className="text-[11px] text-slate-400">The outcomes a pathway should improve, for example food security, biodiversity, and climate.</span>
+          </div>
+          {config.outcomes.length === 0 ? (
+            <p className="text-xs text-slate-400 italic">No outcomes yet.</p>
+          ) : (
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-slate-400 border-b border-slate-100">
+                  <th className="py-1 font-medium pr-3">Outcome</th>
+                  <th className="py-1 font-medium pr-3" title="Which direction counts as an improvement for this outcome.">Improvement means <HelpCircle size={10} className="inline text-slate-300" /></th>
+                  <th className="py-1 font-medium pr-3" title="Relative importance in the total nexus gain. 1 for every outcome weighs them equally.">Weight <HelpCircle size={10} className="inline text-slate-300" /></th>
+                  <th className="py-1 font-medium pr-3" title="Optional. The level this outcome should reach in the desired future state (on the -1 to +1 activation scale). Pathways report how many targets they reach.">Desired level (optional) <HelpCircle size={10} className="inline text-slate-300" /></th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {config.outcomes.map((o) => (
+                  <tr key={o.id} className="border-b border-slate-50">
+                    <td className="py-1 pr-3">{nameOf(o.id)}{!inScope(o.id) && <span className="ml-1 text-[10px] text-amber-700">(outside the analysis scope)</span>}</td>
+                    <td className="py-1 pr-3">
+                      <div className="inline-flex border border-slate-200 rounded overflow-hidden">
+                        <button onClick={() => updateOutcome(o.id, { direction: 1 })} className={`text-[11px] px-2 py-0.5 ${o.direction !== -1 ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}>Higher is better</button>
+                        <button onClick={() => updateOutcome(o.id, { direction: -1 })} className={`text-[11px] px-2 py-0.5 ${o.direction === -1 ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}>Lower is better</button>
+                      </div>
+                    </td>
+                    <td className="py-1 pr-3"><input type="number" min={0} step={0.5} value={o.weight} onChange={(e) => updateOutcome(o.id, { weight: e.target.value })} className="w-16 border border-slate-200 rounded px-1.5 py-0.5 font-mono" /></td>
+                    <td className="py-1 pr-3"><input type="number" min={-1} max={1} step={0.1} value={o.target} placeholder="none" onChange={(e) => updateOutcome(o.id, { target: e.target.value })} className="w-20 border border-slate-200 rounded px-1.5 py-0.5 font-mono" /></td>
+                    <td className="py-1 text-right"><button onClick={() => removeOutcome(o.id)} className="text-slate-400 hover:text-red-600" title="Remove this outcome"><X size={13} /></button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <div>
+          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+            <label className="text-xs text-slate-500 font-medium">2. Intervention levers</label>
+            <select value="" onChange={(e) => addLever(e.target.value)} className="text-xs border border-slate-200 rounded px-2 py-1">
+              <option value="">Add a lever…</option>
+              {concepts.filter((c) => !leverIds.includes(c.id) && !outcomeIds.includes(c.id)).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <button onClick={suggestLevers} className="text-[11px] px-2 py-1 rounded border border-slate-200 text-slate-600 hover:border-slate-400" title="Adds every concept that acts on others but is not acted on by anything: the usual shape of a policy instrument. Review the suggestions before running.">Suggest levers</button>
+            <span className="text-[11px] text-slate-400">The interventions that can be combined, in any order, into pathways.</span>
+          </div>
+          {config.levers.length === 0 ? (
+            <p className="text-xs text-slate-400 italic">No levers yet.</p>
+          ) : (
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-slate-400 border-b border-slate-100">
+                  <th className="py-1 font-medium pr-3">Lever</th>
+                  <th className="py-1 font-medium pr-3" title="Increase: intensity 0 to 1 raises the lever's activation from 0 to 1. Decrease: intensity 0 to 1 lowers it from 1 to 0 (as on the Transition Point tab).">Intensity means <HelpCircle size={10} className="inline text-slate-300" /></th>
+                  <th className="py-1 font-medium pr-3" title="Optional. How demanding one unit of this lever is compared with the others (1 = the same). Enters the cumulative intervention intensity; no cost data needed, a ranking is enough.">Effort weight <HelpCircle size={10} className="inline text-slate-300" /></th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {config.levers.map((l) => (
+                  <tr key={l.id} className="border-b border-slate-50">
+                    <td className="py-1 pr-3">{nameOf(l.id)}{!inScope(l.id) && <span className="ml-1 text-[10px] text-amber-700">(outside the analysis scope)</span>}</td>
+                    <td className="py-1 pr-3">
+                      <div className="inline-flex border border-slate-200 rounded overflow-hidden">
+                        <button onClick={() => updateLever(l.id, { direction: "increase" })} className={`text-[11px] px-2 py-0.5 ${l.direction !== "decrease" ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}>Increase (0 to 1)</button>
+                        <button onClick={() => updateLever(l.id, { direction: "decrease" })} className={`text-[11px] px-2 py-0.5 ${l.direction === "decrease" ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}>Decrease (1 to 0)</button>
+                      </div>
+                    </td>
+                    <td className="py-1 pr-3"><input type="number" min={0.1} step={0.5} value={l.effort} onChange={(e) => updateLever(l.id, { effort: e.target.value })} className="w-16 border border-slate-200 rounded px-1.5 py-0.5 font-mono" /></td>
+                    <td className="py-1 text-right"><button onClick={() => removeLever(l.id)} className="text-slate-400 hover:text-red-600" title="Remove this lever"><X size={13} /></button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <div>
+          <label className="text-xs text-slate-500 font-medium">3. How pathways are built</label>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-1.5">
+            <div>
+              <div className="text-[11px] text-slate-500 mb-0.5">Maximum number of stages</div>
+              <select value={J} onChange={(e) => patch({ maxLength: parseInt(e.target.value, 10) })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5">
+                {[1, 2, 3, 4, 5].map((k) => <option key={k} value={k}>{k} stage{k > 1 ? "s" : ""}</option>)}
+              </select>
+            </div>
+            <div>
+              <div className="text-[11px] text-slate-500 mb-0.5" title="Up to the transition point: each stage stops where the lever's marginal return peaks, the default in the method. Full: every lever goes to intensity 1, as a reference case.">Stage intensity <HelpCircle size={10} className="inline text-slate-300" /></div>
+              <select value={config.rule} onChange={(e) => patch({ rule: e.target.value })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5">
+                <option value="tp">Up to the conditional transition point</option>
+                <option value="full">Full implementation (intensity 1)</option>
+              </select>
+              <label className={`flex items-center gap-1.5 mt-1 text-[11px] ${config.rule === "tp" ? "text-slate-600" : "text-slate-300"}`} title="Staged scale-up: a lever implemented to its transition point may come back once in a later stage and be raised to full intensity.">
+                <input type="checkbox" disabled={config.rule !== "tp"} checked={config.rule === "tp" && config.allowScaleUp} onChange={(e) => patch({ allowScaleUp: e.target.checked })} />
+                Allow scale-up stages
+              </label>
+            </div>
+            <div>
+              <div className="text-[11px] text-slate-500 mb-0.5" title="Every order: all orderings of the levers up to the maximum length (exact, but grows fast). Beam search: keeps only the best partial pathways at each stage. Greedy: at each stage takes the lever with the highest marginal return.">Pathway construction <HelpCircle size={10} className="inline text-slate-300" /></div>
+              <select value={config.strategy} onChange={(e) => patch({ strategy: e.target.value })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5">
+                <option value="exhaustive">Every order (exhaustive)</option>
+                <option value="beam">Beam search</option>
+                <option value="greedy">Greedy (highest marginal return)</option>
+              </select>
+              {config.strategy === "beam" && (
+                <div className="flex items-center gap-1.5 mt-1 text-[11px] text-slate-600">
+                  keep
+                  <input type="number" min={1} max={200} value={config.beamWidth} onChange={(e) => patch({ beamWidth: e.target.value })} className="w-12 border border-slate-200 rounded px-1 py-0.5 font-mono" />
+                  best by
+                  <select value={config.beamCriterion} onChange={(e) => patch({ beamCriterion: e.target.value })} className="border border-slate-200 rounded px-1 py-0.5">
+                    <option value="tng">nexus gain</option>
+                    <option value="pei">efficiency</option>
+                  </select>
+                </div>
+              )}
+            </div>
+            <div>
+              <div className="text-[11px] text-slate-500 mb-0.5" title="Number of intensity steps each lever is swept in. A transition point can only fall on one of these steps, so this sets its precision.">Intensity resolution <HelpCircle size={10} className="inline text-slate-300" /></div>
+              <select value={N} onChange={(e) => patch({ resolution: parseInt(e.target.value, 10) })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5">
+                <option value={10}>10 steps (±0.1)</option>
+                <option value={20}>20 steps (±0.05)</option>
+                <option value={50}>50 steps (±0.02)</option>
+              </select>
+            </div>
+            <div>
+              <div className="text-[11px] text-slate-500 mb-0.5" title="An outcome change smaller than this counts as no change: for the synergy score, trade-offs, and excluding levers that move nothing.">Flat-response threshold <HelpCircle size={10} className="inline text-slate-300" /></div>
+              <input type="number" step={0.005} min={0} max={1} value={config.flatThreshold} onChange={(e) => patch({ flatThreshold: e.target.value })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 font-mono" />
+            </div>
+            <div>
+              <div className="text-[11px] text-slate-500 mb-0.5" title="Pathways count as admissible (and are classified into archetypes) only if their total nexus gain is at least this share of the best pathway's gain, and they have no trade-offs.">Minimum gain (% of best) <HelpCircle size={10} className="inline text-slate-300" /></div>
+              <input type="number" step={5} min={0} max={100} value={Math.round((Number(config.minGainShare) || 0) * 100)} onChange={(e) => patch({ minGainShare: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) / 100 })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 font-mono" />
+            </div>
+            <div>
+              <div className="text-[11px] text-slate-500 mb-0.5" title="Near a transition point the model settles slowly, and every stage sits at one, so pathway runs allow more iterations than the global setting before a run counts as not converged. All other simulation settings are the global ones (Scenarios & Simulation, Advanced options).">Maximum iterations per run <HelpCircle size={10} className="inline text-slate-300" /></div>
+              <input type="number" step={100} min={10} value={config.maxIterations} onChange={(e) => patch({ maxIterations: e.target.value })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 font-mono" />
+            </div>
+            <div className="flex items-end">
+              <label className="flex items-center gap-1.5 text-[11px] text-slate-600" title="Repeats the whole analysis with steepness halved and doubled, the other squash function, and the other update rule, and reports how often the top pathways keep their archetype and rank. About five times longer.">
+                <input type="checkbox" checked={!!config.robustness} onChange={(e) => patch({ robustness: e.target.checked })} />
+                Also test robustness (4 alternative settings)
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-slate-500 font-medium">4. Order constraints (optional)</label>
+            <button onClick={addPrecedence} disabled={scopedLevers.length < 2} className="text-[11px] px-2 py-0.5 rounded border border-slate-200 text-slate-600 hover:border-slate-400 disabled:opacity-40">Add a constraint</button>
+            <span className="text-[11px] text-slate-400">For example a legal or practical prerequisite: one lever can only follow another.</span>
+          </div>
+          {config.precedence.map((p, i) => (
+            <div key={i} className="flex items-center gap-2 mt-1.5 text-xs">
+              <select value={p.after} onChange={(e) => patch({ precedence: config.precedence.map((x, j) => (j === i ? { ...x, after: e.target.value } : x)) })} className="border border-slate-200 rounded px-1.5 py-1">
+                {scopedLevers.map((l) => <option key={l.id} value={l.id}>{nameOf(l.id)}</option>)}
+              </select>
+              <span className="text-slate-500">can only come after</span>
+              <select value={p.before} onChange={(e) => patch({ precedence: config.precedence.map((x, j) => (j === i ? { ...x, before: e.target.value } : x)) })} className="border border-slate-200 rounded px-1.5 py-1">
+                {scopedLevers.map((l) => <option key={l.id} value={l.id}>{nameOf(l.id)}</option>)}
+              </select>
+              {p.before === p.after && <span className="text-[10px] text-amber-700">(same lever: ignored)</span>}
+              <button onClick={() => patch({ precedence: config.precedence.filter((_, j) => j !== i) })} className="text-slate-400 hover:text-red-600"><X size={13} /></button>
+            </div>
+          ))}
+        </div>
+
+        {outOfScope.length > 0 && (
+          <p className="text-[11px] text-amber-700">{outOfScope.length} selected concept{outOfScope.length > 1 ? "s are" : " is"} outside the current analysis scope and will be left out.</p>
+        )}
+
+        <div className="flex items-center gap-3 flex-wrap pt-1 border-t border-slate-100">
+          {!running ? (
+            <Btn variant="accent" onClick={run} disabled={!canRun}><Play size={14} />Run pathway analysis</Btn>
+          ) : (
+            <Btn variant="outline" onClick={cancel}><X size={14} />Cancel</Btn>
+          )}
+          <span className="text-[11px] text-slate-500">
+            {scopedLevers.length === 0 || scopedOutcomes.length === 0
+              ? "Add at least one outcome and one lever to begin."
+              : tooMany
+                ? <span className="text-amber-700">Every order of {scopedLevers.length} levers over {J} stages is more than {PATHWAY_EXHAUSTIVE_LIMIT.toLocaleString()} pathways. Use beam search or fewer stages.</span>
+                : <>About {estPathways.toLocaleString()} pathway{estPathways === 1 ? "" : "s"} and {estRuns.toLocaleString()} simulations{config.robustness ? " including the robustness runs" : ""}.</>}
+          </span>
+        </div>
+        {running && progress && (
+          <div>
+            <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1">
+              <span>{progress.phase ? `${progress.phase}: ` : ""}{progress.stage}</span>
+              <span className="font-mono">{progress.done.toLocaleString()} / {progress.total.toLocaleString()}</span>
+            </div>
+            <div className="h-1.5 bg-slate-100 rounded overflow-hidden"><div className="h-full bg-teal-600 transition-all" style={{ width: `${pct}%` }} /></div>
+          </div>
+        )}
+      </div>
+
+      {/* ============================ results ============================ */}
+      {result && s && (
+        <>
+          {isStale && <StaleResultBanner label="this pathway analysis" />}
+          {configChanged && !isStale && (
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-2.5 text-xs text-slate-600 flex items-start gap-1.5">
+              <Info size={13} className="shrink-0 mt-0.5" />
+              <span>The setup above has changed since this analysis was run. The results below still describe the previous setup; run it again to update them.</span>
+            </div>
+          )}
+
+          <MethodPanel
+            stats={[
+              { label: "Pathways evaluated", value: result.candidates.length.toLocaleString(), hint: "Every pathway and every shorter opening of it is a candidate." },
+              { label: "Admissible", value: `${s.counts.admissible} of ${s.counts.total}`, hint: `Converged, no trade-offs, and a total nexus gain of at least ${fmtNum(s.gMin)} (${Math.round((Number(result.config.minGainShare) || 0) * 100)}% of the best, or the flat threshold per outcome).` },
+              { label: "Simulation runs", value: result.runs.toLocaleString(), hint: "One run to equilibrium per sampled intensity, per lever, per stage (main analysis)." },
+              { label: "Did not converge", value: `${s.counts.nonConverged}`, tone: s.counts.nonConverged ? "warn" : undefined, hint: "Pathways with a stage that did not settle within the iteration limit (usually a sustained oscillation). They are reported but not classified." },
+              { label: "Transition point precision", value: `±${round2(1 / result.N)}`, hint: "A transition point can only fall on one of the sampled intensity steps." },
+              { label: "Transfer function / λ", value: `${result.settingsUsed.squashFunction ?? "tanh"} / ${result.settingsUsed.lambda ?? 1}` },
+              { label: "Update / iterations", value: `${result.settingsUsed.updateRule ?? "relative"}, synchronous, ≤ ${result.settingsUsed.maxIterations}`, hint: "Pathway runs are always synchronous (deterministic) and use this analysis's own iteration limit; everything else follows the global simulation settings." },
+              { label: "Path dependence", value: result.invariance.tested ? `${result.invariance.pathDependent} of ${result.invariance.tested} lever sets` : "not tested", tone: result.invariance.pathDependent ? "warn" : undefined, hint: "Invariance test: the lever sets of the top pathways were simulated in every order at the same intensities. Different end states mean the order decides where the system ends up." },
+            ]}
+          >
+            <p><strong>Pathways are built stage by stage from Business-as-Usual.</strong> Business-as-Usual is the equilibrium of the model's own starting values with no scenario applied. In each stage a lever is swept from its current intensity to 1 in {result.N} steps, each run starting from the equilibrium the pathway has reached, with the earlier levers held in place. {result.rule === "tp" ? "The lever is implemented at its conditional transition point: the upper end of the step with the largest positive marginal return in total nexus gain." : "The lever is implemented at full intensity (the reference rule)."} Levers with no improving step from the current state are not added. A stage can still lower the total gain, when a lever first worsens the outcomes before its steepest improving step; such stage gains are shown in orange, and the efficient frontier and the rankings show whether the stage is worth taking.</p>
+            <p><strong>This transition point differs from the one on the Transition Point tab in two ways.</strong> It is signed by the desirability of the outcomes (it marks the largest improvement, not the steepest change of any kind), and it is reported at the upper end of the steepest step, so that implementing a lever up to it realizes that step in full.</p>
+            <p><strong>Metrics.</strong> TNG is the weighted, direction-signed improvement of the outcomes relative to Business-as-Usual; CII the sum of final intensities times effort weights; PEI their ratio; the average TP the mean conditional transition point; SS the number of outcomes improved by more than {result.eps}; IG the gain beyond what the same levers achieve on their own at the same intensities (strongly negative when each lever alone already moves much of the system, so their separate effects overlap). The Early Benefit Index is the area under the accrual curve of gain against effort, traced at the sweep resolution within each stage (the stage-level formula uses only the stage end points; the finer curve keeps single-stage pathways classifiable).</p>
+            <p><strong>Archetype thresholds are relative.</strong> Quartiles and quintiles are taken across the {s.counts.admissible} admissible pathways of this run{s.counts.admissible < 10 ? ", which is a small set, so the thresholds are coarse" : ""}. The rules are conventions that structure the comparison, not properties of the system; the robustness test shows how much the top pathways depend on the simulation settings.</p>
+            <p><strong>What this does not tell you.</strong> Stages are implementation phases, not periods of time, and each is assumed to last long enough for the system to settle. Implemented levers are assumed to stay in place. Results are relative comparisons between pathways in the units of the map, implications of the causal structure as drawn rather than forecasts.</p>
+          </MethodPanel>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {PATHWAY_ARCHETYPES.map((a) => {
+              const top = s.ranked[a.key][0];
+              return (
+                <div key={a.key} className="bg-white rounded-lg border border-slate-200 p-3">
+                  <div className="flex items-center justify-between">
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${a.badge}`}>{a.label}</span>
+                    <span className="text-lg font-semibold font-mono" style={{ color: a.color }}>{s.counts[a.key]}</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1">{a.purpose}</p>
+                  {top ? (
+                    <button onClick={() => selectPathway(top.id)} className="mt-2 text-left text-[11px] text-slate-700 hover:text-teal-800">
+                      <div className="text-[10px] text-slate-400 uppercase tracking-wide">Best: {a.ranking.toLowerCase()}</div>
+                      <PathwayStagesText c={top} nameOf={nameOf} compact />
+                    </button>
+                  ) : (
+                    <p className="mt-2 text-[11px] text-slate-400 italic" title={Object.entries(s.why[a.key]).map(([k, v]) => `${k}: ${v} of ${s.counts.admissible}`).join("\n")}>
+                      No pathway meets all conditions. {Object.entries(s.why[a.key]).map(([k, v]) => `${k}: ${v}`).join("; ")}.
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="bg-white rounded-lg border border-slate-200 p-4">
+            <div className="flex items-center justify-between mb-1">
+              <h4 className="text-sm font-semibold">Effort-gain plane</h4>
+              <Btn variant="outline" onClick={() => exportChartAsPng(planeRef.current, "transition-pathways-effort-gain.png")}><Download size={13} />PNG</Btn>
+            </div>
+            <p className="text-[11px] text-slate-400 mb-2">Every pathway by the effort it needs (cumulative intervention intensity) and what it achieves (total nexus gain), coloured by primary archetype. The dashed line is the efficient frontier: no other pathway achieves more with less. Lines through the origin join pathways of equal efficiency. Click a point to open that pathway below.</p>
+            <div ref={planeRef} data-chart="pathway-plane" className="w-full h-96">
+              <ResponsiveContainer>
+                <ScatterChart margin={{ top: 10, right: 20, bottom: 24, left: 10 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis type="number" dataKey="x" name="CII" tick={{ fontSize: 10 }} label={{ value: "Cumulative intervention intensity (effort)", position: "insideBottom", offset: -12, fontSize: 11 }} />
+                  {/* Zoomed to the data: in a saturating map the pathways' gains
+                      can differ only in the first decimal, which an axis from 0
+                      would flatten into a single line. */}
+                  <YAxis type="number" dataKey="y" name="TNG" domain={plane.yDomain} ticks={plane.yTicks} tickFormatter={(v) => round2(v)} tick={{ fontSize: 10 }} label={{ value: "Total nexus gain", angle: -90, position: "insideLeft", fontSize: 11 }} />
+                  <ZAxis range={[46, 46]} />
+                  <RTooltip cursor={{ strokeDasharray: "3 3" }} content={({ active, payload }) => {
+                    const c = active && payload?.[0] ? candById.get(payload[0].payload.id) : null;
+                    return c ? (
+                      <div className="bg-white border border-slate-200 rounded shadow-sm p-2 text-[11px] max-w-xs">
+                        <div className="font-semibold mb-0.5"><PathwayStagesText c={c} nameOf={nameOf} compact /></div>
+                        <div>TNG {fmtNum(c.tng)}, CII {fmtNum(c.cii)}, PEI {fmtNum(c.pei)}</div>
+                        <div className="text-slate-500">{pathwayStatus(c)}</div>
+                      </div>
+                    ) : null;
+                  }} />
+                  <Legend wrapperStyle={{ fontSize: 10, lineHeight: "16px" }} verticalAlign="top" height={40} />
+                  <Scatter name="Other converged pathways" data={plane.other} fill="#cbd5e1" onClick={(p) => selectPathway(p?.payload?.id ?? p?.id)} isAnimationActive={false} />
+                  <Scatter name="Intermediate" data={plane.intermediate} fill="#94a3b8" onClick={(p) => selectPathway(p?.payload?.id ?? p?.id)} isAnimationActive={false} />
+                  {plane.series.map((a) => (
+                    <Scatter key={a.key} name={a.label} data={a.data} fill={a.color} onClick={(p) => selectPathway(p?.payload?.id ?? p?.id)} isAnimationActive={false} />
+                  ))}
+                  <Scatter name="Efficient frontier" data={plane.frontier} fill="none" line={{ stroke: "#334155", strokeDasharray: "5 4" }} shape={() => null} legendType="plainline" isAnimationActive={false} />
+                  {selected && <Scatter name="Selected" data={[{ x: round3(selected.cii), y: round3(selected.tng), id: selected.id }]} fill="none" shape={(p) => <circle cx={p.cx} cy={p.cy} r={9} fill="none" stroke="#0f172a" strokeWidth={2} />} legendType="none" isAnimationActive={false} />}
+                </ScatterChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg border border-slate-200 p-4">
+            <h4 className="text-sm font-semibold mb-2">Rankings by archetype</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {PATHWAY_ARCHETYPES.map((a) => (
+                <div key={a.key}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${a.badge}`}>{a.label}</span>
+                    <span className="text-[10px] text-slate-400">{a.ranking}</span>
+                  </div>
+                  {s.ranked[a.key].length === 0 ? (
+                    <p className="text-[11px] text-slate-400 italic">None in this run.</p>
+                  ) : (
+                    <ol className="space-y-0.5">
+                      {s.ranked[a.key].slice(0, PATHWAY_TOP_N).map((c, i) => (
+                        <li key={c.id}>
+                          <button onClick={() => selectPathway(c.id)} className={`w-full text-left text-[11px] px-1.5 py-1 rounded hover:bg-slate-50 flex gap-2 ${selectedId === c.id ? "bg-slate-100" : ""}`}>
+                            <span className="font-mono text-slate-400 w-4 shrink-0">{i + 1}</span>
+                            <span className="flex-1"><PathwayStagesText c={c} nameOf={nameOf} compact /></span>
+                            <span className="font-mono text-slate-500 shrink-0">{a.key === "ef" ? `PEI ${fmtNum(c.pei)}` : a.key === "lhf" ? `CII ${fmtNum(c.cii)}` : `TNG ${fmtNum(c.tng)}`}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {selected && trajectory && (
+            <div data-pathway-detail className="bg-white rounded-lg border border-slate-200 p-4 space-y-3 scroll-mt-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h4 className="text-sm font-semibold">Selected pathway</h4>
+                  <div className="text-xs mt-1"><PathwayStagesText c={selected} nameOf={nameOf} /></div>
+                  <div className="mt-1.5"><ArchetypeBadges c={selected} />{selected.frontier && <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full border border-slate-300 text-slate-600">On the efficient frontier</span>}</div>
+                </div>
+                <Btn variant="outline" onClick={exportStagesCSV}><Download size={13} />Stages (CSV)</Btn>
+              </div>
+              <div className="grid grid-cols-3 md:grid-cols-8 gap-2">
+                {[["TNG", selected.tng, PATHWAY_METRIC_HELP.tng], ["CII", selected.cii, PATHWAY_METRIC_HELP.cii], ["PEI", selected.pei, PATHWAY_METRIC_HELP.pei], ["Avg TP", selected.avgTp, PATHWAY_METRIC_HELP.avgTp],
+                  ["SS", selected.ss, PATHWAY_METRIC_HELP.ss], ["EBI", selected.ebi, PATHWAY_METRIC_HELP.ebi], ["IG", selected.ig, PATHWAY_METRIC_HELP.ig], ["TP shift", selected.meanShift, PATHWAY_METRIC_HELP.shift]].map(([k, v, h]) => (
+                  <div key={k} className="border border-slate-200 rounded p-2" title={h}>
+                    <div className="text-[10px] text-slate-400">{k}</div>
+                    <div className="text-sm font-mono">{k === "SS" ? `${v} of ${result.outcomes.length}` : k === "IG" || k === "TP shift" ? fmtSigned(v) : fmtNum(v)}</div>
+                  </div>
+                ))}
+              </div>
+              {selected.targetsSet > 0 && <p className="text-xs text-slate-600">Reaches {selected.targetsMet} of {selected.targetsSet} desired outcome levels.</p>}
+              {!selected.converged && <p className="text-xs text-amber-700">At least one stage of this pathway did not converge within {result.settingsUsed.maxIterations} iterations; its end state is not a settled equilibrium.</p>}
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-left text-slate-400 border-b border-slate-100">
+                      <th className="py-1 font-medium pr-3">Stage</th>
+                      <th className="py-1 font-medium pr-3">Lever</th>
+                      <th className="py-1 font-medium pr-3" title="The lever's transition point on its own, from Business-as-Usual.">TP alone</th>
+                      <th className="py-1 font-medium pr-3" title="The lever's transition point in the state this pathway has reached.">TP here</th>
+                      <th className="py-1 font-medium pr-3" title="Negative: earlier stages bring the lever's peak return forward (enabling). Positive: they push it later.">Shift</th>
+                      <th className="py-1 font-medium pr-3">Intensity</th>
+                      <th className="py-1 font-medium pr-3" title="Nexus gain added by this stage.">Stage gain</th>
+                      <th className="py-1 font-medium pr-3">Nexus gain after</th>
+                      <th className="py-1 font-medium pr-3" title="Stage gain per unit of effort spent in this stage.">Efficiency</th>
+                      {result.outcomes.map((o) => (
+                        <th key={o.id} className="py-1 font-medium pr-3" title="The value this outcome reaches at the end of the stage: a reference level to monitor before moving on to the next stage.">{nameOf(o.id)}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-b border-slate-50 text-slate-400">
+                      <td className="py-1 pr-3">BAU</td><td className="py-1 pr-3" colSpan={8}>Business-as-Usual equilibrium</td>
+                      {result.outcomes.map((o) => <td key={o.id} className="py-1 pr-3 font-mono">{fmtNum(result.bauOutcomes[o.id])}</td>)}
+                    </tr>
+                    {selected.stages.map((st, i) => {
+                      const dG = st.gainAfter - st.gainBefore;
+                      const du = st.u - st.uPrev;
+                      return (
+                        <tr key={i} className="border-b border-slate-50">
+                          <td className="py-1 pr-3">{i + 1}</td>
+                          <td className="py-1 pr-3">{nameOf(st.leverId)}{st.scaleUp && <span className="text-[10px] text-slate-400"> (scale-up)</span>}{!st.converged && <span className="text-[10px] text-amber-700"> (not converged)</span>}</td>
+                          <td className="py-1 pr-3 font-mono">{fmtNum(st.tauIso)}</td>
+                          <td className="py-1 pr-3 font-mono">{fmtNum(st.tauCond)}</td>
+                          <td className={`py-1 pr-3 font-mono ${st.shift < 0 ? "text-teal-700" : st.shift > 0 ? "text-orange-700" : ""}`}>{st.shift === null ? "" : fmtSigned(st.shift)}</td>
+                          <td className="py-1 pr-3 font-mono">{st.scaleUp ? `${round2(st.uPrev)} to ` : ""}{round2(st.u)}</td>
+                          <td className={`py-1 pr-3 font-mono ${dG < -1e-6 ? "text-orange-700" : ""}`} title={dG < -1e-6 ? "This stage lowers the total nexus gain: from this state the lever first worsens the outcomes before its steepest improving step." : undefined}>{fmtSigned(dG)}</td>
+                          <td className="py-1 pr-3 font-mono">{fmtNum(st.gainAfter)}</td>
+                          <td className="py-1 pr-3 font-mono">{du > 0 ? fmtNum(dG / (st.effort * du)) : "n/a"}</td>
+                          {st.outcomes.map((o) => <td key={o.id} className="py-1 pr-3 font-mono">{fmtNum(o.value)}</td>)}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <div className="text-xs font-medium text-slate-600 mb-1">Outcome trajectory</div>
+                  <p className="text-[10px] text-slate-400 mb-1">Improvement of each outcome relative to Business-as-Usual after every stage (up is better for every outcome), and the total nexus gain.</p>
+                  <div ref={trajectoryRef} className="h-60">
+                    <ResponsiveContainer>
+                      <LineChart data={trajectory.rows} margin={{ top: 5, right: 10, bottom: 5, left: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                        <XAxis dataKey="stage" tick={{ fontSize: 10 }} />
+                        <YAxis tick={{ fontSize: 10 }} />
+                        <RTooltip />
+                        <Legend wrapperStyle={{ fontSize: 10 }} />
+                        <ReferenceLine y={0} stroke="#94a3b8" />
+                        {result.outcomes.map((o, i) => (
+                          <Line key={o.id} type="linear" dataKey={o.id} name={nameOf(o.id)} stroke={lineColors[i % lineColors.length]} strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false} />
+                        ))}
+                        <Line type="linear" dataKey="total" name="Total nexus gain" stroke="#0f172a" strokeDasharray="5 4" strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs font-medium text-slate-600 mb-1">Benefit accrual (EBI {fmtNum(selected.ebi)})</div>
+                  <p className="text-[10px] text-slate-400 mb-1">Share of the final gain realized against share of the effort spent. Above the diagonal, benefits come ahead of effort; the Early Benefit Index is the area under the curve.</p>
+                  <div className="h-60">
+                    {trajectory.accrual.length > 1 ? (
+                      <ResponsiveContainer>
+                        <LineChart data={trajectory.accrual} margin={{ top: 5, right: 10, bottom: 18, left: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                          <XAxis type="number" dataKey="x" domain={[0, 1]} tick={{ fontSize: 10 }} label={{ value: "Share of effort", position: "insideBottom", offset: -8, fontSize: 10 }} />
+                          <YAxis type="number" domain={[(m) => Math.min(0, m), (m) => Math.max(1, m)]} tick={{ fontSize: 10 }} tickFormatter={(v) => round2(v)} />
+                          <RTooltip formatter={(v) => round2(v)} labelFormatter={(v) => `effort ${round2(v)}`} />
+                          <ReferenceLine segment={[{ x: 0, y: 0 }, { x: 1, y: 1 }]} stroke="#94a3b8" strokeDasharray="4 4" />
+                          <Line type="linear" dataKey="y" name="Share of gain" stroke="#0f766e" strokeWidth={2} dot={false} isAnimationActive={false} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    ) : <p className="text-[11px] text-slate-400 italic">Not defined for a pathway without a positive gain and effort.</p>}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="bg-white rounded-lg border border-slate-200 p-4">
+            <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+              <h4 className="text-sm font-semibold">All pathways</h4>
+              <div className="flex items-center gap-2">
+                <select value={filter} onChange={(e) => { setFilter(e.target.value); setShowCount(50); }} className="text-xs border border-slate-200 rounded px-2 py-1">
+                  <option value="all">All ({s.counts.total})</option>
+                  <option value="admissible">Admissible ({s.counts.admissible})</option>
+                  <option value="frontier">Efficient frontier ({result.candidates.filter((c) => c.frontier).length})</option>
+                  {PATHWAY_ARCHETYPES.map((a) => <option key={a.key} value={a.key}>{a.label} ({s.counts[a.key]})</option>)}
+                  <option value="conditional">Conditional, with trade-offs ({s.counts.conditional})</option>
+                  <option value="other">Not admissible ({s.counts.total - s.counts.admissible - s.counts.conditional})</option>
+                </select>
+                <Btn variant="outline" onClick={exportPathwaysCSV}><Download size={13} />Export CSV</Btn>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-slate-400 border-b border-slate-100">
+                    {PATHWAY_TABLE_COLUMNS.map((col) => <SortHeader key={col.key} col={col} sortKey={sortKey} sortDir={sortDir} onSort={onSort} />)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.slice(0, showCount).map((r) => (
+                    <tr key={r.id} onClick={() => selectPathway(r.id)} className={`border-b border-slate-50 cursor-pointer hover:bg-slate-50 ${selectedId === r.id ? "bg-teal-50/60" : ""}`}>
+                      <td className="py-1 pr-3"><PathwayStagesText c={r.c} nameOf={nameOf} compact /></td>
+                      <td className="py-1 pr-3 font-mono">{r.length}</td>
+                      <td className="py-1 pr-3 font-mono">{fmtNum(r.tng)}</td>
+                      <td className="py-1 pr-3 font-mono">{fmtNum(r.cii)}</td>
+                      <td className="py-1 pr-3 font-mono">{fmtNum(r.pei)}</td>
+                      <td className="py-1 pr-3 font-mono">{fmtNum(r.avgTp)}</td>
+                      <td className="py-1 pr-3 font-mono">{r.ss}</td>
+                      <td className="py-1 pr-3 font-mono">{fmtNum(r.ebi)}</td>
+                      <td className="py-1 pr-3 font-mono">{fmtSigned(r.ig)}</td>
+                      <td className="py-1 pr-3 font-mono">{fmtSigned(r.meanShift)}</td>
+                      <td className="py-1 pr-3"><ArchetypeBadges c={r.c} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {sorted.length > showCount && (
+              <button onClick={() => setShowCount((n) => n + 100)} className="mt-2 text-xs text-teal-700 hover:underline">Show 100 more ({sorted.length - showCount} not shown)</button>
+            )}
+          </div>
+
+          <div className="bg-white rounded-lg border border-slate-200 p-4">
+            <div className="flex items-center justify-between mb-1">
+              <h4 className="text-sm font-semibold">Implementation portfolios</h4>
+              <Btn variant="outline" onClick={exportPortfoliosCSV}><Download size={13} />Export CSV</Btn>
+            </div>
+            <p className="text-[11px] text-slate-400 mb-2">Every pathway starts with one of these opening moves. <strong className="text-slate-600">Regret</strong> is how much total nexus gain an opening gives up compared with the best pathway of all (0: the best outcome stays within reach). <strong className="text-slate-600">Top pathways opened</strong> counts how many of the top {PATHWAY_TOP_N} pathways of each archetype start this way; a low-regret opening that opens many of them is a no-regret first move.</p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-slate-400 border-b border-slate-100">
+                    <th className="py-1 font-medium pr-3">Opening</th>
+                    <th className="py-1 font-medium pr-3">Regret</th>
+                    <th className="py-1 font-medium pr-3">Top pathways opened</th>
+                    {PATHWAY_ARCHETYPES.map((a) => <th key={a.key} className="py-1 font-medium pr-3">Best {a.label} continuation</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...result.portfolios.firstMoves, ...result.portfolios.openings].map((f, i) => (
+                    <tr key={f.key} className={`border-b border-slate-50 ${i === result.portfolios.firstMoves.length ? "border-t-2 border-t-slate-200" : ""}`}>
+                      <td className="py-1 pr-3"><PathwayStagesText c={{ stages: f.stages, length: f.stages.length }} nameOf={nameOf} compact /></td>
+                      <td className={`py-1 pr-3 font-mono ${f.regret <= 1e-6 ? "text-teal-700 font-semibold" : ""}`}>{fmtNum(f.regret)}</td>
+                      <td className="py-1 pr-3 font-mono">{f.opens}</td>
+                      {PATHWAY_ARCHETYPES.map((a) => {
+                        const c = f.bestBy[a.key] !== null ? candById.get(f.bestBy[a.key]) : null;
+                        return (
+                          <td key={a.key} className="py-1 pr-3">
+                            {c ? <button onClick={() => selectPathway(c.id)} className="text-left hover:text-teal-800"><PathwayStagesText c={{ ...c, stages: c.stages.slice(f.stages.length), length: c.length - f.stages.length }} nameOf={nameOf} compact />{c.length === f.stages.length && <span className="text-slate-400">(stop here)</span>}</button> : <span className="text-slate-300">none</span>}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {result.portfolios.openings.length > 0 && <p className="text-[10px] text-slate-400 mt-1">Below the line: the two-stage openings shared by the most top-ranked pathways.</p>}
+          </div>
+
+          <div className="bg-white rounded-lg border border-slate-200 p-4">
+            <div className="flex items-center justify-between mb-1">
+              <h4 className="text-sm font-semibold">Lever profiles (each lever on its own, from Business-as-Usual)</h4>
+              <Btn variant="outline" onClick={exportLeversCSV}><Download size={13} />Export CSV</Btn>
+            </div>
+            <p className="text-[11px] text-slate-400 mb-2">Step 1 of the method: the building blocks. Levers that move no outcome, or never improve the nexus gain, are left out of the pathways.</p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-slate-400 border-b border-slate-100">
+                    <th className="py-1 font-medium pr-3">Lever</th>
+                    <th className="py-1 font-medium pr-3">TP</th>
+                    <th className="py-1 font-medium pr-3">Response type</th>
+                    <th className="py-1 font-medium pr-3" title="Nexus gain with the lever at full intensity, on its own.">Gain at full intensity</th>
+                    <th className="py-1 font-medium pr-3">Synergy</th>
+                    {result.outcomes.map((o) => <th key={o.id} className="py-1 font-medium pr-3" title="Improvement at full intensity, and the outcome's own transition point in brackets.">{nameOf(o.id)}</th>)}
+                    <th className="py-1 font-medium pr-3">In pathways</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {result.iso.map((l) => (
+                    <tr key={l.id} className="border-b border-slate-50">
+                      <td className="py-1 pr-3">{nameOf(l.id)}{l.decrease && <span className="text-[10px] text-slate-400"> (decrease)</span>}</td>
+                      <td className="py-1 pr-3 font-mono">{fmtNum(l.tau)}</td>
+                      <td className="py-1 pr-3"><span title={RESPONSE_TYPE_HELP[l.responseType] || l.reason} className={`text-[10px] px-1.5 py-0.5 rounded-full border ${RESPONSE_TYPE_STYLE[l.responseType] || "bg-slate-100 text-slate-500 border-slate-200"}`}>{l.responseType}</span></td>
+                      <td className="py-1 pr-3 font-mono">{fmtSigned(l.gainAtFull)}</td>
+                      <td className="py-1 pr-3"><span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${SYNERGY_STYLE[l.synergy.type]}`}>{l.synergy.type}</span></td>
+                      {l.outcomeRows.map((r) => <td key={r.id} className="py-1 pr-3 font-mono">{fmtSigned(r.effect)} <span className="text-slate-400">({fmtNum(r.tp)})</span></td>)}
+                      <td className="py-1 pr-3">{l.included ? <Check size={13} className="text-teal-700" /> : <span className="text-[10px] text-amber-700" title={l.reason}>No: {l.reason.split(":")[0]}</span>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg border border-slate-200 p-4">
+            <h4 className="text-sm font-semibold mb-1">Does the order decide the end state? (invariance test)</h4>
+            <p className="text-[11px] text-slate-400 mb-2">For the lever sets of the top pathways, every order of the same levers at the same final intensities was simulated stage by stage. If the end states differ by more than {PATHWAY_INVARIANCE_TOLERANCE}, the model has more than one equilibrium for these levers, and the order of implementation decides where the system ends up (path dependence). Smaller differences come from where each run stops settling.</p>
+            {result.invariance.tested === 0 ? (
+              <p className="text-xs text-slate-400 italic">No top pathway combines two or more levers, so there was nothing to test.</p>
+            ) : (
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-slate-400 border-b border-slate-100">
+                    <th className="py-1 font-medium pr-3">Levers (final intensity)</th>
+                    <th className="py-1 font-medium pr-3">Orders tested</th>
+                    <th className="py-1 font-medium pr-3">Largest difference between end states</th>
+                    <th className="py-1 font-medium pr-3">Result</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {result.invariance.rows.map((r, i) => (
+                    <tr key={i} className="border-b border-slate-50">
+                      <td className="py-1 pr-3">{r.ids.map((id) => `${nameOf(id)} (${round2(r.final[id])})`).join(", ")}</td>
+                      <td className="py-1 pr-3 font-mono">{r.perms}</td>
+                      <td className="py-1 pr-3 font-mono">{fmtNum(r.maxDiff, 3)}</td>
+                      <td className="py-1 pr-3">{!r.allConverged ? <span className="text-slate-500">Not all orders converged: undecided</span> : r.pathDependent ? <span className="text-amber-700 font-medium">Path dependent: the order matters</span> : <span className="text-teal-700">Same end state in every order</span>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          {result.robustness && (
+            <div className="bg-white rounded-lg border border-slate-200 p-4">
+              <h4 className="text-sm font-semibold mb-1">Robustness of the top pathways</h4>
+              <p className="text-[11px] text-slate-400 mb-2">The whole analysis was repeated under {result.robustness.configs.length} alternative simulation settings: {result.robustness.configs.map((c) => `${c.label} (${c.admissible} of ${c.candidates} admissible${c.counts.nonConverged ? `, ${c.counts.nonConverged} did not converge` : ""})`).join("; ")}. For each top pathway (matched by the order of its levers; intensities follow each setting's own transition points), how often it stayed admissible, kept its archetype, and stayed among the top {PATHWAY_TOP_N} of that archetype. A pathway that holds up across settings reflects the causal structure rather than a modelling choice.</p>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-slate-400 border-b border-slate-100">
+                    <th className="py-1 font-medium pr-3">Pathway</th>
+                    <th className="py-1 font-medium pr-3">Archetype (rank)</th>
+                    <th className="py-1 font-medium pr-3">Admissible</th>
+                    <th className="py-1 font-medium pr-3">Same archetype</th>
+                    <th className="py-1 font-medium pr-3">Still top {PATHWAY_TOP_N}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {result.robustness.rows.map((r) => {
+                    const c = candById.get(r.id);
+                    return (
+                      <tr key={`${r.id}-${r.archetype}`} className="border-b border-slate-50">
+                        <td className="py-1 pr-3">{c ? <button onClick={() => selectPathway(c.id)} className="text-left hover:text-teal-800"><PathwayStagesText c={c} nameOf={nameOf} compact /></button> : r.sig}</td>
+                        <td className="py-1 pr-3"><span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${PATHWAY_ARCHETYPE_BY_KEY[r.archetype].badge}`}>{PATHWAY_ARCHETYPE_BY_KEY[r.archetype].label}</span> <span className="font-mono text-slate-500">#{r.rank}</span></td>
+                        <td className="py-1 pr-3 font-mono">{r.admissible} of {r.of}</td>
+                        <td className={`py-1 pr-3 font-mono ${r.sameArchetype === r.of ? "text-teal-700" : r.sameArchetype === 0 ? "text-orange-700" : ""}`}>{r.sameArchetype} of {r.of}</td>
+                        <td className="py-1 pr-3 font-mono">{r.top} of {r.of}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <div className="bg-white rounded-lg border border-slate-200 p-4">
+            <h4 className="text-sm font-semibold mb-2">Export</h4>
+            <div className="flex flex-wrap gap-2">
+              <Btn variant="outline" onClick={exportPathwaysCSV}><Download size={13} />All pathways (CSV)</Btn>
+              <Btn variant="outline" onClick={exportStagesCSV} disabled={!selected}><Download size={13} />Selected pathway stages (CSV)</Btn>
+              <Btn variant="outline" onClick={exportLeversCSV}><Download size={13} />Lever profiles (CSV)</Btn>
+              <Btn variant="outline" onClick={exportPortfoliosCSV}><Download size={13} />Portfolios (CSV)</Btn>
+              <Btn variant="outline" onClick={() => exportChartAsPng(planeRef.current, "transition-pathways-effort-gain.png")}><Download size={13} />Effort-gain plane (PNG)</Btn>
+              <Btn variant="outline" onClick={() => exportChartAsPng(trajectoryRef.current, "transition-pathway-trajectory.png")} disabled={!selected}><Download size={13} />Selected trajectory (PNG)</Btn>
+            </div>
+            <p className="text-[10px] text-slate-400 mt-2">The Export Analysis Workbook in the header also includes these results (pathways, rankings, stages of the top pathways, lever profiles, portfolios, and the invariance and robustness tests).</p>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
 // Main app
 // ============================================================================
 // Last-resort safety net around the whole app. Every tab already has its own
@@ -7379,6 +9086,27 @@ function SpaghettiEngineApp() {
   const [baselineResult, setBaselineResult] = useState(null);
   const [sensitivityResult, setSensitivityResult] = useState(null);
   const [transitionResult, setTransitionResult] = useState(null);
+  // Transition Pathways: the setup and the last result, kept here so both
+  // survive switching tabs and the result can go into the workbook. The
+  // setup is also remembered in this browser, so a reload does not lose the
+  // chosen outcomes and levers; concepts that no longer exist in the model
+  // (after loading another model, or deleting them) are dropped from it.
+  const [pathwayConfig, setPathwayConfig] = useState(readPathwayConfig);
+  const [pathwayResult, setPathwayResult] = useState(null);
+  useEffect(() => {
+    try { localStorage.setItem(PATHWAY_CONFIG_KEY, JSON.stringify(pathwayConfig)); } catch { /* storage unavailable: keep in memory only */ }
+  }, [pathwayConfig]);
+  const conceptIdSignature = useMemo(() => concepts.map((c) => c.id).join(""), [concepts]);
+  useEffect(() => {
+    const ids = new Set(conceptIdSignature.split(""));
+    setPathwayConfig((c) => {
+      const outcomes = c.outcomes.filter((o) => ids.has(o.id));
+      const levers = c.levers.filter((l) => ids.has(l.id));
+      const precedence = c.precedence.filter((p) => ids.has(p.before) && ids.has(p.after));
+      if (outcomes.length === c.outcomes.length && levers.length === c.levers.length && precedence.length === c.precedence.length) return c;
+      return { ...c, outcomes, levers, precedence };
+    });
+  }, [conceptIdSignature]);
   const [exportingWorkbook, setExportingWorkbook] = useState(false);
   // Captured chart PNGs, keyed by chart (see useCachedChart / captureAnalysisCharts
   // above): each chart-bearing tab refreshes its own entry a moment after it
@@ -7814,7 +9542,7 @@ function SpaghettiEngineApp() {
     try {
       const buffer = await buildAnalysisWorkbook({
         concepts, edges, settings, scenarios, results,
-        baselineResult, sensitivityResult, transitionResult,
+        baselineResult, sensitivityResult, transitionResult, pathwayResult,
         metrics: exportMetrics, systemStats: exportSystemStats,
         categoryStats: exportCategoryStats, categoryMatrix: exportCategoryMatrix,
         chartCache, modelVersion, resultsStale,
@@ -8122,6 +9850,7 @@ function SpaghettiEngineApp() {
         <TabButton id="scenarios" icon={GitCompare}>Scenarios & Simulation</TabButton>
         <TabButton id="sensitivity" icon={SlidersHorizontal}>Sensitivity Analysis</TabButton>
         <TabButton id="transition" icon={TrendingUp}>Transition Point Analysis</TabButton>
+        <TabButton id="pathways" icon={Waypoints}>Transition Pathways</TabButton>
       </div>
 
       <AnalysisScopeBar viewInfo={viewInfo} modules={modules} networkView={networkView} setNetworkView={setNetworkView} />
@@ -8131,7 +9860,7 @@ function SpaghettiEngineApp() {
             the tab bar, and the model are unaffected, and switching tabs
             (the key) starts that tab fresh. */}
         <ErrorBoundary key={tab} label="this tab">
-        {["metrics", "routes", "equilibrium", "scenarios", "sensitivity", "transition"].includes(tab) && viewInfo.isFiltered && (
+        {["metrics", "routes", "equilibrium", "scenarios", "sensitivity", "transition", "pathways"].includes(tab) && viewInfo.isFiltered && (
           <div className="mb-5"><ViewScopeBanner viewInfo={viewInfo} /></div>
         )}
         {/* ============================= EDITOR ============================= */}
@@ -8723,6 +10452,15 @@ function SpaghettiEngineApp() {
           <TransitionPointAnalysisTab
             concepts={aConcepts} edges={aEdges} scenarios={scenarios} activeScenarioId={activeScenarioId} settings={settings}
             result={transitionResult} setResult={setTransitionResult} setChartCache={setChartCache} modelVersion={modelVersion}
+          />
+        )}
+
+        {/* ============================= TRANSITION PATHWAYS ============================= */}
+        {tab === "pathways" && (
+          <TransitionPathwaysTab
+            concepts={aConcepts} edges={aEdges} settings={settings}
+            config={pathwayConfig} setConfig={setPathwayConfig}
+            result={pathwayResult} setResult={setPathwayResult} setChartCache={setChartCache} modelVersion={modelVersion}
           />
         )}
         </ErrorBoundary>
