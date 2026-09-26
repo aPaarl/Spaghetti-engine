@@ -5,10 +5,10 @@ import {
   X, Lock, Unlock, Info, ClipboardPaste, Check,
   Undo2, Redo2, Copy, Maximize2, HelpCircle, SlidersHorizontal,
   BarChart3, LayoutGrid, GitBranch, Shuffle, MousePointer2, Activity, FlaskConical, TrendingUp,
-  Eye, EyeOff, Route, Layers, Waypoints,
+  Eye, EyeOff, Route, Layers, Waypoints, PanelLeftClose, Search, Dices,
 } from "lucide-react";
 import {
-  LineChart, Line, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
+  LineChart, Line, BarChart, Bar, Cell, LabelList, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
   Legend, ResponsiveContainer, ReferenceLine, Brush, ScatterChart, Scatter, ZAxis,
 } from "recharts";
 import {
@@ -26,6 +26,8 @@ import ExcelJS from "exceljs";
 // rasterizes an arbitrary DOM subtree (HTML + SVG together) instead, and is
 // the approach React Flow's own docs recommend for exporting the canvas.
 import { toBlob as domNodeToPngBlob } from "html-to-image";
+import AboutTab, { APP_VERSION, CONTACT } from "./AboutTab.jsx";
+import { BrandMark } from "./brand.jsx";
 
 // ============================================================================
 // Utilities
@@ -197,6 +199,126 @@ function makeTemplate(kind) {
     ];
     return { concepts, edges, scenarios };
   }
+  if (kind === "peat") {
+    // The illustrative peat-meadow (food-climate-biodiversity nexus) case
+    // study from "From transition points to transition pathways", Annex 1.
+    // Five interventions (levers, no incoming relationships) act on a
+    // drainage/farming system dominated by two reinforcing feedback loops
+    // (the subsidence spiral and the intensification loop), which settle
+    // the baseline into an almost saturated intensive state. Weights and
+    // positions match the annex exactly, so results reproduce its tables.
+    // Every lever has a threshold or back-loaded response (Table A5): near
+    // its transition point the model settles slowly, so this example raises
+    // Max iterations per run to 300 (see settings below); the Transition
+    // Pathways tab already uses its own 500-iteration cap regardless.
+    const c = [
+      // --- Interventions ---------------------------------------------------
+      ["WLV", "Raised groundwater levels", "Interventions", 0, "Water-board target levels raised towards the surface in peat polders, supported by submerged or pressurized drainage. Lever.", 0, 40],
+      ["AES", "Agri-environment payments", "Interventions", 0, "Payments through agricultural collectives (ANLb) for meadow-bird management: postponed mowing, nest protection, herb-rich and wet grassland. Lever.", 0, 170],
+      ["PREM", "Nature-inclusive milk premium", "Interventions", 0, "Price premium paid by dairy processors or retailers for milk produced under biodiversity and climate criteria (e.g. Biodiversity Monitor Dairy). Lever.", 0, 300],
+      ["AREA", "Area-based collective governance", "Interventions", 0, "Area-based processes in which farmers, water boards, provinces and NGOs jointly plan water levels, land use and meadow-bird management at polder scale. Lever.", 0, 430],
+      ["PALU", "Conversion to paludiculture", "Interventions", 0, "Rewetting of parcels to surface level and cultivation of wet crops (e.g. cattail, reed, sphagnum) instead of grass for dairy. Lever.", 0, 560],
+      // --- Water & soil ------------------------------------------------------
+      ["DRN", "Drainage depth", "Water & soil", 0.5, "Depth of the groundwater table below the surface during the growing season.", 960, 40],
+      ["OXI", "Peat oxidation", "Water & soil", 0.5, "Aerobic decomposition of peat above the groundwater table.", 960, 170],
+      ["SUB", "Land subsidence", "Water & soil", 0.25, "Lowering of the land surface caused by peat oxidation and compaction.", 960, 300],
+      ["SOL", "Soil fauna availability", "Water & soil", 0, "Abundance and accessibility of earthworms and other soil invertebrates in the topsoil, the main food of adult meadow birds.", 960, 430],
+      // --- Farming system ------------------------------------------------------
+      ["GRS", "Grass yield", "Farming system", 0.5, "Dry-matter grass production per hectare.", 640, 40],
+      ["NIN", "Nitrogen inputs", "Farming system", 0.5, "Nitrogen from mineral fertilizer, slurry and purchased concentrates per hectare.", 640, 170],
+      ["LSD", "Livestock density", "Farming system", 0.5, "Number of dairy livestock units per hectare.", 640, 300],
+      ["MOW", "Early and frequent mowing", "Farming system", 0.5, "Timing and frequency of grass cuts; high values mean the first cut falls in the breeding season.", 640, 430],
+      ["HRB", "Herb-rich grassland", "Farming system", -0.25, "Share of grassland with a diverse sward of herbs and grasses rather than ryegrass monoculture.", 640, 560],
+      ["NH3", "Ammonia emissions", "Farming system", 0.5, "Ammonia emitted from housing, manure storage and application, and the resulting nitrogen deposition.", 640, 690],
+      // --- Socio-economic ------------------------------------------------------
+      ["INC", "Farm income", "Socio-economic", 0.25, "Net income of dairy farms in the area.", 320, 40],
+      ["WIL", "Farmer willingness to adopt", "Socio-economic", 0, "Willingness of farmers to adopt nature-inclusive and climate-adaptive practices.", 320, 170],
+      // --- Nexus outcomes ------------------------------------------------------
+      ["FOOD", "Food production", "Nexus outcomes", 0.5, "Milk and meat output of the area. Outcome, desirable direction: increase.", 1280, 40],
+      ["GHG", "Greenhouse gas emissions", "Nexus outcomes", 0.5, "CO2 from peat oxidation plus methane and nitrous oxide from livestock and fertilization. Outcome, desirable direction: decrease.", 1280, 170],
+      ["BIO", "Meadow bird biodiversity", "Nexus outcomes", -0.25, "Breeding density and success of meadow birds such as black-tailed godwit, lapwing and redshank, as an indicator of farmland biodiversity. Outcome, desirable direction: increase.", 1280, 300],
+    ];
+    const concepts = c.map(([id, name, category, initialValue, description, x, y]) => ({
+      id, name, category, description, initialValue, currentValue: initialValue, position: { x, y },
+    }));
+    const e = [
+      ["WLV", "DRN", -0.75, "Higher target levels and submerged drainage directly reduce drainage depth."],
+      ["AREA", "DRN", -0.25, "Polder-scale coordination makes it possible to raise water levels where individual farmers cannot."],
+      ["PALU", "DRN", -0.5, "Paludiculture requires groundwater at or near the surface."],
+      ["WIL", "DRN", -0.25, "Willing farmers accept higher levels and invest in submerged drainage."],
+      ["SUB", "DRN", 0.5, "Subsidence spiral: water levels are lowered to keep subsiding land workable ('water level follows land use')."],
+      ["DRN", "OXI", 0.75, "The deeper the drainage, the larger the aerated peat layer that oxidizes."],
+      ["OXI", "SUB", 0.75, "Peat oxidation is the main cause of subsidence in peat meadows."],
+      ["OXI", "GHG", 0.75, "Oxidizing peat releases CO2, the largest emission source in peat meadow dairy."],
+      ["DRN", "SOL", -0.5, "Dry topsoils push earthworms deeper and harden the soil, reducing food availability for probing birds."],
+      ["NIN", "SOL", -0.25, "Intensive slurry application reduces earthworm abundance."],
+      ["SUB", "INC", -0.25, "Subsidence raises costs for drainage, infrastructure and damage repair."],
+      ["DRN", "GRS", 0.5, "Deeper drainage improves trafficability and lengthens the growing season."],
+      ["NIN", "GRS", 0.75, "Nitrogen inputs are the main driver of grass yield."],
+      ["HRB", "GRS", -0.25, "Herb-rich swards produce less dry matter than fertilized ryegrass."],
+      ["GRS", "LSD", 0.5, "More grass per hectare supports more cows per hectare."],
+      ["GRS", "FOOD", 0.5, "Home-grown feed contributes directly to milk output."],
+      ["LSD", "FOOD", 0.75, "Milk and meat output scale with livestock numbers."],
+      ["LSD", "NIN", 0.5, "More livestock means more slurry and purchased concentrates."],
+      ["LSD", "GHG", 0.5, "Enteric methane and manure emissions scale with livestock numbers."],
+      ["LSD", "NH3", 0.75, "Ammonia emissions scale with livestock numbers."],
+      ["NIN", "NH3", 0.5, "Fertilizer and slurry application emit ammonia."],
+      ["NIN", "GHG", 0.25, "Nitrogen fertilization causes nitrous oxide emissions."],
+      ["GRS", "MOW", 0.5, "Fast-growing grass is cut earlier and more often."],
+      ["NIN", "MOW", 0.25, "High fertilization advances the first cut."],
+      ["NIN", "HRB", -0.5, "Fertilization favours grasses and eliminates herbs."],
+      ["NH3", "HRB", -0.25, "Nitrogen deposition reduces sward diversity."],
+      ["PALU", "LSD", -0.5, "Land converted to paludiculture is taken out of dairy production."],
+      ["PALU", "FOOD", -0.25, "Wet crops are grown for materials and energy rather than food."],
+      ["PALU", "INC", -0.25, "Markets for paludiculture products are still immature."],
+      ["PALU", "BIO", -0.25, "Tall wet crops replace the open grassland that meadow birds need."],
+      ["MOW", "BIO", -0.75, "Mowing in the breeding season destroys nests and chicks."],
+      ["HRB", "BIO", 0.5, "Herb-rich swards provide insects and cover for chicks."],
+      ["SOL", "BIO", 0.5, "Accessible soil fauna is the main food source of adult meadow birds."],
+      ["AREA", "BIO", 0.25, "Landscape-scale mosaic management and coordinated nest protection increase breeding success."],
+      ["FOOD", "INC", 0.5, "Farm income depends on milk output."],
+      ["INC", "LSD", 0.25, "Farm income is reinvested in herd expansion."],
+      ["INC", "WIL", 0.5, "Financial security makes farmers more willing to try new practices."],
+      ["AES", "MOW", -0.5, "Management contracts postpone mowing until after the breeding season."],
+      ["AES", "HRB", 0.5, "Contracts reward extensive, herb-rich grassland management."],
+      ["AES", "INC", 0.25, "Payments partly compensate for lost production."],
+      ["PREM", "INC", 0.5, "The premium raises the milk price for participating farmers."],
+      ["PREM", "NIN", -0.25, "Premium criteria reward lower nitrogen and concentrate use."],
+      ["PREM", "WIL", 0.25, "A market reward signals that nature-inclusive farming is valued."],
+      ["AREA", "WIL", 0.5, "Collective processes build trust, shared norms and joint ownership of measures."],
+      ["WLV", "WIL", -0.25, "Water levels raised top-down provoke resistance among farmers."],
+      ["BIO", "WIL", 0.25, "Farmers' attachment to meadow birds reinforces commitment to nature-inclusive practices."],
+      ["WIL", "HRB", 0.5, "Willing farmers sow and maintain herb-rich swards."],
+      ["WIL", "MOW", -0.5, "Willing farmers postpone and reduce mowing."],
+      ["WIL", "NIN", -0.25, "Willing farmers reduce fertilizer and concentrate use."],
+      ["WIL", "LSD", -0.25, "Willing farmers extensify their herds."],
+    ];
+    const edges = e.map(([source, target, weight, description]) => ({ id: uid("e"), source, target, weight, description }));
+    // Single-lever scenarios reproduce the achievable range of Table A5 (each
+    // lever alone, at full intensity, from BAU); the bundle scenario shows
+    // what a conventional "switch everything on at once" comparison misses
+    // that Transition Pathway Analysis reveals (Section 5.3 of the annex):
+    // implementing area-based governance and agri-environment payments
+    // together, both at full intensity, collapses food production, whereas
+    // the staged pathway found by TPA (governance, then payments at a much
+    // lower conditional intensity) preserves it.
+    const scenarios = [
+      { ...BASELINE_SCENARIO },
+      { id: "s_wlv", name: "Raised groundwater levels (full)", type: "intervention", description: "Raised groundwater levels held at full strength. Mainly reduces greenhouse gas emissions, with almost no effect on food production or biodiversity; on its own this lever only becomes effective at moderate-to-high intensity (see Transition Point Analysis).", initialOverrides: { WLV: 1 }, lockedConcepts: { WLV: 1 }, weightOverrides: {} },
+      { id: "s_aes", name: "Agri-environment payments (full)", type: "intervention", description: "Agri-environment payments held at full strength. Improves meadow bird biodiversity only, and only once implementation passes about 60% of full intensity.", initialOverrides: { AES: 1 }, lockedConcepts: { AES: 1 }, weightOverrides: {} },
+      { id: "s_prem", name: "Nature-inclusive milk premium (full)", type: "intervention", description: "Nature-inclusive milk premium held at full strength. Strong climate and biodiversity gains, but food production collapses: in this model the premium does not improve the intensive dairy system, it tips it into a different, extensive state.", initialOverrides: { PREM: 1 }, lockedConcepts: { PREM: 1 }, weightOverrides: {} },
+      { id: "s_area", name: "Area-based collective governance (full)", type: "intervention", description: "Area-based collective governance held at full strength. Substantially reduces greenhouse gas emissions and gives a modest biodiversity gain, with almost no loss of food production. The key enabling lever: implemented first, it makes agri-environment payments and the milk premium effective at much lower intensity (Section 5.1 of the annex).", initialOverrides: { AREA: 1 }, lockedConcepts: { AREA: 1 }, weightOverrides: {} },
+      { id: "s_palu", name: "Conversion to paludiculture (full)", type: "intervention", description: "Conversion to paludiculture held at full strength. Improves climate and biodiversity strongly, but only by converting land out of dairy production, so food production collapses.", initialOverrides: { PALU: 1 }, lockedConcepts: { PALU: 1 }, weightOverrides: {} },
+      { id: "s_allon", name: "All five levers at full intensity", type: "policy_bundle", description: "Every lever held at full strength at once, the conventional \"switch everything on\" comparison. Unlike the staged pathway found by Transition Pathway Analysis (area-based governance, then a small step of agri-environment payments, which preserves food production), turning on every lever simultaneously and fully collapses it.", initialOverrides: { WLV: 1, AES: 1, PREM: 1, AREA: 1, PALU: 1 }, lockedConcepts: { WLV: 1, AES: 1, PREM: 1, AREA: 1, PALU: 1 }, weightOverrides: {} },
+    ];
+    // Matches the annex's simulation settings (tanh, lambda 1, relative rule,
+    // synchronous, convergence threshold 0.001) but with a higher iteration
+    // cap: several levers do not settle within 100 iterations near their
+    // transition point, the same critical-slowing-down effect documented for
+    // pathway runs elsewhere in this tool.
+    const settings = { maxIterations: 300, convergenceThreshold: 0.001, mode: "synchronous", squashFunction: "tanh", lambda: 1, updateRule: "relative" };
+    return { concepts, edges, scenarios, settings };
+  }
   if (kind === "energy") {
     const c = [
       ["REI", "Renewable energy investment", "supply"],
@@ -314,9 +436,20 @@ function parseAdjacencyMatrix(text) {
 // is [0,1] and whose fixed point at 0 does not exist (f(0) = 0.5); that
 // would change what an activation of 0 means everywhere else in this app,
 // so it is deliberately not offered here.
+//
+// "linear" is no squashing function at all: the identity, A(t+1) = A(t) +
+// W·A(t) (relative rule) or W·A(t) (absolute rule). It exists to show the
+// raw dynamics of the weight matrix itself, before any transfer function
+// bends them, and it is deliberately NOT clamped to -1..+1 afterwards
+// either (see simulate): a clamp would just be a hidden hard-limit squash.
+// The price of that honesty is that a linear system can run away, so
+// simulate() stops such a run and flags it instead of iterating to
+// Infinity. lambda has no meaning here (there is no curve to steepen).
 function makeSquash(kind, lambda = 1) {
   const lam = lambda > 0 ? lambda : 1;
   switch (kind) {
+    case "linear":
+      return (x) => x;
     case "sigmoid":
       return (x) => 2 / (1 + Math.exp(-lam * x)) - 1;
     case "trivalent":
@@ -327,22 +460,50 @@ function makeSquash(kind, lambda = 1) {
   }
 }
 
+// A run with no squashing function is stopped, and reported as diverged,
+// once any concept's activation passes this magnitude. The intended scale
+// is -1..+1, so anything this far outside it is unambiguous runaway growth
+// (each further iteration would just multiply it), not a large-but-real
+// state worth keeping on the chart.
+const LINEAR_DIVERGENCE_LIMIT = 1000;
+
+// Short human-readable name of the transfer function in force, for anything
+// that records or reports the simulation settings (exports, method panels).
+function transferFunctionLabel(settings) {
+  const fn = settings?.squashFunction ?? "tanh";
+  if (fn === "linear") return "none (linear, unbounded)";
+  return `${fn} / ${settings?.lambda ?? 1}`;
+}
+
+// The purely structural Influence/Sensitivity scores drive one concept to
+// +1 and read how far every other one moves. That question only has a
+// meaningful answer on a bounded scale: with no squashing function a
+// feedback-heavy model runs away and every score becomes "however far it got
+// before the run was stopped". So those scores keep using tanh (same
+// steepness) when the transfer function is set to none; every other
+// analysis follows the setting as chosen.
+function structuralSettings(settings) {
+  return settings?.squashFunction === "linear" ? { ...settings, squashFunction: "tanh" } : settings;
+}
+
 // Array.prototype.sort with a random comparator (the previous asynchronous-
 // mode update order) is a well-known biased shuffle: sort implementations
 // don't call the comparator on every pair, so the resulting permutation
 // isn't uniform, and the bias varies by engine/array size. Fisher-Yates is
 // the standard correct approach: walk the array backwards, and for each
 // position swap in a uniformly-random not-yet-placed element.
-function shuffled(arr) {
+function shuffled(arr, rand = Math.random) {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(rand() * (i + 1));
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
 }
 
-function simulate(concepts, edges, scenario, settings) {
+// `rand` only matters in asynchronous mode (random update order); Monte Carlo
+// passes a seeded generator so a run can be repeated exactly from its seed.
+function simulate(concepts, edges, scenario, settings, rand = Math.random) {
   const ids = concepts.map((c) => c.id);
   const initial = {};
   ids.forEach((id) => {
@@ -372,33 +533,143 @@ function simulate(concepts, edges, scenario, settings) {
   const maxIter = settings.maxIterations ?? 100;
   const threshold = settings.convergenceThreshold ?? 0.001;
   const squash = makeSquash(settings.squashFunction, settings.lambda);
+  // Every bounded transfer function already maps into -1..+1, so the clamp
+  // there only guards rounding; with no squashing function at all it would
+  // instead be the whole nonlinearity, so it is skipped and the raw linear
+  // dynamics are what runs (and a runaway is caught below instead).
+  const unbounded = settings.squashFunction === "linear";
+  const bound = unbounded ? (v) => v : clamp;
   const isRelative = settings.updateRule !== "absolute";
   let converged = false;
+  let diverged = false;
   let t = 0;
 
   for (t = 1; t <= maxIter; t++) {
     let next = { ...current };
     if (settings.mode === "asynchronous") {
-      const order = shuffled(ids);
+      const order = shuffled(ids, rand);
       order.forEach((id) => {
         if (locked[id] !== undefined) { next[id] = locked[id]; return; }
         const sum = incoming[id].reduce((s, { source, weight }) => s + next[source] * weight, 0);
-        next[id] = clamp(squash((isRelative ? next[id] : 0) + sum));
+        next[id] = bound(squash((isRelative ? next[id] : 0) + sum));
       });
     } else {
       ids.forEach((id) => {
         if (locked[id] !== undefined) { next[id] = locked[id]; return; }
         const sum = incoming[id].reduce((s, { source, weight }) => s + current[source] * weight, 0);
-        next[id] = clamp(squash((isRelative ? current[id] : 0) + sum));
+        next[id] = bound(squash((isRelative ? current[id] : 0) + sum));
       });
     }
+    if (unbounded && ids.some((id) => !Number.isFinite(next[id]))) { diverged = true; t -= 1; break; }
     const maxDelta = Math.max(...ids.map((id) => Math.abs(next[id] - current[id])));
     current = next;
     series.push({ iteration: t, values: { ...current } });
+    if (unbounded && ids.some((id) => Math.abs(current[id]) > LINEAR_DIVERGENCE_LIMIT)) { diverged = true; break; }
     if (maxDelta < threshold) { converged = true; break; }
   }
 
-  return { series, final: current, converged, iterationsRun: t };
+  // A loop that ran to its cap leaves t one past it.
+  return { series, final: current, converged, diverged, iterationsRun: Math.min(t, maxIter) };
+}
+
+// Small, fast, seeded PRNG (mulberry32) — good enough for sampling noise,
+// not for anything security-sensitive. Seeded (rather than Math.random)
+// so a Monte Carlo run's exact sequence of perturbations can be reproduced
+// from the seed alone: the same model + settings + seed always regenerates
+// the same distribution, which matters for a result someone might report a
+// number from.
+function mulberry32(seed) {
+  let a = seed | 0;
+  return function () {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Every relationship weight (and, if asked, every starting value) is an
+// expert judgment or an elicited estimate, not a measured constant — this
+// asks how much that uncertainty actually matters to where the model
+// settles. Re-runs the model `runs` times, each time nudging every
+// relationship's weight by independent noise drawn uniformly from
+// [-weightSpread, +weightSpread] (and, if initialSpread > 0, every
+// starting value the same way), and collects where every concept lands
+// each time. A relationship or starting value the scenario itself pins to
+// a specific number (weightOverrides/initialOverrides) is left exactly as
+// the scenario set it — that's a deliberate "what if this were exactly
+// X", not an uncertain estimate to sample around.
+//
+// A generator, run in slices (the same pattern runPathwayAnalysis uses),
+// so a few thousand iterations don't freeze the tab; yields {done, total}
+// periodically and returns the finished { runs, convergedCount, nominal,
+// perConcept } once every run is in.
+function* runMonteCarlo(concepts, edges, scenario, settings, mcConfig) {
+  const { runs, weightSpread, initialSpread, seed } = mcConfig;
+  const rand = mulberry32(seed || 1);
+  // Asynchronous mode also draws a random update order on every pass. That
+  // gets its own seeded stream (so it is repeatable from the seed too, without
+  // shifting the sequence of sampled weights), and the nominal run its own.
+  const orderRand = mulberry32((seed || 1) ^ 0x5bd1e995);
+  const baseWeightOverrides = scenario?.weightOverrides || {};
+  const baseInitialOverrides = scenario?.initialOverrides || {};
+  const nominal = simulate(concepts, edges, scenario, settings, mulberry32(seed || 1));
+  const finals = [];
+  const started = performance.now();
+  for (let i = 0; i < runs; i++) {
+    const weightOverrides = { ...baseWeightOverrides };
+    if (weightSpread > 0) {
+      edges.forEach((e) => {
+        if (baseWeightOverrides[e.id] !== undefined) return;
+        weightOverrides[e.id] = clamp(round2(e.weight + (rand() * 2 - 1) * weightSpread));
+      });
+    }
+    let initialOverrides = baseInitialOverrides;
+    if (initialSpread > 0) {
+      initialOverrides = { ...baseInitialOverrides };
+      concepts.forEach((c) => {
+        if (baseInitialOverrides[c.id] !== undefined) return;
+        initialOverrides[c.id] = clamp(round2(c.initialValue + (rand() * 2 - 1) * initialSpread));
+      });
+    }
+    const r = simulate(concepts, edges, { ...scenario, weightOverrides, initialOverrides }, settings, orderRand);
+    finals.push({ converged: r.converged, diverged: !!r.diverged, values: r.final });
+    if (i % 50 === 49 && performance.now() - started > 40) yield { done: i + 1, total: runs };
+  }
+  return summarizeMonteCarlo(concepts, finals, nominal);
+}
+
+// Turns the raw per-run finals into, per concept, the numbers a reader
+// actually wants: the nominal (unperturbed) estimate for reference, the
+// centre and spread of the sampled distribution, and a handful of
+// percentiles (5/25/75/95) that stand in for "plausible range" without
+// assuming the distribution is anything as clean as normal. `values` is
+// kept (sorted) so a histogram can be built from it without re-deriving
+// anything.
+function summarizeMonteCarlo(concepts, finals, nominal) {
+  const runs = finals.length;
+  const convergedCount = finals.filter((f) => f.converged).length;
+  // Only possible with no squashing function: runs stopped for running away.
+  const divergedCount = finals.filter((f) => f.diverged).length;
+  const pct = (sorted, p) => {
+    const n = sorted.length;
+    if (!n) return 0;
+    return sorted[Math.min(n - 1, Math.max(0, Math.round((p / 100) * (n - 1))))];
+  };
+  const perConcept = concepts.map((c) => {
+    const values = finals.map((f) => f.values[c.id]).filter(Number.isFinite).sort((a, b) => a - b);
+    const n = values.length;
+    const mean = n ? values.reduce((s, v) => s + v, 0) / n : 0;
+    const variance = n ? values.reduce((s, v) => s + (v - mean) ** 2, 0) / n : 0;
+    return {
+      id: c.id, name: c.name, nominal: round2(nominal.final[c.id] ?? 0),
+      mean: round2(mean), median: round2(pct(values, 50)), stdDev: round2(Math.sqrt(variance)),
+      min: round2(values[0] ?? 0), p5: round2(pct(values, 5)), p25: round2(pct(values, 25)),
+      p75: round2(pct(values, 75)), p95: round2(pct(values, 95)), max: round2(values[n - 1] ?? 0),
+      values,
+    };
+  });
+  return { runs, convergedCount, divergedCount, convergenceRate: runs ? round2(convergedCount / runs) : 0, nominalConverged: nominal.converged, nominalDiverged: !!nominal.diverged, perConcept };
 }
 
 // Role taxonomy is relative to the whole network (Hub needs the centrality
@@ -454,7 +725,8 @@ function computeMetrics(concepts, edges) {
 // could report different Influence/Sensitivity scores depending only on
 // what a user happened to type into "Initial activation" elsewhere, with no
 // indication anywhere that these numbers weren't purely structural.
-function computeAdvancedMetrics(concepts, edges, settings) {
+function computeAdvancedMetrics(concepts, edges, rawSettings) {
+  const settings = structuralSettings(rawSettings);
   const ids = concepts.map((c) => c.id);
   const scores = {};
   ids.forEach((id) => (scores[id] = { influence: 0, sensitivity: 0 }));
@@ -981,7 +1253,7 @@ function sanitizeModel(data) {
   if (Number.isFinite(num(s.maxIterations)) && num(s.maxIterations) >= 1) settings.maxIterations = Math.round(num(s.maxIterations));
   if (Number.isFinite(num(s.convergenceThreshold)) && num(s.convergenceThreshold) > 0) settings.convergenceThreshold = num(s.convergenceThreshold);
   if (Number.isFinite(num(s.lambda)) && num(s.lambda) > 0) settings.lambda = num(s.lambda);
-  if (["tanh", "sigmoid", "trivalent"].includes(s.squashFunction)) settings.squashFunction = s.squashFunction;
+  if (["tanh", "sigmoid", "trivalent", "linear"].includes(s.squashFunction)) settings.squashFunction = s.squashFunction;
   if (["relative", "absolute"].includes(s.updateRule)) settings.updateRule = s.updateRule;
   if (["synchronous", "asynchronous"].includes(s.mode)) settings.mode = s.mode;
 
@@ -1202,7 +1474,7 @@ function computeCategoryMatrix(concepts, edges, categories) {
   return matrix;
 }
 
-const CATEGORY_COLORS = ["#0f766e", "#c2410c", "#7c3aed", "#0369a1", "#be123c", "#4d7c0f", "#a16207", "#0e7490", "#4338ca", "#b91c1c"];
+const CATEGORY_COLORS = ["#2456d6", "#c2410c", "#7c3aed", "#0f766e", "#be123c", "#4d7c0f", "#a16207", "#0e7490", "#4338ca", "#b91c1c"];
 
 // ============================================================================
 // Layout algorithms (Network tab "Auto Arrange")
@@ -1268,7 +1540,7 @@ function Btn({ children, onClick, variant = "default", disabled, title, classNam
     ghost: "bg-transparent text-slate-600 hover:bg-slate-100",
     outline: "border border-slate-300 text-slate-700 hover:bg-slate-50",
     danger: "bg-transparent text-red-600 hover:bg-red-50",
-    accent: "bg-teal-700 text-white hover:bg-teal-600",
+    accent: "bg-cobalt-700 text-white hover:bg-cobalt-600",
   };
   return (
     <button title={title} disabled={disabled} onClick={onClick} className={`${base} ${styles[variant]} ${className}`}>
@@ -1286,7 +1558,7 @@ function WeightSlider({ value, onChange }) {
         <input
           type="range" min={-1} max={1} step={0.05} value={value}
           onChange={(e) => onChange(parseFloat(e.target.value))}
-          className="w-full accent-teal-700"
+          className="w-full accent-cobalt-700"
         />
         <input
           type="number" min={-1} max={1} step={0.05} value={round2(value)}
@@ -1300,7 +1572,7 @@ function WeightSlider({ value, onChange }) {
             key={p.label}
             title={p.label}
             onClick={() => onChange(p.value)}
-            className={`text-[10px] px-1.5 py-0.5 rounded border ${value === p.value ? "border-teal-700 bg-teal-50 text-teal-800" : "border-slate-200 text-slate-500 hover:border-slate-400"}`}
+            className={`text-[10px] px-1.5 py-0.5 rounded border ${value === p.value ? "border-cobalt-700 bg-cobalt-50 text-cobalt-800" : "border-slate-200 text-slate-500 hover:border-slate-400"}`}
           >
             {p.value > 0 ? "+" : ""}{p.value}
           </button>
@@ -1352,7 +1624,7 @@ function MethodPanel({ title = "Method & diagnostics", stats = [], children }) {
               <div className="text-xs text-slate-400 mb-1 flex items-center gap-1">
                 {s.label}{s.hint ? <HelpCircle size={10} className="text-slate-300" /> : null}
               </div>
-              <div className={`text-sm font-mono ${s.tone === "warn" ? "text-amber-700" : s.tone === "good" ? "text-teal-700" : ""}`}>{s.value}</div>
+              <div className={`text-sm font-mono ${s.tone === "warn" ? "text-amber-700" : s.tone === "good" ? "text-cobalt-700" : ""}`}>{s.value}</div>
             </div>
           ))}
         </div>
@@ -1403,7 +1675,7 @@ function AnalysisScopeBar({ viewInfo, modules, networkView, setNetworkView }) {
       <div className="flex items-center gap-x-3 gap-y-1.5 flex-wrap">
         <span className="flex items-center gap-1.5">
           <span className="text-slate-400">Viewing:</span>
-          <span className={`w-2 h-2 rounded-full ${v.isFiltered ? "bg-amber-500" : "bg-teal-600"}`} />
+          <span className={`w-2 h-2 rounded-full ${v.isFiltered ? "bg-amber-500" : "bg-cobalt-600"}`} />
           <span className="font-semibold">{v.label}</span>
         </span>
         <span className={v.isFiltered ? "text-amber-800/80" : "text-slate-400"}>
@@ -1428,7 +1700,7 @@ function AnalysisScopeBar({ viewInfo, modules, networkView, setNetworkView }) {
             </label>
             <NetworkViewControls
               modules={modules} networkView={networkView} setNetworkView={setNetworkView}
-              className={`rounded-md transition-shadow ${flashChips ? "ring-2 ring-teal-400 ring-offset-2" : ""}`}
+              className={`rounded-md transition-shadow ${flashChips ? "ring-2 ring-cobalt-400 ring-offset-2" : ""}`}
             />
           </>
         )}
@@ -1582,6 +1854,218 @@ function StaleResultBanner({ label }) {
     <div className="rounded-md border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800 flex items-start gap-1.5">
       <Info size={13} className="shrink-0 mt-0.5" />
       <span>The model or the network view has changed since {label} was last run: the results below no longer reflect the concepts, relationships, and settings currently in view. Run it again to refresh them.</span>
+    </div>
+  );
+}
+
+// Shown on the sweep-based analyses while no squashing function is selected:
+// a run that runs away is stopped where it happens to be, so a curve or a
+// ranking that includes one says little about the model.
+function LinearModeNote({ settings }) {
+  if (settings.squashFunction !== "linear") return null;
+  return (
+    <div className="rounded-md border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900 flex items-start gap-1.5">
+      <Info size={13} className="shrink-0 mt-0.5" />
+      <span>
+        No squashing function is selected. Where feedback in the model amplifies itself, a run is stopped once a concept passes ±{LINEAR_DIVERGENCE_LIMIT} and its value is only where it happened to stop, so curves and rankings that include such runs are not meaningful. The Baseline Equilibrium tab shows whether the model settles without squashing.
+      </span>
+    </div>
+  );
+}
+
+// The publication-figure controls panel. Every field writes straight into
+// `settings`, which the chart that owns this panel reads back into its own
+// Recharts props (colors, font sizes, gridlines, decimals, axis labels) —
+// so there's exactly one appearance, on screen and in the exported file,
+// never a separate "preview" that can drift from what actually gets saved.
+// `seriesOptions`/`sortOptions`/`maxPoints` are optional, chart-specific
+// extras (which lines are shown, in what order, how many points to plot).
+function FigurePanel({
+  settings, onChange, onExport, exporting,
+  seriesOptions, hiddenKeys, onToggleSeries,
+  sortOptions, sortValue, onSortChange,
+  maxPoints, onMaxPointsChange, maxPointsCap, maxPointsLabel, defaults = DEFAULT_FIGURE_SETTINGS,
+}) {
+  const patch = (p) => onChange({ ...settings, ...p });
+  const setPreset = (id) => {
+    const preset = FIGURE_SIZE_PRESETS.find((p) => p.id === id);
+    if (preset && preset.id !== "custom") patch({ preset: id, widthMm: preset.widthMm, heightMm: preset.heightMm });
+    else patch({ preset: "custom" });
+  };
+  const setWidth = (v) => {
+    const w = Math.max(20, Number(v) || settings.widthMm);
+    patch(settings.lockAspect ? { preset: "custom", widthMm: w, heightMm: Math.round(w * (settings.heightMm / settings.widthMm)) } : { preset: "custom", widthMm: w });
+  };
+  const setHeight = (v) => {
+    const h = Math.max(20, Number(v) || settings.heightMm);
+    patch(settings.lockAspect ? { preset: "custom", heightMm: h, widthMm: Math.round(h * (settings.widthMm / settings.heightMm)) } : { preset: "custom", heightMm: h });
+  };
+  const resetAppearance = () => patch({
+    titleFontSize: defaults.titleFontSize, axisFontSize: defaults.axisFontSize,
+    tickFontSize: defaults.tickFontSize, legendFontSize: defaults.legendFontSize,
+    showGridlines: defaults.showGridlines, legendPosition: defaults.legendPosition,
+    palette: defaults.palette, lineWidth: defaults.lineWidth,
+    markerSize: defaults.markerSize, opacity: defaults.opacity, decimals: defaults.decimals,
+  });
+  const pxW = mmToPx(settings.widthMm, settings.dpi), pxH = mmToPx(settings.heightMm, settings.dpi);
+  const hasExtras = seriesOptions || sortOptions || maxPoints !== undefined;
+
+  return (
+    <div className="border border-slate-200 rounded-lg bg-slate-50 p-3 mt-2 space-y-3 text-xs">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div>
+          <div className="text-[10px] text-slate-500 mb-0.5">Figure size</div>
+          <select value={settings.preset} onChange={(e) => setPreset(e.target.value)} className="w-full border border-slate-200 rounded px-2 py-1 bg-white">
+            {FIGURE_SIZE_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}{p.widthMm ? ` (${p.widthMm}×${p.heightMm} mm)` : ""}</option>)}
+          </select>
+        </div>
+        <div>
+          <div className="text-[10px] text-slate-500 mb-0.5">Width × height (mm)</div>
+          <div className="flex items-center gap-1">
+            <input type="number" min={20} value={settings.widthMm} onChange={(e) => setWidth(e.target.value)} className="w-14 border border-slate-200 rounded px-1.5 py-1 font-mono" />
+            <button onClick={() => patch({ lockAspect: !settings.lockAspect })} title={settings.lockAspect ? "Aspect ratio locked: click to unlock" : "Aspect ratio unlocked: click to lock"} className={`px-1 ${settings.lockAspect ? "text-cobalt-700" : "text-slate-300"}`}>
+              {settings.lockAspect ? <Lock size={12} /> : <Unlock size={12} />}
+            </button>
+            <input type="number" min={20} value={settings.heightMm} onChange={(e) => setHeight(e.target.value)} className="w-14 border border-slate-200 rounded px-1.5 py-1 font-mono" />
+          </div>
+        </div>
+        <div>
+          <div className="text-[10px] text-slate-500 mb-0.5">Resolution</div>
+          <select value={settings.dpi} onChange={(e) => patch({ dpi: Number(e.target.value) })} className="w-full border border-slate-200 rounded px-2 py-1 bg-white" disabled={settings.format === "svg"}>
+            {FIGURE_DPI_OPTIONS.map((d) => <option key={d} value={d}>{d} dpi</option>)}
+          </select>
+        </div>
+        <div>
+          <div className="text-[10px] text-slate-500 mb-0.5">Export as</div>
+          <select value={settings.format} onChange={(e) => patch({ format: e.target.value })} className="w-full border border-slate-200 rounded px-2 py-1 bg-white">
+            <option value="png">PNG (raster, high-resolution)</option>
+            <option value="svg">SVG (vector)</option>
+            <option value="pdf">PDF (single page)</option>
+          </select>
+        </div>
+      </div>
+      <p className="text-[10px] text-slate-400">Preview below is shown at the export size: {settings.widthMm} × {settings.heightMm} mm{settings.format !== "svg" && ` → ${pxW} × ${pxH} px at ${settings.dpi} dpi`}.</p>
+
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <div>
+          <div className="text-[10px] text-slate-500 mb-0.5">Plot title</div>
+          <input type="text" value={settings.title} onChange={(e) => patch({ title: e.target.value })} placeholder="(none)" className="w-full border border-slate-200 rounded px-2 py-1" />
+        </div>
+        <div>
+          <div className="text-[10px] text-slate-500 mb-0.5">X-axis title</div>
+          <input type="text" value={settings.xLabel} onChange={(e) => patch({ xLabel: e.target.value })} placeholder="(default)" className="w-full border border-slate-200 rounded px-2 py-1" />
+        </div>
+        <div>
+          <div className="text-[10px] text-slate-500 mb-0.5">Y-axis title</div>
+          <input type="text" value={settings.yLabel} onChange={(e) => patch({ yLabel: e.target.value })} placeholder="(default)" className="w-full border border-slate-200 rounded px-2 py-1" />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div>
+          <div className="text-[10px] text-slate-500 mb-0.5">Title font size</div>
+          <input type="number" min={8} max={28} value={settings.titleFontSize} onChange={(e) => patch({ titleFontSize: Number(e.target.value) || settings.titleFontSize })} className="w-full border border-slate-200 rounded px-2 py-1 font-mono" />
+        </div>
+        <div>
+          <div className="text-[10px] text-slate-500 mb-0.5">Axis title font size</div>
+          <input type="number" min={6} max={24} value={settings.axisFontSize} onChange={(e) => patch({ axisFontSize: Number(e.target.value) || settings.axisFontSize })} className="w-full border border-slate-200 rounded px-2 py-1 font-mono" />
+        </div>
+        <div>
+          <div className="text-[10px] text-slate-500 mb-0.5">Tick label font size</div>
+          <input type="number" min={6} max={20} value={settings.tickFontSize} onChange={(e) => patch({ tickFontSize: Number(e.target.value) || settings.tickFontSize })} className="w-full border border-slate-200 rounded px-2 py-1 font-mono" />
+        </div>
+        <div>
+          <div className="text-[10px] text-slate-500 mb-0.5">Legend font size</div>
+          <input type="number" min={6} max={20} value={settings.legendFontSize} onChange={(e) => patch({ legendFontSize: Number(e.target.value) || settings.legendFontSize })} className="w-full border border-slate-200 rounded px-2 py-1 font-mono" />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div>
+          <div className="text-[10px] text-slate-500 mb-0.5">Legend position</div>
+          <select value={settings.legendPosition} onChange={(e) => patch({ legendPosition: e.target.value })} className="w-full border border-slate-200 rounded px-2 py-1 bg-white">
+            <option value="top">Top</option>
+            <option value="bottom">Bottom</option>
+            <option value="left">Left</option>
+            <option value="right">Right</option>
+            <option value="hidden">Hidden</option>
+          </select>
+        </div>
+        <div>
+          <div className="text-[10px] text-slate-500 mb-0.5">Color palette</div>
+          <select value={settings.palette} onChange={(e) => patch({ palette: e.target.value })} className="w-full border border-slate-200 rounded px-2 py-1 bg-white">
+            {Object.entries(FIGURE_PALETTES).map(([key, p]) => <option key={key} value={key}>{p.label}</option>)}
+          </select>
+          <div className="flex gap-0.5 mt-1">
+            {figurePalette(settings.palette, 6).map((c, i) => <span key={i} className="w-3 h-3 rounded-sm border border-slate-200" style={{ background: c }} />)}
+          </div>
+        </div>
+        <div>
+          <div className="text-[10px] text-slate-500 mb-0.5">Decimal places</div>
+          <input type="number" min={0} max={4} value={settings.decimals} onChange={(e) => patch({ decimals: Math.max(0, Math.min(4, Number(e.target.value))) || 0 })} className="w-full border border-slate-200 rounded px-2 py-1 font-mono" />
+        </div>
+        <div className="flex items-end pb-1">
+          <label className="flex items-center gap-1.5 text-slate-600">
+            <input type="checkbox" checked={settings.showGridlines} onChange={(e) => patch({ showGridlines: e.target.checked })} />
+            Gridlines
+          </label>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <div>
+          <div className="text-[10px] text-slate-500 mb-0.5">Line thickness ({settings.lineWidth}px)</div>
+          <input type="range" min={1} max={5} step={0.5} value={settings.lineWidth} onChange={(e) => patch({ lineWidth: Number(e.target.value) })} className="w-full accent-cobalt-700" />
+        </div>
+        <div>
+          <div className="text-[10px] text-slate-500 mb-0.5">Marker size ({settings.markerSize}px)</div>
+          <input type="range" min={0} max={10} step={0.5} value={settings.markerSize} onChange={(e) => patch({ markerSize: Number(e.target.value) })} className="w-full accent-cobalt-700" />
+        </div>
+        <div>
+          <div className="text-[10px] text-slate-500 mb-0.5">Opacity ({Math.round(settings.opacity * 100)}%)</div>
+          <input type="range" min={0.2} max={1} step={0.05} value={settings.opacity} onChange={(e) => patch({ opacity: Number(e.target.value) })} className="w-full accent-cobalt-700" />
+        </div>
+      </div>
+
+      {hasExtras && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 border-t border-slate-200">
+          {seriesOptions && (
+            <div>
+              <div className="text-[10px] text-slate-500 mb-1">Series shown</div>
+              <div className="flex flex-wrap gap-x-3 gap-y-1">
+                {seriesOptions.map((o) => (
+                  <label key={o.key} className="flex items-center gap-1 text-slate-600">
+                    <input type="checkbox" checked={!hiddenKeys.has(o.key)} onChange={() => onToggleSeries(o.key)} />
+                    {o.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+          {sortOptions && (
+            <div>
+              <div className="text-[10px] text-slate-500 mb-0.5">Order</div>
+              <select value={sortValue} onChange={(e) => onSortChange(e.target.value)} className="w-full border border-slate-200 rounded px-2 py-1 bg-white">
+                {sortOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+          )}
+          {maxPoints !== undefined && (
+            <div>
+              <div className="text-[10px] text-slate-500 mb-0.5">{maxPointsLabel || "Show only the top N"}</div>
+              <div className="flex items-center gap-1.5">
+                <input type="number" min={1} max={maxPointsCap} value={maxPoints} onChange={(e) => onMaxPointsChange(Math.max(1, Math.min(maxPointsCap, Number(e.target.value) || maxPointsCap)))} className="w-20 border border-slate-200 rounded px-2 py-1 font-mono" />
+                <span className="text-slate-400">of {maxPointsCap}</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="flex items-center justify-between pt-2 border-t border-slate-200">
+        <button onClick={resetAppearance} className="text-slate-400 hover:text-slate-600 underline">Reset appearance</button>
+        <Btn variant="accent" onClick={onExport} disabled={exporting}>{exporting ? "Exporting…" : <><Download size={13} />Export figure</>}</Btn>
+      </div>
     </div>
   );
 }
@@ -1874,6 +2358,34 @@ function normalizeHandleId(id) {
   return ANCHOR_BY_ID[id] ? id : null;
 }
 
+// Where a given anchor actually sits, in flow space, for a node at this
+// position and (measured) size — the same 12 points ConceptNode lays out
+// via CSS percentages, computed here in JS so a drag can snap to them
+// without waiting for a DOM round-trip. Used by the endpoint-reconnect
+// drag below to show, live, exactly which of a target's 12 points a drop
+// will land on, instead of leaving a relationship's attachment point to
+// depend on where inside the node the pointer happened to be released.
+function anchorFlowPoint(pos, w, h, anchor) {
+  const { side, frac } = anchor;
+  if (side === "t") return { x: pos.x + frac * w, y: pos.y };
+  if (side === "b") return { x: pos.x + frac * w, y: pos.y + h };
+  if (side === "l") return { x: pos.x, y: pos.y + frac * h };
+  return { x: pos.x + w, y: pos.y + frac * h }; // "r"
+}
+// The one of a node's 12 anchors closest to a given flow-space point.
+function nearestAnchorOnNode(nodeInternal, px, py) {
+  const w = nodeInternal?.measured?.width, h = nodeInternal?.measured?.height;
+  const pos = nodeInternal?.internals?.positionAbsolute;
+  if (!w || !h || !pos) return null;
+  let best = null, bestDist = Infinity;
+  for (const a of ANCHORS) {
+    const pt = anchorFlowPoint(pos, w, h, a);
+    const d = (pt.x - px) ** 2 + (pt.y - py) ** 2;
+    if (d < bestDist) { bestDist = d; best = { id: a.id, x: pt.x, y: pt.y }; }
+  }
+  return best;
+}
+
 function ConceptNode({ data, selected }) {
   const c = data.concept;
   // Before any simulation has been run, `currentValue` is just a stale
@@ -1889,32 +2401,50 @@ function ConceptNode({ data, selected }) {
   // (from the moment the user presses down on any handle to when they
   // release), not just the one it started from — used to light up every
   // node's handles at once so a valid drop target never has to be
-  // discovered by trial and error.
-  const isConnecting = useConnection().inProgress;
+  // discovered by trial and error. Selectors (not the whole connection
+  // object) so a node only re-renders on the frames where ITS OWN read of
+  // that state actually changes, not every pointer move of the drag.
+  const isConnecting = useConnection((s) => s.inProgress);
+  const isConnectTarget = useConnection((s) => s.inProgress && s.toNode?.id === c.id);
+  const connectTargetHandleId = useConnection((s) => (s.inProgress && s.toNode?.id === c.id) ? (s.toHandle?.id ?? null) : null);
   const pinnedTargets = data.pinnedTargets || EMPTY_ARRAY;
   // Selection ring color overrides the category border; both are applied via
   // inline style (not a Tailwind border-color class) since the unselected
   // color is data-driven and inline style always wins over a class anyway,
   // so mixing the two would just make the class silently do nothing.
-  const borderColor = selected ? "#0d9488" : cat.border;
+  const borderColor = selected ? "#2456d6" : cat.border;
+  // The one anchor (of this node's 12) that either kind of in-progress drag
+  // would land on right now: a brand new relationship being drawn from
+  // another concept's dot (native react-flow connection state, snapped to
+  // the nearest compatible handle within connectionRadius), or an EXISTING
+  // relationship's end being dragged here by hand (data.snapAnchorId, set
+  // in NetworkTabInner's startReconnectDrag). Either way it's the same
+  // question — "where would this land if I let go now" — so both get the
+  // same answer and the same highlight, instead of two different half-cues.
+  const liveTargetAnchorId = data.snapAnchorId || connectTargetHandleId || null;
+  const isLiveTarget = isConnectTarget || !!data.snapAnchorId;
   // Anchors are always faintly visible (so all 12 are discoverable without
   // first having to guess to hover), brighten on hovering anywhere over the
   // node (not just the small dot itself, via the parent's `group`), and go
   // fully prominent — regardless of hover — whenever this node is itself
   // selected, a selected edge touches it (data.showAnchors, set by
-  // NetworkTabInner), or a connection is being dragged from anywhere on the
-  // canvas, so "reveal anchor points on selection" doesn't depend on the
-  // pointer happening to be over this exact node.
-  const anchorsProminent = selected || isConnecting || data.showAnchors;
-  const dot = `!bg-slate-500 !border !border-white transition-all hover:!scale-125 hover:!opacity-100 ${
-    anchorsProminent ? "opacity-80" : "opacity-25 group-hover:opacity-60"
-  }`;
+  // NetworkTabInner), or a connection (new OR an existing one being
+  // dragged to a new spot) is in progress anywhere on the canvas, so
+  // "reveal anchor points" never depends on the pointer happening to
+  // already be over this exact node.
+  const anchorsProminent = selected || isConnecting || data.showAnchors || data.reconnectDragActive;
+  const dot = (anchorId) => {
+    const isLive = anchorId === liveTargetAnchorId;
+    return `!border !border-white transition-all hover:!scale-125 hover:!opacity-100 ${
+      isLive ? "!bg-cobalt-500 !scale-150 !opacity-100" : `!bg-slate-500 ${anchorsProminent ? "opacity-80" : "opacity-25 group-hover:opacity-60"}`
+    }`;
+  };
   return (
     <div
       // Focus mode: a concept outside the analysis scope stays on the canvas
       // for context but recedes, unless it is the one being worked on.
-      style={{ background: cat.bg, color: "#1e293b", minWidth: 135, maxWidth: 185, borderColor, opacity: data.faded && !selected ? 0.15 : 1 }}
-      className={`group rounded-xl border-2 px-2.5 py-1.5 shadow-sm transition-[box-shadow,opacity] ${selected ? "shadow-md ring-2 ring-teal-300" : ""} ${isConnecting ? "ring-1 ring-teal-300" : ""}`}
+      style={{ background: cat.bg, color: "#1e293b", minWidth: 135, maxWidth: 185, borderColor, opacity: selected ? 1 : data.faded ? 0.15 : data.dimmedByHover ? 0.35 : 1 }}
+      className={`group rounded-xl border-2 px-2.5 py-1.5 shadow-sm transition-[box-shadow,opacity] ${selected ? "shadow-md ring-2 ring-cobalt-300" : ""} ${isLiveTarget ? "ring-2 ring-cobalt-500 shadow-md" : isConnecting ? "ring-1 ring-cobalt-300" : ""}`}
     >
       {/* 12 discrete anchors (3 per side) instead of one point per side, so
           a user can pick exactly where a relationship attaches. Each has a
@@ -1942,9 +2472,14 @@ function ConceptNode({ data, selected }) {
         const needsTarget = a.id === DEFAULT_TARGET_ANCHOR || pinnedTargets.includes(a.id);
         return (
           <React.Fragment key={a.id}>
-            <Handle type="source" position={ANCHOR_POSITION[a.side]} id={a.id} style={{ width: 9, height: 9, borderRadius: 9999, ...posStyle }} className={dot} />
+            {/* 12px, up from an earlier 9px: React Flow's own centering
+                transform (translate(-50%,-50%), from its base stylesheet)
+                keeps a bigger box centred on exactly the same point, so
+                this is purely a bigger target to aim a drag at, not a
+                reflow of where the 12 points actually sit. */}
+            <Handle type="source" position={ANCHOR_POSITION[a.side]} id={a.id} style={{ width: 12, height: 12, borderRadius: 9999, ...posStyle }} className={dot(a.id)} />
             {needsTarget && (
-              <Handle type="target" position={ANCHOR_POSITION[a.side]} id={a.id} style={{ width: 9, height: 9, borderRadius: 9999, opacity: 0, pointerEvents: "none", ...posStyle }} />
+              <Handle type="target" position={ANCHOR_POSITION[a.side]} id={a.id} style={{ width: 12, height: 12, borderRadius: 9999, opacity: 0, pointerEvents: "none", ...posStyle }} />
             )}
           </React.Fragment>
         );
@@ -2113,6 +2648,15 @@ function InfluenceEdge({
   if (srcPt) { sx = srcPt.x; sy = srcPt.y; sourcePos = SIDE_TO_POSITION[srcPt.side]; }
   if (tgtPt) { tx = tgtPt.x; ty = tgtPt.y; targetPos = SIDE_TO_POSITION[tgtPt.side]; }
 
+  // While this relationship's own endpoint is being dragged to a new
+  // concept, that end follows the cursor instead of its real (still
+  // unchanged) node — see startReconnectDrag in NetworkTabInner. It isn't
+  // "attached" to anything mid-drag, so the arrow-gap retreat below (which
+  // assumes a real box to back off from) is skipped for that end.
+  const dragThis = data?.dragReconnect?.edgeId === id ? data.dragReconnect : null;
+  if (dragThis?.end === "source") { sx = dragThis.x; sy = dragThis.y; }
+  if (dragThis?.end === "target") { tx = dragThis.x; ty = dragThis.y; }
+
   const w = data?.edge?.weight ?? 0;
   // A bundled link (folded modules) stands for several relationships: its
   // colour says whether they all increase, all decrease, or are mixed, its
@@ -2140,7 +2684,7 @@ function InfluenceEdge({
   // border. Dividing by the live zoom keeps the visible gap constant.
   const ARROW_GAP_PX = 8;
   const ARROW_GAP = ARROW_GAP_PX / Math.max(zoom, 0.1);
-  {
+  if (dragThis?.end !== "target") {
     // Retreat straight out of the face the arrow actually lands on. An
     // earlier version pulled back toward the source node's centre instead,
     // which is only the same direction when the endpoint happens to sit on
@@ -2156,6 +2700,32 @@ function InfluenceEdge({
     ty += outward[1] * ARROW_GAP;
   }
 
+  // A plain (non-bundled) relationship drawn as a curve can be grabbed by
+  // its label (or, with labels off, a small handle at the same spot) and
+  // dragged sideways to bow it out of a tangle of overlapping lines. That
+  // manual amount is stored per-relationship (data.edge.bend, in the same
+  // flow-space pixels as the automatic A<->B pair separation below) and
+  // simply adds to it, so a user-dragged pair still keeps its two lines
+  // apart. Not offered for a bundled module-to-module link (there is no
+  // single relationship to save the offset on) or the orthogonal step
+  // routing (its corners aren't a midpoint a quadratic Bezier can bow).
+  const canBend = !agg && !isOrthogonal;
+  // A bundled link has no single relationship to re-point, but a plain one
+  // can be — regardless of edge style, since reconnecting just swaps which
+  // node (and optionally which of its anchors) an end resolves against.
+  const canReconnect = !agg;
+  // While THIS relationship's bend is being dragged, its live (not-yet-
+  // saved) value wins over whatever is actually stored, so the curve
+  // tracks the cursor without that drag ever touching the real model
+  // (see startBendDrag in NetworkTabInner).
+  const liveBend = data?.dragBend?.edgeId === id ? data.dragBend : null;
+  const manualBend = canBend ? (liveBend ? liveBend.value : (data?.edge?.bend || 0)) : 0;
+  // True while the user is actively holding this specific relationship's
+  // own bend or endpoint handle. Used below to make the line click-through
+  // for the length of that one gesture — see the pointerEvents note above
+  // the BaseEdge call for why.
+  const isBeingDraggedByUser = !!dragThis || !!liveBend;
+
   // Endpoints (sx,sy / tx,ty) always stay directly on (or, for the target,
   // just short of) the node boundary: that's what "connections must
   // anchor directly to nodes" requires. A previous version separated A<->B
@@ -2164,17 +2734,17 @@ function InfluenceEdge({
   // pairs are now separated by bowing only the curve's MIDPOINT sideways (a
   // quadratic Bezier), leaving the true attachment points untouched.
   let path, labelX, labelY;
+  const bowOffset = parallelSlot * 24 + manualBend;
   if (isOrthogonal) {
     [path, labelX, labelY] = getSmoothStepPath({ sourceX: sx, sourceY: sy, sourcePosition: sourcePos, targetX: tx, targetY: ty, targetPosition: targetPos, borderRadius: 8 });
-  } else if (parallelSlot !== 0) {
+  } else if (bowOffset !== 0) {
     const dx = tx - sx, dy = ty - sy;
     const len = Math.sqrt(dx * dx + dy * dy) || 1;
     // Widened alongside the thicker strokes above (18 -> 24px) so an A<->B
     // pair still reads as two visually distinct curves instead of one
     // thicker-looking line, now that each curve itself takes up more room.
-    const offset = parallelSlot * 24;
-    const midX = (sx + tx) / 2 + (-dy / len) * offset;
-    const midY = (sy + ty) / 2 + (dx / len) * offset;
+    const midX = (sx + tx) / 2 + (-dy / len) * bowOffset;
+    const midY = (sy + ty) / 2 + (dx / len) * bowOffset;
     path = `M ${sx},${sy} Q ${midX},${midY} ${tx},${ty}`;
     labelX = 0.25 * sx + 0.5 * midX + 0.25 * tx;
     labelY = 0.25 * sy + 0.5 * midY + 0.25 * ty;
@@ -2186,16 +2756,52 @@ function InfluenceEdge({
     [path, labelX, labelY] = getBezierPath({ sourceX: sx, sourceY: sy, sourcePosition: sourcePos, targetX: tx, targetY: ty, targetPosition: targetPos, curvature: 0.15 });
   }
 
+  // Grabbing the handle starts tracking the mouse in flow space and turns
+  // its position, projected onto the perpendicular of the (fixed) source-
+  // target line, straight into the next bow offset — the same quantity
+  // "bowOffset" above is built from — minus the automatic parallel-pair
+  // share, so only the user's own manual contribution is saved. Committing
+  // history once up front (not per frame) makes the whole drag a single
+  // undo step, same as dragging a concept.
+  const beginBend = (ev) => {
+    if (!canBend || !data?.onBendDragStart) return;
+    ev.stopPropagation();
+    ev.preventDefault();
+    data.onBendDragStart(id, sx, sy, tx, ty, parallelSlot * 24);
+  };
+
   return (
     <>
-      <BaseEdge id={id} path={path} markerEnd={markerEnd} style={{ stroke: color, strokeWidth, opacity: selected ? 1 : data?.faded ? 0.12 : 0.92 }} />
-      {/* labelX/labelY come straight from the path helper's own midpoint
-          (or, for a bowed parallel pair, the equivalent midpoint of that
-          curve), so the label always sits at ~50% of edge length,
-          consistently, without extra positioning logic. EdgeLabelRenderer
-          renders into React Flow's dedicated label overlay pane, above every
-          edge and node, so a label can never end up hidden under a line or
-          arrowhead by construction.
+      {/* interactionWidth={0} drops BaseEdge's own invisible ~20px-wide hit
+          stroke while this relationship's own bow or endpoint is being
+          dragged: that stroke is centred on the path, so right at the tip
+          the user is dragging (which IS the current cursor position) it
+          would otherwise sit exactly on top of whatever node or anchor
+          they're trying to drop onto, and — being an edge — always wins
+          that pixel over the node beneath it (edges keep a lower resting
+          zIndex than nodes below, precisely so a relationship's own line
+          never steals a concept's hover/click, but this one active edge is
+          deliberately raised above that for visibility while it's being
+          aimed, which would otherwise defeat the same protection for
+          itself). pointerEvents mirrors that on the visible stroke too. */}
+      <BaseEdge
+        id={id} path={path} markerEnd={markerEnd}
+        interactionWidth={isBeingDraggedByUser ? 0 : 20}
+        style={{ stroke: color, strokeWidth, opacity: selected ? 1 : data?.faded ? 0.12 : data?.dimmedByHover ? 0.07 : (data?.baseOpacity ?? 0.92), pointerEvents: isBeingDraggedByUser ? "none" : undefined, transition: "opacity 150ms ease" }}
+      />
+      {/* Labels off still needs a way to grab and bow the line, so a small
+          handle takes the label's place once this relationship is selected
+          (not shown unselected, so hiding labels still reads as uncluttered
+          as it did with no drag feature at all). With labels on, the label
+          itself doubles as that handle \u2014 no extra element needed. */}
+      {(!data?.hideLabel || (canBend && selected)) && (
+      /* labelX/labelY come straight from the path helper's own midpoint
+          (or, for a bowed parallel/manually-bent pair, the equivalent
+          midpoint of that curve), so the label always sits at ~50% of edge
+          length, consistently, without extra positioning logic.
+          EdgeLabelRenderer renders into React Flow's dedicated label overlay
+          pane, above every edge and node, so a label can never end up hidden
+          under a line or arrowhead by construction.
           Two nested elements, not one: the outer div is positioned in FLOW
           space (labelX/labelY, inside React Flow's own pan/zoom-transformed
           layer, same as before) with no transform of its own beyond that
@@ -2205,24 +2811,69 @@ function InfluenceEdge({
           inner content stays correctly centered on the edge regardless of
           zoom, while its RENDERED size counteracts the flow's own zoom and
           stays a constant, always-readable size on screen at every zoom
-          level instead of shrinking to unreadable at a zoomed-out fit. */}
+          level instead of shrinking to unreadable at a zoomed-out fit. */
       <EdgeLabelRenderer>
-        <div style={{ position: "absolute", transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`, zIndex: selected ? 20 : data?.faded ? 1 : 5, opacity: data?.faded && !selected ? 0.15 : 1 }}>
+        <div style={{ position: "absolute", transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`, zIndex: selected ? 20 : data?.faded ? 1 : 5, opacity: selected ? 1 : data?.faded ? 0.15 : data?.dimmedByHover ? 0.08 : 1 }}>
+          {!data?.hideLabel ? (
           <div
-            style={{ transform: `scale(${1 / Math.max(zoom, 0.05)})`, pointerEvents: "all" }}
+            onMouseDown={canBend ? beginBend : undefined}
+            onDoubleClick={canBend && manualBend ? (ev) => { ev.stopPropagation(); data.onBendReset?.(id); } : undefined}
+            style={{ transform: `scale(${1 / Math.max(zoom, 0.05)})`, pointerEvents: isBeingDraggedByUser ? "none" : "all", cursor: canBend ? "grab" : undefined }}
             className={`px-2 py-1 rounded text-[11px] font-mono font-semibold border shadow-sm ring-2 ring-white select-none ${
               agg
                 ? (agg.negative === 0 ? "bg-green-50 border-green-300 text-green-800" : agg.positive === 0 ? "bg-orange-50 border-orange-300 text-orange-800" : "bg-violet-50 border-violet-300 text-violet-800")
                 : w >= 0 ? "bg-green-50 border-green-300 text-green-800" : "bg-orange-50 border-orange-300 text-orange-800"
             }`}
-            title={agg ? `${agg.count} relationship${agg.count === 1 ? "" : "s"}: ${agg.positive} increasing, ${agg.negative} decreasing; net weight ${agg.sum >= 0 ? "+" : ""}${agg.sum}` : undefined}
+            title={agg ? `${agg.count} relationship${agg.count === 1 ? "" : "s"}: ${agg.positive} increasing, ${agg.negative} decreasing; net weight ${agg.sum >= 0 ? "+" : ""}${agg.sum}` : canBend ? `Drag to bend this relationship's line, so it clears whatever it currently overlaps${manualBend ? "; double-click to straighten it back out" : ""}` : undefined}
           >
             {agg
               ? `${agg.count} link${agg.count === 1 ? "" : "s"} \u00b7 ${agg.sum >= 0 ? "+" : ""}${round2(agg.sum).toFixed(2)}`
               : `${w >= 0 ? "+" : ""}${round2(w).toFixed(2)}`}
           </div>
+          ) : (
+          <div
+            onMouseDown={beginBend}
+            onDoubleClick={manualBend ? (ev) => { ev.stopPropagation(); data.onBendReset?.(id); } : undefined}
+            title={`Drag to bend this relationship's line, so it clears whatever it currently overlaps${manualBend ? "; double-click to straighten it back out" : ""}`}
+            style={{ transform: `scale(${1 / Math.max(zoom, 0.05)})`, pointerEvents: isBeingDraggedByUser ? "none" : "all", cursor: "grab" }}
+            className="w-3.5 h-3.5 rounded-full border-2 border-white shadow ring-2 ring-white"
+          >
+            <div className="w-full h-full rounded-full" style={{ background: color }} />
+          </div>
+          )}
         </div>
       </EdgeLabelRenderer>
+      )}
+      {/* Two more handles, exactly at the endpoints this relationship is
+          actually drawn between (not wherever React Flow's own hidden
+          reconnect target happens to sit — see startReconnectDrag), so
+          grabbing one and dropping it on a different concept (or a
+          different anchor on the same one) rewires that end on the spot.
+          Only offered once selected, same as the bend handle, and never
+          for a bundled module-to-module link. */}
+      {canReconnect && selected && (
+      <EdgeLabelRenderer>
+        {[{ x: sx, y: sy, end: "source" }, { x: tx, y: ty, end: "target" }].map(({ x, y, end }) => (
+          <div key={end} style={{ position: "absolute", transform: `translate(-50%, -50%) translate(${x}px, ${y}px)`, zIndex: 26 }}>
+            <div
+              onMouseDown={(ev) => { ev.stopPropagation(); ev.preventDefault(); data?.onReconnectDragStart?.(id, end, x, y); }}
+              title={`Drag to reconnect this relationship's ${end === "source" ? "starting" : "arrow"} end to a different concept, or a different side of this one`}
+              // While this relationship is being dragged (either end, or its
+              // bow), both handles go click-through: the one actually being
+              // dragged tracks the cursor and would otherwise be the topmost
+              // thing under it, and the other has moved along with a bent or
+              // still-being-aimed line and can just as easily end up over
+              // whatever's being dropped onto — either way, pointerEvents:
+              // "none" is what lets the drop logic's elementFromPoint see
+              // the real node/anchor beneath instead of finding a handle of
+              // its own relationship.
+              style={{ transform: `scale(${1 / Math.max(zoom, 0.05)})`, pointerEvents: isBeingDraggedByUser ? "none" : "all", cursor: "crosshair" }}
+              className="w-3.5 h-3.5 rounded-full bg-white border-2 border-slate-500 shadow hover:border-slate-800"
+            />
+          </div>
+        ))}
+      </EdgeLabelRenderer>
+      )}
     </>
   );
 }
@@ -2334,12 +2985,12 @@ function ModuleNode({ data, selected }) {
   const st = categoryStyle(data.categoryValue);
   const hidden = { width: 10, height: 10, opacity: 0, pointerEvents: "none" };
   return (
-    <div style={{ width: MODULE_NODE_W, opacity: data.faded && !selected ? 0.2 : 1 }} className="relative" title="Double-click to unfold this module">
+    <div style={{ width: MODULE_NODE_W, opacity: selected ? 1 : data.faded ? 0.2 : data.dimmedByHover ? 0.35 : 1, transition: "opacity 150ms ease" }} className="relative" title="Double-click to unfold this module">
       {/* stacked-card look: this block contains a whole sub-model */}
       <div className="absolute inset-0 rounded-xl border-2 translate-x-[6px] translate-y-[6px]" style={{ background: st.bg, borderColor: st.border, opacity: 0.55 }} />
       <div
-        className={`relative rounded-xl border-2 px-3 py-2 shadow-md ${selected ? "ring-2 ring-teal-400" : ""}`}
-        style={{ background: st.bg, borderColor: selected ? "#0d9488" : st.border, minHeight: MODULE_NODE_H }}
+        className={`relative rounded-xl border-2 px-3 py-2 shadow-md ${selected ? "ring-2 ring-cobalt-400" : ""}`}
+        style={{ background: st.bg, borderColor: selected ? "#2456d6" : st.border, minHeight: MODULE_NODE_H }}
       >
         <Handle type="target" position={Position.Left} id={DEFAULT_TARGET_ANCHOR} isConnectable={false} style={hidden} />
         <Handle type="source" position={Position.Right} id="r-c" isConnectable={false} style={hidden} />
@@ -2517,7 +3168,7 @@ function ModelCheck({ concepts, edges, onSelectConcept, onSelectEdge, storageKey
       ? `${issues.length} thing${issues.length === 1 ? "" : "s"} to look at: ${issues.map((i) => i.title.toLowerCase()).join("; ")}.`
       : "No problems found: every concept is named, connected and in a module.";
   const levelStyle = {
-    step: { box: "border-teal-200 bg-teal-50/60", icon: <ChevronRight size={13} className="text-teal-700 shrink-0 mt-0.5" /> },
+    step: { box: "border-cobalt-200 bg-cobalt-50/60", icon: <ChevronRight size={13} className="text-cobalt-700 shrink-0 mt-0.5" /> },
     warn: { box: "border-amber-200 bg-amber-50/70", icon: <Info size={13} className="text-amber-700 shrink-0 mt-0.5" /> },
     tip: { box: "border-slate-200 bg-slate-50", icon: <HelpCircle size={13} className="text-slate-500 shrink-0 mt-0.5" /> },
   };
@@ -2544,14 +3195,14 @@ function ModelCheck({ concepts, edges, onSelectConcept, onSelectEdge, storageKey
                   {(it.concepts?.length || it.edges?.length) ? (
                     <div className="flex flex-wrap gap-1 mt-1.5">
                       {(it.concepts || []).slice(0, 12).map((id) => (
-                        <button key={id} onClick={() => onSelectConcept(id)} className="px-1.5 py-0.5 rounded border border-slate-300 bg-white text-[11px] text-slate-700 hover:border-teal-500 hover:text-teal-800" title="Show this concept on the map">
+                        <button key={id} onClick={() => onSelectConcept(id)} className="px-1.5 py-0.5 rounded border border-slate-300 bg-white text-[11px] text-slate-700 hover:border-cobalt-500 hover:text-cobalt-800" title="Show this concept on the map">
                           {nameOf.get(id)}
                         </button>
                       ))}
                       {(it.edges || []).slice(0, 12).map((id) => {
                         const e = edgeById.get(id);
                         return e ? (
-                          <button key={id} onClick={() => onSelectEdge(id)} className="px-1.5 py-0.5 rounded border border-slate-300 bg-white text-[11px] text-slate-700 hover:border-teal-500 hover:text-teal-800" title="Show this relationship on the map">
+                          <button key={id} onClick={() => onSelectEdge(id)} className="px-1.5 py-0.5 rounded border border-slate-300 bg-white text-[11px] text-slate-700 hover:border-cobalt-500 hover:text-cobalt-800" title="Show this relationship on the map">
                             {nameOf.get(e.source)} &rarr; {nameOf.get(e.target)}
                           </button>
                         ) : null;
@@ -2635,7 +3286,7 @@ function NetworkTabInner({
   const graphTooBigToAutoCapture = concepts.length + edges.length > 120;
   useCachedChart(
     graphTooBigToAutoCapture ? null : setChartCache,
-    "networkGraph", '[data-chart="network-graph"]', "dom", [concepts, edges, graphTooBigToAutoCapture]
+    "networkGraph", [concepts, edges, graphTooBigToAutoCapture]
   );
   const [spaceHeld, setSpaceHeld] = useState(false);
   const [layoutMenuOpen, setLayoutMenuOpen] = useState(false);
@@ -2645,7 +3296,85 @@ function NetworkTabInner({
   // gate per-frame work without itself causing per-frame renders.
   const [isDragging, setIsDragging] = useState(false);
   const [edgeStyle, setEdgeStyle] = useState("curved");
+  // Off (default) leaves every relationship's numeric weight label showing,
+  // exactly as before. On hides every label so only each arrow's own color
+  // (increase/decrease) and width (strength) carry that information — a
+  // less cluttered read of a large, dense model.
+  const [hideEdgeLabels, setHideEdgeLabels] = useState(false);
   const rf = useReactFlow();
+
+  // Hovering a node highlights only its own connections and recedes
+  // everything else — the single biggest help for "which arrows belong to
+  // this box" on a model with hundreds of overlapping relationships, without
+  // having to change the layout itself. Cleared on mouse-leave and whenever
+  // a drag starts, so it can never get stuck highlighting a node the pointer
+  // has already left.
+  const [hoverNodeId, setHoverNodeId] = useState(null);
+  // A relationship's label (and, once selected, its bend/reconnect handles)
+  // floats above every node so it stays clickable — but it isn't a DOM
+  // descendant of the node it happens to sit near, so crossing from a node
+  // onto a label overlapping its edge is, as far as the browser is
+  // concerned, leaving one element and entering an unrelated one. Clearing
+  // the hover instantly on that split-second gap and re-setting it the
+  // moment the pointer lands back on the node a pixel later is what read as
+  // flicker: the dim/undim wash toggling on and off while the cursor never
+  // actually left the node it looks like it's over. Debouncing only the
+  // CLEAR (never the "hovering a specific node" set, which stays instant so
+  // deliberately moving to a different node still feels immediate) absorbs
+  // exactly that kind of sub-100ms gap without adding any noticeable lag to
+  // a genuine mouse-leave.
+  const hoverClearTimerRef = useRef(null);
+  const setHoverNodeIdNow = useCallback((id) => {
+    if (hoverClearTimerRef.current) { clearTimeout(hoverClearTimerRef.current); hoverClearTimerRef.current = null; }
+    setHoverNodeId(id);
+  }, []);
+  const clearHoverNodeIdSoon = useCallback(() => {
+    if (hoverClearTimerRef.current) clearTimeout(hoverClearTimerRef.current);
+    hoverClearTimerRef.current = setTimeout(() => {
+      hoverClearTimerRef.current = null;
+      setHoverNodeId(null);
+    }, 120);
+  }, []);
+  useEffect(() => () => { if (hoverClearTimerRef.current) clearTimeout(hoverClearTimerRef.current); }, []);
+  // Hides the Inspector column so the canvas takes the full width — the
+  // Inspector is column, not chart, so its own state is remembered only for
+  // this browser session (a fresh visit starts with it open, guide visible).
+  const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
+  // Quick "find a concept by name" for a large model (state only here;
+  // collapsedSet isn't computed until further down, so the function that
+  // uses it — focusOnConceptId — is defined there too).
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  // While a relationship's endpoint is being dragged onto a different
+  // concept (or a different side of the same one), only this — the
+  // dragged end's live flow-space position — changes; the model itself
+  // isn't touched until it's dropped on a real target, so letting go over
+  // empty canvas just leaves the relationship exactly as it was.
+  const [dragReconnect, setDragReconnect] = useState(null); // { edgeId, end: "source" | "target", x, y }
+  // Same idea for bowing a relationship's line: only this live value is
+  // used while dragging (see InfluenceEdge), so the drag doesn't write a
+  // new bend into the real model — and cascade through every memo derived
+  // from `edges` — on every single mouse-move frame. Only the final value,
+  // at drop, becomes a real (single, undo-able) change.
+  const [dragBend, setDragBend] = useState(null); // { edgeId, value }
+  // True for the whole span of a bend/reconnect drag (not a node drag,
+  // which already has its own `isDragging`). Two things key off it:
+  // hover-highlighting is suppressed, so sweeping the cursor across other
+  // concepts while aiming a drag doesn't set off their dim/undim flicker;
+  // and it's not React state, so flipping it costs no render of its own.
+  const edgeDragActiveRef = useRef(false);
+  const beginEdgeDragUX = useCallback(() => {
+    edgeDragActiveRef.current = true;
+    setIsDragging(true); // freezes the endpoint fan-out (edgeSlots) for the gesture, same as dragging a concept
+    document.body.style.cursor = "grabbing";
+    document.body.style.userSelect = "none";
+  }, []);
+  const endEdgeDragUX = useCallback(() => {
+    edgeDragActiveRef.current = false;
+    setIsDragging(false);
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+  }, []);
 
   // ==== Inspector helpers ===================================================
   const conceptById = useMemo(() => new Map(concepts.map((c) => [c.id, c])), [concepts]);
@@ -2771,6 +3500,27 @@ function NetworkTabInner({
   // folds are ignored (a lone module is always shown unfolded).
   const collapsedKey = presentModuleKeys.size < 2 ? "" : collapsedModules.filter((k) => presentModuleKeys.has(k)).sort().join("\u0001");
   const collapsedSet = useMemo(() => new Set(collapsedKey ? collapsedKey.split("\u0001") : []), [collapsedKey]);
+  // Matches by name for the search box above; unfolds a concept's module if
+  // that's currently folded away, selects it, and centres the canvas on it —
+  // the same centring the Model check's own "reveal" links use, just
+  // triggered locally instead of round-tripping through the app shell.
+  const searchMatches = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [];
+    return (allConcepts || concepts).filter((c) => c.name.toLowerCase().includes(q)).slice(0, 8);
+  }, [searchQuery, allConcepts, concepts]);
+  const focusOnConceptId = useCallback((id) => {
+    const c = (allConcepts || concepts).find((x) => x.id === id);
+    if (!c) return;
+    const k = moduleKey(c.category);
+    if (collapsedSet.has(k) && setCollapsedModules) setCollapsedModules((prev) => prev.filter((x) => x !== k));
+    setSelected({ kind: "concept", id });
+    setHoverNodeId(id);
+    const pos = c.position || { x: 0, y: 0 };
+    setTimeout(() => rf.setCenter(pos.x + 80, pos.y + 35, { zoom: Math.max(rf.getZoom(), 0.9), duration: 450 }), 120);
+    setSearchOpen(false);
+    setSearchQuery("");
+  }, [allConcepts, concepts, collapsedSet, setCollapsedModules, setSelected, rf]);
   const folded = useMemo(() => foldNetwork(concepts, edges, collapsedSet), [concepts, edges, collapsedSet]);
   const displayConcepts = folded.visibleConcepts;
   // In the module overview (every module folded) the blocks are drawn closer
@@ -2852,6 +3602,30 @@ function NetworkTabInner({
     ...folded.plainEdges,
     ...folded.aggregates.map((a) => ({ id: a.id, source: a.source, target: a.target, weight: a.sum, aggregate: a })),
   ], [folded]);
+
+  // Which nodes/edges to highlight while a node is hovered: the node itself
+  // and every edge (plain or bundled) touching it, plus the neighbours those
+  // edges lead to. Everything else recedes (see the faded/dimmedByHover
+  // handling on the node and edge components below).
+  const hoverConnected = useMemo(() => {
+    if (!hoverNodeId) return null;
+    const nodeIds = new Set([hoverNodeId]);
+    const edgeIds = new Set();
+    displayEdges.forEach((e) => {
+      if (e.source === hoverNodeId || e.target === hoverNodeId) {
+        edgeIds.add(e.id);
+        nodeIds.add(e.source);
+        nodeIds.add(e.target);
+      }
+    });
+    return { nodeIds, edgeIds };
+  }, [hoverNodeId, displayEdges]);
+  // Past a point, hundreds of relationships at the default opacity read as a
+  // solid mass rather than individual lines; easing the baseline back once a
+  // model is this dense keeps overlapping arrows legible as a wash of
+  // context, while hovering (above) still brings any one node's own
+  // connections up to full strength on demand.
+  const edgeBaseOpacity = displayEdges.length > 80 ? 0.5 : displayEdges.length > 40 ? 0.7 : 0.92;
   // Positions used to decide which side of a box each link leaves from;
   // module blocks are larger than concept cards, so their centre is used.
   const slotNodes = useMemo(() => [
@@ -2873,9 +3647,18 @@ function NetworkTabInner({
       showAnchors: !!selectedEdgeNodeIds?.has(c.id),
       pinnedTargets: pinnedTargetsByNode[c.id] || EMPTY_ARRAY,
       faded: !!fadedNodeIds?.has(c.id),
+      dimmedByHover: !!hoverConnected && !hoverConnected.nodeIds.has(c.id),
+      // Which of THIS concept's own 12 anchors a relationship end being
+      // dragged (see startReconnectDrag) would snap to if let go right now.
+      snapAnchorId: dragReconnect?.snapNodeId === c.id ? dragReconnect.snapHandleId : null,
+      // Set for every concept for as long as ANY reconnect-drag is running
+      // (not just the one currently under the pointer), so every node's
+      // anchors light up together the same way they already do for
+      // drawing a brand new relationship — see isConnecting in ConceptNode.
+      reconnectDragActive: !!dragReconnect,
     },
     selected: selected?.kind === "concept" && selected.id === c.id,
-  })), [displayConcepts, selected, hasRun, selectedEdgeNodeIds, pinnedTargetsByNode, fadedNodeIds]);
+  })), [displayConcepts, selected, hasRun, selectedEdgeNodeIds, pinnedTargetsByNode, fadedNodeIds, hoverConnected, dragReconnect]);
 
   const rfNodes = useMemo(() => [
     ...frames.map((f) => ({
@@ -2887,11 +3670,15 @@ function NetworkTabInner({
     ...conceptRfNodes,
     ...moduleBlocks.map((m) => ({
       id: m.id, type: "module", position: m.position,
-      data: { ...m, faded: !!fadedNodeIds && m.memberIds.every((id) => fadedNodeIds.has(id)), onExpand: () => expandModule(m.key), onOpen: () => openModuleAsModel(m.key) },
+      data: {
+        ...m, faded: !!fadedNodeIds && m.memberIds.every((id) => fadedNodeIds.has(id)),
+        dimmedByHover: !!hoverConnected && !m.memberIds.some((id) => hoverConnected.nodeIds.has(id)) && !hoverConnected.nodeIds.has(m.id),
+        onExpand: () => expandModule(m.key), onOpen: () => openModuleAsModel(m.key),
+      },
       selected: selected?.kind === "module" && selected.id === m.key,
       deletable: false, connectable: false,
     })),
-  ], [frames, conceptRfNodes, moduleBlocks, fadedNodeIds, selected, collapseModule, expandModule, openModuleAsModel]);
+  ], [frames, conceptRfNodes, moduleBlocks, fadedNodeIds, selected, collapseModule, expandModule, openModuleAsModel, hoverConnected]);
 
   // Distinct categories actually in use, for the color-coding legend below
   // the canvas — only categories someone has actually set are listed, same
@@ -2969,11 +3756,141 @@ function NetworkTabInner({
     return slots;
   }, [displayEdges]);
 
+  // Lets a relationship's own label (or, with labels hidden, its selected
+  // handle — see InfluenceEdge) be grabbed and dragged to bow the line out
+  // of whatever it's currently overlapping, instead of only ever being
+  // able to reroute an *endpoint* onto a different node. sx/sy/tx/ty and
+  // the automatic parallel-pair offset are supplied by the edge itself
+  // (only it knows its own resolved anchor points); this just turns the
+  // live mouse position into the matching offset. That value lives in
+  // dragBend (local, render-only) for the whole gesture — writing it into
+  // the real model on every frame, the same as the reconnect endpoints
+  // below used to, would re-run every memo derived from `edges` (fold,
+  // parallel-pair slots, fan-out slots, the edge list itself) on every
+  // pixel of mouse movement, which is exactly what made this feel rough
+  // rather than smooth. One real updateEdge() at drop still makes the
+  // whole drag a single undo step, same as moving a concept — only *when*
+  // the model changes moves, not the number of times.
+  //
+  // The label doubles as this handle, so a plain click to select a
+  // relationship (mousedown, no movement, mouseup — by far the more common
+  // gesture) runs through this same function. commitHistory() is deferred
+  // to the first actual mousemove, not fired on mousedown itself: pushing
+  // an undo entry for a click that changed nothing meant Ctrl+Z after a
+  // session of just clicking around to inspect relationships stepped
+  // through a pile of no-op states before reaching a real edit.
+  const startBendDrag = useCallback((edgeId, sx, sy, tx, ty, autoOffset) => {
+    setSelected({ kind: "edge", id: edgeId });
+    beginEdgeDragUX();
+    const dx = tx - sx, dy = ty - sy;
+    const len = Math.sqrt(dx * dx + dy * dy) || 1;
+    const midX = (sx + tx) / 2, midY = (sy + ty) / 2;
+    let raf = 0, pending = null, committed = false;
+    const applyPending = () => {
+      raf = 0;
+      if (pending != null) setDragBend({ edgeId, value: pending });
+    };
+    const onMove = (ev) => {
+      if (!committed) { committed = true; commitHistory(); }
+      const p = rf.screenToFlowPosition({ x: ev.clientX, y: ev.clientY });
+      const totalOffset = (p.x - midX) * (-dy / len) + (p.y - midY) * (dx / len);
+      pending = round2(totalOffset - autoOffset);
+      // Coalesce to one state update per rendered frame — mousemove can
+      // fire far more often than the screen repaints, and each extra call
+      // in between just re-does work nothing will ever see.
+      if (!raf) raf = requestAnimationFrame(applyPending);
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      if (raf) cancelAnimationFrame(raf);
+      endEdgeDragUX();
+      setDragBend(null);
+      if (pending != null) updateEdge(edgeId, { bend: pending });
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }, [commitHistory, setSelected, updateEdge, rf, beginEdgeDragUX, endEdgeDragUX]);
+  // Double-clicking that same handle straightens the line back out, so a
+  // bend dragged too far (or no longer needed once the layout changes) is
+  // one action to undo, not a fiddly drag back to exactly zero.
+  const resetBend = useCallback((edgeId) => {
+    commitHistory();
+    updateEdge(edgeId, { bend: 0 });
+  }, [commitHistory, updateEdge]);
+
+  // Drag either end of a relationship onto a different concept — or a
+  // different side of the same one — to rewire it there directly. React
+  // Flow's own built-in reconnect handle sits at whichever anchor the
+  // library last resolved the edge to, which for a floating (unpinned) end
+  // is *not* where the boundary-point/spread logic above actually draws
+  // it — sometimes tens of pixels off — so the one hit-target to click
+  // never lined up with what's on screen (it's turned off below,
+  // edgesReconnectable={false}, in favour of this).
+  //
+  // Rather than following the raw cursor pixel until the exact instant it
+  // happens to land on a small 9px dot, hovering ANY part of a concept now
+  // snaps the preview straight to that concept's nearest one of its 12
+  // anchors — the same discovery problem "drag from a dot to connect"
+  // solves by lighting up every anchor while a NEW relationship is being
+  // drawn (see the isConnecting/useConnection bit in ConceptNode), just
+  // for dragging an EXISTING relationship's end instead. The line visibly
+  // locks onto that point and the target concept + anchor light up (see
+  // ConceptNode's data.snapAnchorId), so where a drop will land is never a
+  // guess. Only empty canvas (or a folded module — there's no one anchor
+  // on a block standing in for a whole sub-model) leaves it floating, and
+  // dropping there cancels the whole drag, same as before.
+  // commitHistory() is deferred to the first real mousemove here too, for
+  // the same reason as startBendDrag above: without a genuine drag, this
+  // handle only ever gets pressed as a side effect of clicking near it,
+  // and a same-value updateEdge (reconnecting a node to the node it's
+  // already on) is still a no-op worth skipping rather than a phantom
+  // undo step.
+  const startReconnectDrag = useCallback((edgeId, end, startX, startY) => {
+    beginEdgeDragUX();
+    setDragReconnect({ edgeId, end, x: startX, y: startY, snapNodeId: null, snapHandleId: null });
+    let raf = 0, pending = null, committed = false;
+    const resolve = (clientX, clientY) => {
+      const flow = rf.screenToFlowPosition({ x: clientX, y: clientY });
+      const nodeId = document.elementFromPoint(clientX, clientY)?.closest(".react-flow__node")?.getAttribute("data-id");
+      if (nodeId && !isModuleNodeId(nodeId) && !isFrameNodeId(nodeId)) {
+        const anchor = nearestAnchorOnNode(rf.getInternalNode(nodeId), flow.x, flow.y);
+        if (anchor) return { nodeId, handleId: anchor.id, x: anchor.x, y: anchor.y };
+      }
+      return { nodeId: null, handleId: null, x: flow.x, y: flow.y };
+    };
+    const applyPending = () => {
+      raf = 0;
+      if (pending) setDragReconnect({ edgeId, end, x: pending.x, y: pending.y, snapNodeId: pending.nodeId, snapHandleId: pending.handleId });
+    };
+    const onMove = (ev) => {
+      if (!committed) { committed = true; commitHistory(); }
+      pending = resolve(ev.clientX, ev.clientY);
+      if (!raf) raf = requestAnimationFrame(applyPending);
+    };
+    const onUp = (ev) => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      if (raf) cancelAnimationFrame(raf);
+      endEdgeDragUX();
+      setDragReconnect(null);
+      if (!committed) return; // a plain click, never actually dragged: leave the relationship as it was
+      const drop = resolve(ev.clientX, ev.clientY);
+      if (!drop.nodeId) return; // dropped on empty canvas: leave the relationship as it was
+      updateEdge(edgeId, end === "source"
+        ? { source: drop.nodeId, sourceHandle: drop.handleId }
+        : { target: drop.nodeId, targetHandle: drop.handleId });
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }, [commitHistory, updateEdge, rf, beginEdgeDragUX, endEdgeDragUX]);
+
   const rfEdges = useMemo(() => displayEdges.map((e) => {
     const h = resolvedHandles[e.id];
     const slot = edgeSlots[e.id] || {};
     const agg = e.aggregate || null;
     const faded = agg ? !!fadedEdgeIds && agg.edgeIds.every((id) => fadedEdgeIds.has(id)) : !!fadedEdgeIds?.has(e.id);
+    const dimmedByHover = !!hoverConnected && !hoverConnected.edgeIds.has(e.id);
     return {
       id: e.id, source: e.source, target: e.target, type: "influence",
       sourceHandle: h.sourceHandle, targetHandle: h.targetHandle,
@@ -2981,16 +3898,31 @@ function NetworkTabInner({
         edge: e, aggregate: agg, edgeStyle, parallelSlot: parallelSlots[e.id] || 0,
         sourceSlot: slot.sourceSlot ?? 0, sourceCount: slot.sourceCount ?? 1,
         targetSlot: slot.targetSlot ?? 0, targetCount: slot.targetCount ?? 1,
-        faded,
+        faded, dimmedByHover, baseOpacity: edgeBaseOpacity, hideLabel: hideEdgeLabels,
+        onBendDragStart: startBendDrag, onBendReset: resetBend, dragBend,
+        dragReconnect, onReconnectDragStart: startReconnectDrag,
       },
-      // Out-of-scope relationships sit underneath the in-scope ones.
-      zIndex: faded ? 0 : 1,
+      // Every one of these tiers stays BELOW a concept box's own resting
+      // zIndex (0 unselected, higher once selected — React Flow's, not
+      // ours): a relationship's line only has to visually reach a node's
+      // border, never sit on top of the node itself, and keeping the whole
+      // range negative means it never can, however a wash of overlapping
+      // curves gets sorted among themselves. Without that, a line merely
+      // passing near a concept (routine in a dense model) would win any
+      // click or hover aimed at the concept underneath it — the actual
+      // cause of "hard to select" reported against an earlier version of
+      // this z-order, not the hover-highlight feature itself. Out-of-scope
+      // relationships sit lowest, a highlighted (hover-connected) one rises
+      // above the general wash so it reads clearly where several lines
+      // cross, and one whose end is actively being dragged rises highest of
+      // all *and* goes click-through (see isBeingDraggedByUser above) —
+      // raised only for its own visibility while aimed, never competing
+      // with the node it's being dropped onto.
+      zIndex: dragReconnect?.edgeId === e.id || dragBend?.edgeId === e.id ? 10 : faded ? -4 : dimmedByHover ? -4 : hoverConnected ? -2 : -3,
       selected: agg ? selected?.kind === "aggregate" && selected.id === e.id : selected?.kind === "edge" && selected.id === e.id,
-      // A bundled link stands for several relationships, so it cannot be re-attached as one.
-      reconnectable: !agg,
       markerEnd: { type: MarkerType.ArrowClosed, color: agg ? aggregateColor(agg) : e.weight >= 0 ? "#16a34a" : "#ea580c", width: markerSize, height: markerSize },
     };
-  }), [displayEdges, selected, edgeStyle, parallelSlots, markerSize, resolvedHandles, edgeSlots, fadedEdgeIds]);
+  }), [displayEdges, selected, edgeStyle, parallelSlots, markerSize, resolvedHandles, edgeSlots, fadedEdgeIds, hoverConnected, edgeBaseOpacity, hideEdgeLabels, startBendDrag, resetBend, dragBend, dragReconnect, startReconnectDrag]);
 
   const onNodesChange = useCallback((changes) => {
     changes.forEach((ch) => {
@@ -3051,18 +3983,6 @@ function NetworkTabInner({
     commitHistory();
     createEdge(params.source, params.target, params.sourceHandle, params.targetHandle);
   }, [commitHistory, createEdge]);
-
-  // Drag an existing relationship's endpoint onto a different node (or a
-  // different side of the same node) to rewire it, instead of deleting and
-  // recreating it. Whichever handle it's dropped on becomes the new fixed
-  // side for that end.
-  const onReconnect = useCallback((oldEdge, newConnection) => {
-    commitHistory();
-    updateEdge(oldEdge.id, {
-      source: newConnection.source, target: newConnection.target,
-      sourceHandle: newConnection.sourceHandle, targetHandle: newConnection.targetHandle,
-    });
-  }, [commitHistory, updateEdge]);
 
   const onPaneClick = useCallback(() => setSelected(null), [setSelected]);
 
@@ -3240,7 +4160,7 @@ function NetworkTabInner({
   const selectedEdge = selected?.kind === "edge" ? folded.plainEdges.find((e) => e.id === selected.id) : null;
 
   return (
-    <div className="grid grid-cols-[1fr_300px] gap-5 h-[700px]">
+    <div className="grid gap-4 h-[calc(100vh-260px)] min-h-[640px]" style={{ gridTemplateColumns: inspectorCollapsed ? "1fr" : "1fr 280px" }}>
       <div className="bg-white rounded-lg border border-slate-200 p-3 flex flex-col relative">
         <div className="flex items-center gap-2 mb-2 flex-wrap">
           <Btn variant="outline" onClick={() => addVisibleConcept({ x: 200 + Math.random() * 200, y: 150 + Math.random() * 150 })}>
@@ -3248,6 +4168,7 @@ function NetworkTabInner({
           </Btn>
           <Btn variant="outline" onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)"><Undo2 size={14} /></Btn>
           <Btn variant="outline" onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Y)"><Redo2 size={14} /></Btn>
+          <div className="w-px h-5 bg-slate-200 mx-0.5" />
           <div className="relative">
             <Btn variant="outline" onClick={() => setLayoutMenuOpen((v) => !v)} disabled={layoutBusy}>
               <Maximize2 size={14} />{layoutBusy ? "Arranging..." : "Auto Arrange"}<ChevronDown size={12} />
@@ -3266,6 +4187,14 @@ function NetworkTabInner({
             <button onClick={() => setEdgeStyle("curved")} className={`px-2.5 py-1.5 ${edgeStyle === "curved" ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}>Curved</button>
             <button onClick={() => setEdgeStyle("orthogonal")} className={`px-2.5 py-1.5 border-l border-slate-300 ${edgeStyle === "orthogonal" ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}>Orthogonal</button>
           </div>
+          <button
+            onClick={() => setHideEdgeLabels((v) => !v)}
+            title={hideEdgeLabels ? "Show each relationship's numeric weight as a label again" : "Hide the numeric weight labels, so each relationship is shown only by its arrow's color (increase/decrease) and width (strength)"}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border text-xs ${hideEdgeLabels ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"}`}
+          >
+            {hideEdgeLabels ? <EyeOff size={13} /> : <Eye size={13} />}Labels
+          </button>
+          {(setCollapsedModules && moduleKeysInView.length >= 2) || setDisplayMode ? <div className="w-px h-5 bg-slate-200 mx-0.5" /> : null}
           {setCollapsedModules && moduleKeysInView.length >= 2 && (
             <div className="flex items-center border border-slate-300 rounded-md overflow-hidden text-xs" role="group" aria-label="Model structure">
               <button
@@ -3306,8 +4235,61 @@ function NetworkTabInner({
           <Btn variant="outline" onClick={exportDiagram} disabled={exportingPng} title="Download the current diagram exactly as shown (layout, colors, zoom/pan) as a PNG image">
             <Download size={14} />{exportingPng ? "Exporting..." : "Export PNG"}
           </Btn>
-          <span className="text-[11px] text-slate-400 ml-auto italic">
-            {spaceHeld ? "Pan mode (space held)" : "Drag any side of a node to connect it (top, right, bottom, or left); double-click empty space to add a concept"}
+          <div className="w-px h-5 bg-slate-200 mx-0.5" />
+          <div className="relative">
+            <div className="flex items-center gap-1 border border-slate-300 rounded-md px-2 py-1 bg-white">
+              <Search size={13} className="text-slate-400 shrink-0" />
+              <input
+                value={searchQuery}
+                onChange={(e) => { setSearchQuery(e.target.value); setSearchOpen(true); }}
+                onFocus={() => setSearchOpen(true)}
+                onBlur={() => setTimeout(() => setSearchOpen(false), 150)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && searchMatches.length) focusOnConceptId(searchMatches[0].id);
+                  if (e.key === "Escape") { setSearchOpen(false); e.currentTarget.blur(); }
+                }}
+                placeholder="Find a concept..."
+                className="text-xs outline-none w-36 placeholder:text-slate-400"
+              />
+              {searchQuery && (
+                <button onClick={() => setSearchQuery("")} className="text-slate-300 hover:text-slate-500" title="Clear search">
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+            {searchOpen && searchQuery.trim() && (
+              <div className="absolute z-30 mt-1 w-64 bg-white border border-slate-200 rounded-md shadow-lg py-1 max-h-64 overflow-auto">
+                {searchMatches.length === 0 ? (
+                  <p className="px-3 py-1.5 text-xs text-slate-400">No concepts match &ldquo;{searchQuery}&rdquo;</p>
+                ) : (
+                  searchMatches.map((c) => (
+                    <button
+                      key={c.id}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => focusOnConceptId(c.id)}
+                      className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center justify-between gap-2"
+                    >
+                      <span className="truncate">{c.name}</span>
+                      <span className="text-[10px] text-slate-400 shrink-0 ml-2">{c.category}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+          <span className="ml-auto flex items-center gap-2">
+            {spaceHeld && <span className="text-[11px] text-cobalt-700 font-medium">Pan mode (space held)</span>}
+            <Info size={13} className="text-slate-300 shrink-0" title="Drag any side of a node to connect it (top, right, bottom, or left); double-click empty space to add a concept. Hover a node to trace only its own connections." />
+            {/* "Collapse"/"Expand", not "Hide"/"Show" — this toolbar already
+                has a "Hide" for out-of-scope display mode and a "Hide X"
+                per module chip above; a third, unrelated "Hide" button
+                right next to them read as one more of the same choice
+                instead of the distinct "close the side panel" action it
+                actually is. */}
+            <Btn variant="outline" onClick={() => setInspectorCollapsed((v) => !v)} title={inspectorCollapsed ? "Expand the Inspector panel" : "Collapse the Inspector panel, so the map fills the width"}>
+              {inspectorCollapsed ? <PanelLeftClose size={14} className="rotate-180" /> : <PanelLeftClose size={14} />}
+              {inspectorCollapsed ? "Expand panel" : "Collapse panel"}
+            </Btn>
           </span>
         </div>
 
@@ -3341,7 +4323,7 @@ function NetworkTabInner({
           onDoubleClick={(e) => {
             // Only add a concept when the double-click lands on empty canvas:
             // not on a node, edge, handle, or a UI control like the minimap.
-            if (e.target.closest(".react-flow__node, .react-flow__edge, .react-flow__handle, .react-flow__minimap, .react-flow__controls")) return;
+            if (e.target.closest(".react-flow__node, .react-flow__edge, .react-flow__handle, .react-flow__minimap, .react-flow__controls, .react-flow__edgelabel-renderer")) return;
             onPaneDoubleClick(e);
           }}
         >
@@ -3365,9 +4347,13 @@ function NetworkTabInner({
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onConnect={onConnect}
-              onReconnect={onReconnect}
+              edgesReconnectable={false}
               onPaneClick={onPaneClick}
               onNodeDoubleClick={(e, node) => { if (isModuleNodeId(node.id)) expandModule(node.id.slice(MODULE_PREFIX.length)); }}
+              onNodeMouseEnter={(e, node) => { if (!edgeDragActiveRef.current) setHoverNodeIdNow(node.id); }}
+              onNodeMouseLeave={() => { if (!edgeDragActiveRef.current) clearHoverNodeIdSoon(); }}
+              onNodeDragStart={() => setHoverNodeIdNow(null)}
+              onMoveStart={() => setHoverNodeIdNow(null)}
               connectionMode="loose"
               panOnDrag={spaceHeld ? [0, 1, 2] : [1, 2]}
               nodesDraggable={!spaceHeld}
@@ -3407,6 +4393,7 @@ function NetworkTabInner({
         </div>
       </div>
 
+      {!inspectorCollapsed && (
       <div className="bg-white rounded-lg border border-slate-200 p-4 overflow-auto flex flex-col">
         <h3 className="font-semibold text-sm mb-3">Inspector</h3>
         {selectedConcept && (() => {
@@ -3437,7 +4424,7 @@ function NetworkTabInner({
                   onChange={(e) => updateConcept(c.id, { name: e.target.value })}
                   onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
                   placeholder="What does this concept stand for?"
-                  className="w-full text-sm font-medium border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  className="w-full text-sm font-medium border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-cobalt-500"
                 />
               </div>
 
@@ -3452,7 +4439,7 @@ function NetworkTabInner({
                         <button
                           key={m.key}
                           onClick={() => { if (!on) { commitHistory(); updateConcept(c.id, { category: m.categoryValue }); } }}
-                          className={`px-1.5 py-0.5 rounded border text-[11px] ${on ? "ring-2 ring-teal-500 text-slate-900 font-medium" : "text-slate-600 hover:ring-1 hover:ring-slate-400"}`}
+                          className={`px-1.5 py-0.5 rounded border text-[11px] ${on ? "ring-2 ring-cobalt-500 text-slate-900 font-medium" : "text-slate-600 hover:ring-1 hover:ring-slate-400"}`}
                           style={{ background: st.bg, borderColor: st.border }}
                         >
                           {m.label}
@@ -3489,7 +4476,7 @@ function NetworkTabInner({
                   <input
                     type="range" min={-1} max={1} step={0.05} value={c.initialValue ?? 0}
                     onChange={(e) => updateConcept(c.id, { initialValue: clamp(parseFloat(e.target.value) || 0) })}
-                    className="flex-1 accent-teal-700" aria-label="Starting value"
+                    className="flex-1 accent-cobalt-700" aria-label="Starting value"
                   />
                   <input
                     type="number" min={-1} max={1} step={0.05} value={c.initialValue ?? 0}
@@ -3533,7 +4520,7 @@ function NetworkTabInner({
                           if (linkDir === "out") createEdge(c.id, linkTarget); else createEdge(linkTarget, c.id);
                           setLinkTarget("");
                         }}
-                        className="px-2 py-0.5 rounded bg-teal-700 text-white text-[11px] disabled:opacity-40"
+                        className="px-2 py-0.5 rounded bg-cobalt-700 text-white text-[11px] disabled:opacity-40"
                       >Add</button>
                     </div>
                     <p className="text-[10px] text-slate-400">You can then set whether it increases or decreases, and how strongly. Or drag from a dot on the concept's edge to another concept.</p>
@@ -3562,9 +4549,9 @@ function NetworkTabInner({
               </div>
               <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 items-baseline text-xs">
                 <span className="text-slate-500">From</span>
-                <button onClick={() => setSelected({ kind: "concept", id: e.source })} className="text-left font-medium truncate hover:text-teal-700" title="Select this concept">{src?.name}</button>
+                <button onClick={() => setSelected({ kind: "concept", id: e.source })} className="text-left font-medium truncate hover:text-cobalt-700" title="Select this concept">{src?.name}</button>
                 <span className="text-slate-500">To</span>
-                <button onClick={() => setSelected({ kind: "concept", id: e.target })} className="text-left font-medium truncate hover:text-teal-700" title="Select this concept">{tgt?.name}</button>
+                <button onClick={() => setSelected({ kind: "concept", id: e.target })} className="text-left font-medium truncate hover:text-cobalt-700" title="Select this concept">{tgt?.name}</button>
               </div>
               <div>
                 <div className="text-xs text-slate-500 mb-1">Effect</div>
@@ -3637,7 +4624,7 @@ function NetworkTabInner({
               </p>
               <div className="flex gap-2 flex-wrap">
                 <button onClick={() => expandModule(key)} className="px-2 py-1 rounded border border-slate-300 bg-white hover:bg-slate-50">Unfold</button>
-                <button onClick={() => openModuleAsModel(key)} className="px-2 py-1 rounded border border-teal-300 bg-teal-50 text-teal-800 hover:bg-teal-100" title="Set the analysis scope to this module only">Open as own model</button>
+                <button onClick={() => openModuleAsModel(key)} className="px-2 py-1 rounded border border-cobalt-300 bg-cobalt-50 text-cobalt-800 hover:bg-cobalt-100" title="Set the analysis scope to this module only">Open as own model</button>
               </div>
               <div>
                 <div className="font-semibold text-slate-600 mb-1">Concepts</div>
@@ -3717,6 +4704,7 @@ function NetworkTabInner({
           </ul>
         </div>
       </div>
+      )}
     </div>
   );
 }
@@ -3766,7 +4754,7 @@ const ROLE_STYLE = {
   Hub: "bg-purple-50 text-purple-700",
   Driver: "bg-blue-50 text-blue-700",
   Receiver: "bg-orange-50 text-orange-700",
-  Connector: "bg-teal-50 text-teal-700",
+  Connector: "bg-cobalt-50 text-cobalt-700",
   Isolated: "bg-slate-100 text-slate-500",
 };
 
@@ -3911,14 +4899,14 @@ function InfluenceMetricsTab({ concepts, edges, settings, onHighlight, multiScal
                   const active = col.key === sortCol.key;
                   const arrow = active ? (sort.dir === "desc" ? "↓" : "↑") : "↕";
                   return (
-                    <th key={col.key} className={`py-1.5 font-medium pr-3 ${active ? "text-teal-800" : ""}`} aria-sort={active ? (sort.dir === "desc" ? "descending" : "ascending") : "none"}>
+                    <th key={col.key} className={`py-1.5 font-medium pr-3 ${active ? "text-cobalt-800" : ""}`} aria-sort={active ? (sort.dir === "desc" ? "descending" : "ascending") : "none"}>
                       <button
                         onClick={() => onSort(col)}
                         title={`${METRIC_HELP[col.key] || col.help || ""}${METRIC_HELP[col.key] || col.help ? "\n\n" : ""}Click to rank by ${col.label}.`}
                         className="inline-flex items-center gap-1 hover:text-slate-700 text-left"
                       >
                         {col.label}
-                        <span className={active ? "text-teal-700" : "text-slate-300"}>{arrow}</span>
+                        <span className={active ? "text-cobalt-700" : "text-slate-300"}>{arrow}</span>
                       </button>
                     </th>
                   );
@@ -3932,7 +4920,7 @@ function InfluenceMetricsTab({ concepts, edges, settings, onHighlight, multiScal
                   {columns.map((col) => (
                     <td
                       key={col.key}
-                      className={`py-1.5 pr-3 ${col.type === "num" ? "font-mono" : ""} ${col.key === sortCol.key ? "bg-teal-50/60 font-semibold text-slate-900" : ""}`}
+                      className={`py-1.5 pr-3 ${col.type === "num" ? "font-mono" : ""} ${col.key === sortCol.key ? "bg-cobalt-50/60 font-semibold text-slate-900" : ""}`}
                     >
                       {cell(m, col.key)}
                     </td>
@@ -3949,7 +4937,7 @@ function InfluenceMetricsTab({ concepts, edges, settings, onHighlight, multiScal
         stats={[
           { label: "Concepts / relationships", value: `${concepts.length} / ${edges.length}` },
           { label: "Simulation runs behind these scores", value: concepts.length, hint: "Influence and Sensitivity need one full driven run per concept. Structural columns (degree, centrality, role) need none." },
-          { label: "Transfer function / λ", value: `${settings.squashFunction ?? "tanh"} / ${settings.lambda ?? 1}` },
+          { label: "Transfer function / λ", value: transferFunctionLabel(structuralSettings(settings)), hint: settings.squashFunction === "linear" ? "The simulation settings currently use no squashing function, but Influence and Sensitivity are only meaningful on a bounded scale (an unbounded model can run away), so these scores use tanh at the same steepness." : undefined },
           {
             label: "Feedback loops found",
             value: stats.loops.capped ? `${stats.loops.total}+ (capped)` : stats.loops.total,
@@ -4054,7 +5042,7 @@ function InfluenceMetricsTab({ concepts, edges, settings, onHighlight, multiScal
                   {categorySort.sorted.map((c) => (
                     <tr key={c.category} className="border-b border-slate-50">
                       {categoryColumns.map((col) => (
-                        <td key={col.key} className={`py-1.5 pr-3 ${col.type === "num" ? "font-mono" : ""} ${col.key === categorySort.sortKey ? "bg-teal-50/60 font-semibold text-slate-900" : ""}`}>
+                        <td key={col.key} className={`py-1.5 pr-3 ${col.type === "num" ? "font-mono" : ""} ${col.key === categorySort.sortKey ? "bg-cobalt-50/60 font-semibold text-slate-900" : ""}`}>
                           {col.key === "category" ? (
                             <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
                               <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: categoryColor.get(c.category) }} />
@@ -4191,7 +5179,7 @@ function MultiScaleSection({ report, fresh = true, scopeMetrics, viewInfo, onHig
   if (!report) {
     return (
       <div className="bg-white rounded-lg border border-slate-200 p-4 text-xs text-slate-500 flex items-center gap-2">
-        <Layers size={15} className="text-teal-700" />Computing multi-scale ranks (full nexus, each module, nexus interface)&hellip;
+        <Layers size={15} className="text-cobalt-700" />Computing multi-scale ranks (full nexus, each module, nexus interface)&hellip;
       </div>
     );
   }
@@ -4208,7 +5196,7 @@ function MultiScaleSection({ report, fresh = true, scopeMetrics, viewInfo, onHig
     <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-4">
       <div>
         <h3 className="font-semibold text-sm flex items-center gap-1.5">
-          <Layers size={15} className="text-teal-700" />Multi-scale analysis
+          <Layers size={15} className="text-cobalt-700" />Multi-scale analysis
           {!fresh && <span className="text-[11px] font-normal text-amber-700">updating for your latest edit&hellip;</span>}
         </h3>
         <p className="text-xs text-slate-500 mt-1">
@@ -4359,10 +5347,10 @@ function FoldableBox({ storageKey, title, icon: Icon = HelpCircle, summary, badg
         className="w-full flex items-center gap-2 px-4 py-3 text-left rounded-lg hover:bg-slate-50 transition-colors"
       >
         {open ? <ChevronDown size={15} className="text-slate-500 shrink-0" /> : <ChevronRight size={15} className="text-slate-500 shrink-0" />}
-        <Icon size={15} className="text-teal-700 shrink-0" />
+        <Icon size={15} className="text-cobalt-700 shrink-0" />
         <span className="text-sm font-semibold text-slate-800">{title}</span>
         {badge && <span className="text-xs font-normal text-slate-400">{badge}</span>}
-        <span className="ml-auto shrink-0 text-[11px] font-medium text-teal-700 border border-teal-200 bg-teal-50 rounded px-1.5 py-0.5">
+        <span className="ml-auto shrink-0 text-[11px] font-medium text-cobalt-700 border border-cobalt-200 bg-cobalt-50 rounded px-1.5 py-0.5">
           {open ? "Hide" : "Show"}
         </span>
       </button>
@@ -4415,10 +5403,10 @@ function useTableSort(rows, columns, initial) {
 function SortHeader({ col, sortKey, sortDir, onSort, className = "" }) {
   const active = col.key === sortKey;
   return (
-    <th className={`py-1.5 font-medium pr-3 ${active ? "text-teal-800" : ""} ${className}`} aria-sort={active ? (sortDir === "desc" ? "descending" : "ascending") : "none"}>
+    <th className={`py-1.5 font-medium pr-3 ${active ? "text-cobalt-800" : ""} ${className}`} aria-sort={active ? (sortDir === "desc" ? "descending" : "ascending") : "none"}>
       <button onClick={() => onSort(col)} title={`${col.help ? col.help + "\n\n" : ""}Click to sort by ${col.label}.`} className="inline-flex items-center gap-1 hover:text-slate-700 text-left">
         {col.label}
-        <span className={active ? "text-teal-700" : "text-slate-300"}>{active ? (sortDir === "desc" ? "↓" : "↑") : "↕"}</span>
+        <span className={active ? "text-cobalt-700" : "text-slate-300"}>{active ? (sortDir === "desc" ? "↓" : "↑") : "↕"}</span>
       </button>
     </th>
   );
@@ -4579,7 +5567,7 @@ function ModuleGuide({ concepts, edges, networkView, setNetworkView, viewInfo, d
                         <td className="py-1.5 pr-3 font-mono">{r.out}</td>
                         <td className="py-1.5 pr-3 font-mono">{r.in}</td>
                         <td className="py-1.5 pr-3 text-slate-500">{r.partners.size ? [...r.partners].map((k) => labelOf.get(k)).join(", ") : <span className="text-slate-300">none</span>}</td>
-                        <td className="py-1.5 pr-3">{inScope.has(r.key) ? <span className="text-teal-700">yes</span> : <span className="text-slate-400">no</span>}</td>
+                        <td className="py-1.5 pr-3">{inScope.has(r.key) ? <span className="text-cobalt-700">yes</span> : <span className="text-slate-400">no</span>}</td>
                         <td className="py-1.5 text-right whitespace-nowrap">
                           {setCollapsedModules && (
                             <button
@@ -4590,7 +5578,7 @@ function ModuleGuide({ concepts, edges, networkView, setNetworkView, viewInfo, d
                               {collapsedModules.includes(r.key) ? "Unfold on map" : "Fold on map"}
                             </button>
                           )}
-                          <button onClick={() => setNetworkView((v) => ({ ...v, mode: "modules", selected: [r.key] }))} className="text-teal-700 hover:underline" title={`Set the analysis scope to ${r.label} only`}>
+                          <button onClick={() => setNetworkView((v) => ({ ...v, mode: "modules", selected: [r.key] }))} className="text-cobalt-700 hover:underline" title={`Set the analysis scope to ${r.label} only`}>
                             Analyse on its own
                           </button>
                         </td>
@@ -4648,7 +5636,7 @@ function FeedbackLoopsSection({ concepts, edges, onHighlight }) {
     const c = conceptById.get(id);
     const st = categoryStyle(c?.category);
     return (
-      <button onClick={() => onHighlight(id)} className="inline-flex px-1.5 py-0.5 rounded border text-[11px] text-slate-800 hover:ring-1 hover:ring-teal-400 whitespace-nowrap" style={{ background: st.bg, borderColor: st.border }}>
+      <button onClick={() => onHighlight(id)} className="inline-flex px-1.5 py-0.5 rounded border text-[11px] text-slate-800 hover:ring-1 hover:ring-cobalt-400 whitespace-nowrap" style={{ background: st.bg, borderColor: st.border }}>
         {c?.name}
       </button>
     );
@@ -4659,7 +5647,7 @@ function FeedbackLoopsSection({ concepts, edges, onHighlight }) {
   return (
     <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-4">
       <div>
-        <h3 className="font-semibold text-sm flex items-center gap-1.5"><RotateCcw size={15} className="text-teal-700" />Feedback loops</h3>
+        <h3 className="font-semibold text-sm flex items-center gap-1.5"><RotateCcw size={15} className="text-cobalt-700" />Feedback loops</h3>
         <p className="text-xs text-slate-500 mt-1">
           A feedback loop is a route that returns to where it started (A &rarr; B &rarr; C &rarr; A), so a change can amplify or dampen itself.
           <strong> Reinforcing (R)</strong> loops amplify change; <strong>balancing (B)</strong> loops counteract it. Counted for the whole system in scope, inside each module, and between modules.
@@ -4806,7 +5794,7 @@ function FeedbackLoopsSection({ concepts, edges, onHighlight }) {
               </tbody>
             </table>
             {showCount < shown.length && (
-              <button onClick={() => setShowCount((n) => n + 50)} className="mt-2 text-xs text-teal-700 hover:underline">Show 50 more</button>
+              <button onClick={() => setShowCount((n) => n + 50)} className="mt-2 text-xs text-cobalt-700 hover:underline">Show 50 more</button>
             )}
           </div>
         )}
@@ -4857,7 +5845,7 @@ function InfluenceRoutesTab({ concepts, edges, config, setConfig, onHighlight })
     const c = conceptById.get(id);
     const st = categoryStyle(c?.category);
     return (
-      <button onClick={() => onHighlight(id)} className="inline-flex px-1.5 py-0.5 rounded border text-[11px] text-slate-800 hover:ring-1 hover:ring-teal-400 whitespace-nowrap" style={{ background: st.bg, borderColor: st.border }} title={`${c?.name} (${moduleLabel.get(moduleOf.get(id))})`}>
+      <button onClick={() => onHighlight(id)} className="inline-flex px-1.5 py-0.5 rounded border text-[11px] text-slate-800 hover:ring-1 hover:ring-cobalt-400 whitespace-nowrap" style={{ background: st.bg, borderColor: st.border }} title={`${c?.name} (${moduleLabel.get(moduleOf.get(id))})`}>
         {c?.name}
       </button>
     );
@@ -4973,7 +5961,7 @@ function InfluenceRoutesTab({ concepts, edges, config, setConfig, onHighlight })
                           <td className="py-1.5 pr-3"><ModuleChip category={moduleCategory.get(b.moduleKey)} label={moduleLabel.get(b.moduleKey)} /></td>
                           <td className="py-1.5 pr-3">
                             <div className="flex items-center gap-1.5">
-                              <div className="w-20 h-1.5 bg-slate-100 rounded"><div className="h-1.5 bg-teal-600 rounded" style={{ width: `${Math.round(b.share * 100)}%` }} /></div>
+                              <div className="w-20 h-1.5 bg-slate-100 rounded"><div className="h-1.5 bg-cobalt-600 rounded" style={{ width: `${Math.round(b.share * 100)}%` }} /></div>
                               <span className="font-mono">{Math.round(b.share * 100)}%</span>
                             </div>
                           </td>
@@ -5065,7 +6053,7 @@ function InfluenceRoutesTab({ concepts, edges, config, setConfig, onHighlight })
                   </tbody>
                 </table>
                 {showCount < result.paths.length && (
-                  <button onClick={() => setShowCount((n) => n + 100)} className="mt-2 text-xs text-teal-700 hover:underline">Show 100 more</button>
+                  <button onClick={() => setShowCount((n) => n + 100)} className="mt-2 text-xs text-cobalt-700 hover:underline">Show 100 more</button>
                 )}
               </div>
             )}
@@ -5082,7 +6070,7 @@ function InfluenceRoutesTab({ concepts, edges, config, setConfig, onHighlight })
 // Sensitivity Analysis tab
 // ============================================================================
 function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, settings, result, setResult, setChartCache, modelVersion }) {
-  useCachedChart(setChartCache, "sensitivityScores", '[data-chart="sensitivity-scores"]', "svg", [result]);
+  useCachedChart(setChartCache, "sensitivityScores", [result]);
   const [sensInput, setSensInput] = useState(null);
   const [sensOutputs, setSensOutputs] = useState([]);
   const [sensMin, setSensMin] = useState(-1);
@@ -5161,7 +6149,7 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
   };
   const isStale = !!result && result.__modelVersion !== modelVersion;
 
-  const lineColors = ["#0f766e", "#c2410c", "#7c3aed", "#0369a1", "#be123c", "#4d7c0f"];
+  const lineColors = ["#2456d6", "#c2410c", "#7c3aed", "#0f766e", "#be123c", "#4d7c0f"];
   const lineKeys = useMemo(() => {
     if (!result) return [];
     if (!result.multi) return sensOutputs.map((id) => ({ key: id, label: concepts.find((c) => c.id === id)?.name }));
@@ -5222,7 +6210,7 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
               {availableOutputConcepts.map((c) => (
                 <button
                   key={c.id} onClick={() => toggleOutput(c.id)}
-                  className={`text-[10px] px-1.5 py-0.5 rounded border ${sensOutputs.includes(c.id) ? "border-teal-700 bg-teal-50 text-teal-800" : "border-slate-200 text-slate-500 hover:border-slate-400"}`}
+                  className={`text-[10px] px-1.5 py-0.5 rounded border ${sensOutputs.includes(c.id) ? "border-cobalt-700 bg-cobalt-50 text-cobalt-800" : "border-slate-200 text-slate-500 hover:border-slate-400"}`}
                 >
                   {c.name}
                 </button>
@@ -5299,7 +6287,7 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
                 value: (Math.max(2, sensSteps) + 1) * (result.scenarioIds?.length || 1) + 2 * Math.max(0, concepts.length - 1),
                 hint: "One full run per sweep point per scenario for the response curves, plus two runs per concept (low end and high end) for the tornado chart.",
               },
-              { label: "Transfer function / λ", value: `${settings.squashFunction ?? "tanh"} / ${settings.lambda ?? 1}` },
+              { label: "Transfer function / λ", value: transferFunctionLabel(settings) },
               {
                 label: "Tornado entries shown",
                 value: `${result.tornado.length} of ${Math.max(0, concepts.length - 1)}`,
@@ -5337,33 +6325,57 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
             </div>
 
             <div className="bg-white rounded-lg border border-slate-200 p-4">
-              <h4 className="text-sm font-semibold mb-2">Elasticity metrics</h4>
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-left text-slate-400 border-b border-slate-100">
-                    <th className="py-1 font-medium" title="Average slope of the output across the full swept input range: (output at max input − output at min input) / (max input − min input).">Output <HelpCircle size={10} className="inline text-slate-300" /></th>
-                    <th className="py-1 font-medium">Min</th>
-                    <th className="py-1 font-medium">Max</th>
-                    <th className="py-1 font-medium">Elasticity</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {result.elasticity.map((e) => (
-                    <tr key={e.id} className="border-b border-slate-50">
-                      <td className="py-1">{e.name}</td>
-                      <td className="py-1 font-mono">{e.min}</td>
-                      <td className="py-1 font-mono">{e.max}</td>
-                      <td className="py-1 font-mono font-semibold">{e.elasticity}</td>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-sm font-semibold">Elasticity metrics</h4>
+                <Btn variant="outline" onClick={() => downloadCSV([["Output", "Min", "Max", "Elasticity"], ...result.elasticity.map((e) => [e.name, e.min, e.max, e.elasticity])], "sensitivity-elasticity.csv")}><Download size={13} />Export CSV</Btn>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="text-left text-slate-400 border-b border-slate-200">
+                      <th className="py-1.5 pr-3 font-medium" title="Average slope of the output across the full swept input range: (output at max input − output at min input) / (max input − min input).">Output <HelpCircle size={10} className="inline text-slate-300" /></th>
+                      <th className="py-1.5 pr-3 font-medium text-right">Min</th>
+                      <th className="py-1.5 pr-3 font-medium text-right">Max</th>
+                      <th className="py-1.5 pr-0 font-medium text-right">Elasticity</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-              <h4 className="text-sm font-semibold mt-4 mb-2">Impact ranking</h4>
-              <ol className="text-xs space-y-1 max-h-40 overflow-auto">
-                {result.tornado.map((t, i) => (
-                  <li key={i} className="flex justify-between"><span>{i + 1}. {t.name}</span><span className="font-mono">{t.impact >= 0 ? "+" : ""}{t.impact}</span></li>
-                ))}
-              </ol>
+                  </thead>
+                  <tbody>
+                    {result.elasticity.map((e) => (
+                      <tr key={e.id} className="border-b border-slate-100">
+                        <td className="py-1.5 pr-3 align-top">{e.name}</td>
+                        <td className="py-1.5 pr-3 font-mono text-right tabular-nums">{e.min}</td>
+                        <td className="py-1.5 pr-3 font-mono text-right tabular-nums">{e.max}</td>
+                        <td className="py-1.5 pr-0 font-mono text-right tabular-nums font-semibold">{e.elasticity}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex items-center justify-between mt-5 mb-2">
+                <h4 className="text-sm font-semibold">Impact ranking</h4>
+                <Btn variant="outline" onClick={() => downloadCSV([["Rank", "Concept", "Impact"], ...result.tornado.map((t, i) => [i + 1, t.name, t.impact])], "sensitivity-impact-ranking.csv")}><Download size={13} />Export CSV</Btn>
+              </div>
+              <div className="overflow-x-auto overflow-y-auto max-h-72 border border-slate-100 rounded">
+                <table className="w-full text-xs border-collapse">
+                  <thead className="sticky top-0 bg-white">
+                    <tr className="text-left text-slate-400 border-b border-slate-200">
+                      <th className="py-1.5 pl-2 pr-2 font-medium w-8 text-right">#</th>
+                      <th className="py-1.5 pr-3 font-medium">Concept</th>
+                      <th className="py-1.5 pr-3 font-medium text-right" title="Difference between the high-end and low-end runs for this concept, one at a time (see the tornado chart above).">Impact</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.tornado.map((t, i) => (
+                      <tr key={i} className="border-b border-slate-50 hover:bg-slate-50">
+                        <td className="py-1.5 pl-2 pr-2 text-right text-slate-400 font-mono tabular-nums">{i + 1}</td>
+                        <td className="py-1.5 pr-3">{t.name}</td>
+                        <td className={`py-1.5 pr-3 font-mono text-right tabular-nums font-medium ${t.impact >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{t.impact >= 0 ? "+" : ""}{t.impact}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
 
@@ -5395,6 +6407,293 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
 }
 
 // ============================================================================
+// Monte Carlo Simulation tab
+// ============================================================================
+
+// Not wired into the Export Analysis Workbook's chart cache (unlike the
+// other analysis tabs, via useCachedChart/CHART_TARGETS): its output is
+// several small distribution charts rather than one figure, and a full
+// summary table already exports on its own via CSV below.
+function MonteCarloTab({ concepts, edges, scenarios, activeScenarioId, settings, result, setResult, modelVersion }) {
+  const [scenarioId, setScenarioId] = useState(activeScenarioId);
+  const [runs, setRuns] = useState(500);
+  const [weightSpread, setWeightSpread] = useState(0.1);
+  const [initialSpread, setInitialSpread] = useState(0);
+  const [seed, setSeed] = useState(() => Math.floor(Math.random() * 1e6));
+  const [chartIds, setChartIds] = useState([]);
+  const [running, setRunning] = useState(false);
+  const [progress, setProgress] = useState(null);
+  const runnerRef = useRef(null);
+  // Leaving the tab stops a run in progress, so it can't keep computing unseen
+  // (and can't race a fresh run started after coming back).
+  useEffect(() => () => { if (runnerRef.current) runnerRef.current.cancelled = true; }, []);
+
+  // If the scenario this was set to run against was since deleted, fall
+  // back to whatever is active now instead of silently running against
+  // nothing (or throwing) the next time Run is clicked.
+  useEffect(() => {
+    if (!scenarios.some((s) => s.id === scenarioId)) setScenarioId(activeScenarioId);
+  }, [scenarios, scenarioId, activeScenarioId]);
+
+  const run = () => {
+    if (running) return;
+    const scenario = scenarios.find((s) => s.id === scenarioId) || scenarios[0];
+    if (!scenario) return;
+    const token = { cancelled: false };
+    runnerRef.current = token;
+    setRunning(true);
+    setProgress({ done: 0, total: runs });
+    const gen = runMonteCarlo(concepts, edges, scenario, settings, { runs, weightSpread, initialSpread, seed });
+    const started = performance.now();
+    const step = () => {
+      if (token.cancelled) { setRunning(false); setProgress(null); return; }
+      let r;
+      const t0 = performance.now();
+      try {
+        do { r = gen.next(); } while (!r.done && performance.now() - t0 < 40);
+      } catch (err) {
+        setRunning(false); setProgress(null);
+        alert("The Monte Carlo run stopped with an error: " + (err?.message || err));
+        return;
+      }
+      if (r.done) {
+        const value = r.value;
+        // Chart the 3 concepts whose distribution actually moved the most,
+        // so there's something worth looking at the instant the run
+        // finishes instead of an empty "pick a concept" prompt.
+        const topIds = [...value.perConcept].sort((a, b) => b.stdDev - a.stdDev).slice(0, 3).map((p) => p.id);
+        setChartIds(topIds);
+        setResult({ ...value, scenarioId: scenario.id, scenarioName: scenario.name, config: { runs, weightSpread, initialSpread, seed }, settingsUsed: settings, seconds: (performance.now() - started) / 1000, __modelVersion: modelVersion });
+        setRunning(false);
+        setProgress(null);
+      } else {
+        setProgress({ ...r.value });
+        setTimeout(step, 0);
+      }
+    };
+    setTimeout(step, 30);
+  };
+  const cancel = () => { if (runnerRef.current) runnerRef.current.cancelled = true; };
+
+  const isStale = !!result && result.__modelVersion !== modelVersion;
+  const toggleChart = (id) => setChartIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
+
+  const columns = [
+    { key: "name", label: "Concept", type: "text" },
+    { key: "nominal", label: "Nominal", type: "num", help: "The result with every weight exactly as recorded, no perturbation." },
+    { key: "mean", label: "Mean", type: "num" },
+    { key: "median", label: "Median", type: "num" },
+    { key: "stdDev", label: "Std dev", type: "num", help: "How much the result varies across runs. Higher means this concept's outcome depends more on the exact weights than the nominal number alone suggests." },
+    { key: "p5", label: "P5", type: "num", help: "5th percentile: only 5% of runs landed below this." },
+    { key: "p95", label: "P95", type: "num", help: "95th percentile: only 5% of runs landed above this." },
+    { key: "min", label: "Min", type: "num" },
+    { key: "max", label: "Max", type: "num" },
+  ];
+  const { sorted, sortKey, sortDir, onSort } = useTableSort(result?.perConcept || [], columns, { key: "stdDev", dir: "desc" });
+
+  const exportCsv = () => {
+    if (!result) return;
+    downloadCSV(
+      [["Concept", "Nominal", "Mean", "Median", "Std dev", "P5", "P25", "P75", "P95", "Min", "Max"],
+        ...result.perConcept.map((p) => [p.name, p.nominal, p.mean, p.median, p.stdDev, p.p5, p.p25, p.p75, p.p95, p.min, p.max])],
+      "monte-carlo-summary.csv"
+    );
+  };
+
+  return (
+    <div className="space-y-5">
+      <FoldableBox
+        storageKey="se.fold.monteCarloWhat"
+        icon={Dices}
+        title="What is Monte Carlo simulation?"
+        summary="Re-runs the model hundreds of times with every weight nudged by random noise, to show how much the result actually depends on the uncertainty behind an expert-elicited weight."
+      >
+        <div className="text-xs text-slate-500 space-y-3">
+          <div className="space-y-2">
+            <p>Every relationship weight in this model is a judgment, elicited from a stakeholder, drawn from literature, or estimated, not a measured physical constant. <strong>Monte Carlo simulation</strong> asks how much that uncertainty matters: it re-runs the model many times, each time nudging every weight by a small random amount, and records where every concept settles each time. The spread of results across all those runs is the model's own answer to "how much does the exact number picked for each weight actually matter?"</p>
+            <p>A concept whose result barely moves across runs is <strong>robust</strong> to weight uncertainty: the nominal (as-recorded) estimate can be trusted even if any one weight is a bit off. A concept whose result swings widely is <strong>sensitive</strong> to weight uncertainty: reporting the nominal estimate alone is misleading without also giving the range it could plausibly fall in.</p>
+            <p>This asks a different question from the Sensitivity Analysis tab, which moves one concept or one weight deliberately, one at a time, to find leverage points. Monte Carlo moves every weight at once, at random, the way real uncertainty in an elicited weight actually behaves. It's a check on how much to trust a result, not a search for where to intervene.</p>
+          </div>
+          <div className="pt-2 border-t border-slate-100">
+            <p className="font-medium text-slate-700 mb-1.5">Steps</p>
+            <ol className="list-decimal list-inside space-y-1">
+              <li>Choose which scenario to test (Baseline by default).</li>
+              <li>Set how many simulations to run and how much uncertainty (±) to assume in each weight.</li>
+              <li>Click Run simulation.</li>
+              <li>Read the summary table: sort by Std dev to find which concepts are most sensitive to weight uncertainty, and compare each one's Nominal value against its P5-P95 range.</li>
+              <li>Tick concepts below the table to see their full distribution as a histogram.</li>
+            </ol>
+          </div>
+        </div>
+      </FoldableBox>
+
+      <div className="bg-white rounded-lg border border-slate-200 p-4">
+        <h3 className="font-semibold text-sm mb-3">Run a simulation</h3>
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
+          <div>
+            <label className="text-xs text-slate-500 font-medium">Scenario to test</label>
+            <select value={scenarioId} onChange={(e) => setScenarioId(e.target.value)} className="w-full mt-1 text-xs border border-slate-200 rounded px-2 py-1.5">
+              {scenarios.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 font-medium">Number of runs</label>
+            <select value={runs} onChange={(e) => setRuns(parseInt(e.target.value))} className="w-full mt-1 text-xs border border-slate-200 rounded px-2 py-1.5">
+              <option value={100}>100</option>
+              <option value={250}>250</option>
+              <option value={500}>500</option>
+              <option value={1000}>1,000</option>
+              <option value={2000}>2,000</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 font-medium" title="Each unlocked relationship weight is nudged by a random amount, uniformly drawn from -this to +this, on the same -1..1 scale as the weight itself.">Weight uncertainty (±)</label>
+            <input type="number" min={0} max={1} step={0.01} value={weightSpread} onChange={(e) => setWeightSpread(clamp(parseFloat(e.target.value) || 0, 0, 1))} className="w-full mt-1 text-xs border border-slate-200 rounded px-2 py-1.5" />
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 font-medium" title="Optional: also nudge each concept's starting value by a random amount within this range. Leave at 0 to vary only the weights.">Starting-value uncertainty (±)</label>
+            <input type="number" min={0} max={1} step={0.01} value={initialSpread} onChange={(e) => setInitialSpread(clamp(parseFloat(e.target.value) || 0, 0, 1))} className="w-full mt-1 text-xs border border-slate-200 rounded px-2 py-1.5" />
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 font-medium" title="Runs with the same seed reproduce the exact same sequence of random weights, so a result can be exactly repeated.">Random seed</label>
+            <div className="flex items-center gap-1 mt-1">
+              <input type="number" value={seed} onChange={(e) => setSeed(parseInt(e.target.value) || 0)} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5" />
+              <button onClick={() => setSeed(Math.floor(Math.random() * 1e6))} title="Draw a new random seed" className="shrink-0 p-1.5 border border-slate-200 rounded text-slate-500 hover:bg-slate-50"><Dices size={13} /></button>
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 mt-4">
+          {!running ? (
+            <Btn onClick={run} disabled={!scenarios.length}><Play size={13} />Run simulation</Btn>
+          ) : (
+            <>
+              <Btn variant="outline" onClick={cancel}>Cancel</Btn>
+              <div className="flex-1 max-w-xs h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                <div className="h-full bg-cobalt-600 transition-[width]" style={{ width: `${progress ? Math.round((progress.done / progress.total) * 100) : 0}%` }} />
+              </div>
+              <span className="text-xs text-slate-500">{progress ? `${progress.done} / ${progress.total}` : "Starting…"}</span>
+            </>
+          )}
+        </div>
+      </div>
+
+      {result && (
+        <>
+          {isStale && <StaleResultBanner label="Monte Carlo result" />}
+          <div className="bg-white rounded-lg border border-slate-200 p-4">
+            <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+              <h3 className="font-semibold text-sm">
+                Results: {result.scenarioName}
+                <span className="ml-2 font-normal text-slate-400 text-xs">
+                  {result.runs} runs · {result.convergedCount} converged ({Math.round(result.convergenceRate * 100)}%) · {result.seconds?.toFixed(1)}s
+                </span>
+                {result.config && (
+                  <span className="block font-normal text-slate-400 text-xs mt-0.5">
+                    Weights ±{result.config.weightSpread}{result.config.initialSpread > 0 ? `, starting values ±${result.config.initialSpread}` : ""} · seed {result.config.seed} · transfer function {transferFunctionLabel(result.settingsUsed || settings)}, {(result.settingsUsed || settings).mode || "synchronous"}
+                  </span>
+                )}
+              </h3>
+              <Btn variant="outline" onClick={exportCsv}><Download size={13} />Export CSV</Btn>
+            </div>
+            {result.convergedCount < result.runs && (
+              <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 mb-3">
+                {result.runs - result.convergedCount} of {result.runs} runs did not settle to a stable equilibrium within the iteration limit. Their final values are still included below, but treat them with extra caution.
+                {result.divergedCount > 0 && ` ${result.divergedCount} of these ran away (passed ±${LINEAR_DIVERGENCE_LIMIT} with no squashing function) and were stopped there, so their values are the stopping point rather than a real end state, and the mean and spread are not meaningful for those concepts.`}
+              </p>
+            )}
+            <div className="overflow-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-slate-200 text-left text-slate-500">
+                    {columns.map((c) => <SortHeader key={c.key} col={c} sortKey={sortKey} sortDir={sortDir} onSort={onSort} />)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.map((p) => (
+                    <tr key={p.id} className="border-b border-slate-50">
+                      <td className="py-1 pr-3">{p.name}</td>
+                      <td className="py-1 pr-3 font-mono tabular-nums">{p.nominal}</td>
+                      <td className="py-1 pr-3 font-mono tabular-nums">{p.mean}</td>
+                      <td className="py-1 pr-3 font-mono tabular-nums">{p.median}</td>
+                      <td className="py-1 pr-3 font-mono tabular-nums">{p.stdDev}</td>
+                      <td className="py-1 pr-3 font-mono tabular-nums text-slate-500">{p.p5}</td>
+                      <td className="py-1 pr-3 font-mono tabular-nums text-slate-500">{p.p95}</td>
+                      <td className="py-1 pr-3 font-mono tabular-nums text-slate-400">{p.min}</td>
+                      <td className="py-1 pr-3 font-mono tabular-nums text-slate-400">{p.max}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg border border-slate-200 p-4">
+            <h3 className="font-semibold text-sm mb-2">Distributions</h3>
+            <p className="text-xs text-slate-500 mb-3">Tick a concept to see how its {result.runs} sampled outcomes are actually distributed, not just summarized.</p>
+            <div className="flex flex-wrap gap-1 mb-4">
+              {result.perConcept.map((p) => (
+                <button
+                  key={p.id} onClick={() => toggleChart(p.id)}
+                  className={`text-[10px] px-1.5 py-0.5 rounded border ${chartIds.includes(p.id) ? "border-cobalt-700 bg-cobalt-50 text-cobalt-800" : "border-slate-200 text-slate-500 hover:border-slate-400"}`}
+                >{p.name}</button>
+              ))}
+            </div>
+            {chartIds.length === 0 ? (
+              <p className="text-xs text-slate-400 italic">No concepts selected.</p>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {chartIds.map((id) => {
+                  const p = result.perConcept.find((x) => x.id === id);
+                  return p ? <MonteCarloHistogram key={id} concept={p} /> : null;
+                })}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Bins a concept's sorted sample values into a fixed number of equal-width
+// buckets across the sample's own min-max range (not a fixed -1..1 range:
+// a robust concept's runs might all land in a narrow band, and forcing the
+// full scale would flatten its histogram to a single tall bar), and shows
+// them as a bar chart. The nominal (unperturbed) value is given as a
+// number next to the concept name rather than plotted as a marker line: a
+// bar chart's x-axis is categorical (one bucket per bar, evenly spaced),
+// so a marker positioned by the nominal value's actual number would not
+// reliably land over the bucket that actually contains it.
+function MonteCarloHistogram({ concept, bins = 16 }) {
+  const { values, nominal, name } = concept;
+  const data = useMemo(() => {
+    if (!values.length) return [];
+    const lo = values[0], hi = values[values.length - 1];
+    const span = hi - lo || 1;
+    const counts = new Array(bins).fill(0);
+    values.forEach((v) => {
+      const idx = Math.min(bins - 1, Math.floor(((v - lo) / span) * bins));
+      counts[idx]++;
+    });
+    return counts.map((count, i) => ({ x: round2(lo + (span * (i + 0.5)) / bins), count }));
+  }, [values, bins]);
+  return (
+    <div>
+      <p className="text-xs font-medium text-slate-700 mb-1">{name} <span className="font-normal text-slate-400">(nominal {nominal})</span></p>
+      <ResponsiveContainer width="100%" height={140}>
+        <BarChart data={data} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+          <XAxis dataKey="x" tick={{ fontSize: 9 }} />
+          <YAxis tick={{ fontSize: 9 }} allowDecimals={false} />
+          <RTooltip contentStyle={{ fontSize: 11 }} formatter={(v) => [v, "runs"]} labelFormatter={(v) => `≈ ${v}`} />
+          <Bar dataKey="count" fill="#3b6ef0" radius={[2, 2, 0, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+// ============================================================================
 // Baseline Equilibrium tab
 // ============================================================================
 
@@ -5402,9 +6701,12 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
 // flag simulate() already returns. If it didn't converge, checks the tail of
 // the trajectory for a short repeating cycle (period 1-4) before calling it
 // non-convergent.
-function classifyStability(series, converged, threshold, iterationsRun) {
+function classifyStability(series, converged, threshold, iterationsRun, diverged = false) {
   if (converged) {
     return { status: "Stable Equilibrium", detail: "The system converged to a fixed point: every concept's activation stopped changing (within the convergence threshold)." };
+  }
+  if (diverged) {
+    return { status: "Divergence", detail: `Activation grew without bound. With no squashing function nothing holds a concept within -1 to +1, so the run was stopped at iteration ${iterationsRun}, once a concept passed ±${LINEAR_DIVERGENCE_LIMIT}. The feedback in these weights amplifies itself on every pass: this is the model's real linear dynamics, not a numerical error, and it is exactly what a squashing function normally hides.` };
   }
   const ids = series.length ? Object.keys(series[series.length - 1].values) : [];
   for (let period = 1; period <= 4; period++) {
@@ -5423,14 +6725,16 @@ function BaselineEquilibriumTab({
   concepts, edges, scenarios, settings, setTab, result, setResult, setChartCache, modelVersion,
   initState = DEFAULT_BASELINE_INIT, setInitState, updateConcept, commitHistory,
 }) {
-  useCachedChart(setChartCache, "baselineConvergence", '[data-chart="baseline-convergence"]', "svg", [result]);
+  useCachedChart(setChartCache, "baselineConvergence", [result]);
   // Local override, not the shared app-wide settings: lets this tab compare
   // tanh vs. sigmoid without silently changing what Scenarios & Simulation,
   // Sensitivity Analysis, or Transition Point Analysis use. Defaults to
   // whatever the shared setting currently is, so nothing changes until the
   // user actually picks something here. (Trivalent isn't offered here on
   // purpose: it's a step function, not a smooth squash, so "tanh vs sigmoid"
-  // is the comparison that's actually meaningful for equilibrium shape.)
+  // is the comparison that's actually meaningful for equilibrium shape. "No
+  // squashing" is offered because it's the opposite comparison: not a
+  // different curve but none at all, the raw dynamics of the weight matrix.)
   const [squashOverride, setSquashOverride] = useState(null);
   const effectiveSquash = squashOverride ?? settings.squashFunction ?? "tanh";
   // Steepness (lambda) gets the same local-override treatment. It matters
@@ -5511,7 +6815,7 @@ function BaselineEquilibriumTab({
 
   const stability = useMemo(() => {
     if (!result) return null;
-    return classifyStability(result.series, result.converged, settings.convergenceThreshold ?? 0.001, result.iterationsRun);
+    return classifyStability(result.series, result.converged, settings.convergenceThreshold ?? 0.001, result.iterationsRun, result.diverged);
   }, [result, settings.convergenceThreshold]);
 
   const finalMaxDelta = useMemo(() => {
@@ -5555,7 +6859,7 @@ function BaselineEquilibriumTab({
   const equilibriumExplanation = useMemo(() => {
     if (!result) return "";
     if (allInitialZero && result.converged && result.iterationsRun === 1) {
-      return `Every concept started at 0 with no forcing term, so 0 is a fixed point of the update rule (${effectiveSquash}(0) = 0, true for every squash function this app offers) and the system is already at equilibrium. No iteration needed.`;
+      return `Every concept started at 0 with no forcing term, so 0 is a fixed point of the update rule (${effectiveSquash === "linear" ? "the identity maps 0 to 0" : `${effectiveSquash}(0) = 0`}, true for every transfer function this app offers, including none) and the system is already at equilibrium. No iteration needed.`;
     }
     if (allInitialZero) {
       // Mathematically this shouldn't be reachable with a clean scenario (0
@@ -5568,7 +6872,9 @@ function BaselineEquilibriumTab({
     const names = nonZero.slice(0, 4).map((c) => c.name).join(", ") + (nonZero.length > 4 ? `, +${nonZero.length - 4} more` : "");
     return result.converged
       ? `${nonZero.length} concept${nonZero.length === 1 ? "" : "s"} started away from zero (${names}), so the system evolves from there and settles after ${result.iterationsRun} iteration${result.iterationsRun === 1 ? "" : "s"}.`
-      : `${nonZero.length} concept${nonZero.length === 1 ? "" : "s"} started away from zero (${names}), and the system did not settle within the ${settings.maxIterations ?? 100}-iteration cap; see Stability below for whether it's oscillating or diverging.`;
+      : result.diverged
+        ? `${nonZero.length} concept${nonZero.length === 1 ? "" : "s"} started away from zero (${names}), and with no squashing function to hold them back the system ran away and was stopped after ${result.iterationsRun} iteration${result.iterationsRun === 1 ? "" : "s"}.`
+        : `${nonZero.length} concept${nonZero.length === 1 ? "" : "s"} started away from zero (${names}), and the system did not settle within the ${settings.maxIterations ?? 100}-iteration cap; see Stability below for whether it's oscillating or diverging.`;
   }, [result, concepts, allInitialZero, settings.maxIterations, effectiveSquash, usedInit]);
 
   const exportConvergenceCSV = () => {
@@ -5583,8 +6889,33 @@ function BaselineEquilibriumTab({
     a.click();
   };
 
-  const lineColors = ["#0f766e", "#c2410c", "#7c3aed", "#0369a1", "#be123c", "#4d7c0f", "#a16207", "#0e7490"];
-  const stabilityColor = stability?.status === "Stable Equilibrium" ? "text-teal-700" : stability?.status === "Oscillation" ? "text-amber-700" : "text-rose-700";
+  const lineColors = ["#2456d6", "#c2410c", "#7c3aed", "#0f766e", "#be123c", "#4d7c0f", "#a16207", "#0e7490"];
+  const stabilityColor = stability?.status === "Stable Equilibrium" ? "text-cobalt-700" : stability?.status === "Oscillation" ? "text-amber-700" : "text-rose-700";
+
+  // Publication-figure controls for the convergence plot.
+  const convergenceRef = useRef(null);
+  const [figConvergence, setFigConvergence] = useState(TRAJECTORY_FIGURE_DEFAULTS);
+  const [figConvergenceOpen, setFigConvergenceOpen] = useState(false);
+  const [figConvergenceBusy, setFigConvergenceBusy] = useState(false);
+  const [hiddenConvergenceIds, setHiddenConvergenceIds] = useState(() => new Set());
+  const toggleHiddenConvergence = (id) => setHiddenConvergenceIds((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const [convergenceOrder, setConvergenceOrder] = useState("original");
+  const CONVERGENCE_ORDER_OPTIONS = [
+    { value: "original", label: "As modelled" },
+    { value: "alphabetical", label: "Alphabetical" },
+    { value: "byValue", label: "By final value" },
+  ];
+  const convergenceRows = useMemo(() => {
+    const rows = concepts.filter((c) => !hiddenConvergenceIds.has(c.id)).map((c) => ({ id: c.id, name: c.name, finalValue: result?.final?.[c.id] ?? 0 }));
+    if (convergenceOrder === "alphabetical") rows.sort((a, b) => a.name.localeCompare(b.name));
+    else if (convergenceOrder === "byValue") rows.sort((a, b) => Math.abs(b.finalValue) - Math.abs(a.finalValue));
+    return rows;
+  }, [concepts, hiddenConvergenceIds, convergenceOrder, result]);
+  const convergenceSeriesOptions = useMemo(() => concepts.map((c) => ({ key: c.id, label: c.name })), [concepts]);
 
   return (
     <div className="space-y-5">
@@ -5651,7 +6982,7 @@ function BaselineEquilibriumTab({
               </button>
             ))}
             {updateConcept && (
-              <button onClick={saveInitToModel} className="ml-auto px-2 py-0.5 rounded border border-teal-300 bg-teal-50 text-teal-800 hover:bg-teal-100" title="Copy these values into the model's own initial values. Scenarios & Simulation and the other tabs will then start from them too.">
+              <button onClick={saveInitToModel} className="ml-auto px-2 py-0.5 rounded border border-cobalt-300 bg-cobalt-50 text-cobalt-800 hover:bg-cobalt-100" title="Copy these values into the model's own initial values. Scenarios & Simulation and the other tabs will then start from them too.">
                 Save as the model's initial values
               </button>
             )}
@@ -5677,7 +7008,7 @@ function BaselineEquilibriumTab({
                         <input
                           type="range" min={-1} max={1} step={0.05} value={initVector[c.id]}
                           onChange={(e) => setCustomValue(c.id, parseFloat(e.target.value))}
-                          className="w-32 accent-teal-700" aria-label={`Initial value for ${c.name}`}
+                          className="w-32 accent-cobalt-700" aria-label={`Initial value for ${c.name}`}
                         />
                         <input
                           type="number" min={-1} max={1} step={0.05} value={initVector[c.id]}
@@ -5704,7 +7035,13 @@ function BaselineEquilibriumTab({
           <div className="flex items-center border border-slate-300 rounded-md overflow-hidden text-xs" title="Overrides the shared squash function for this tab only; Scenarios & Simulation, Sensitivity Analysis, and Transition Point Analysis keep using whatever's set in Scenarios & Simulation's Advanced options.">
             <button onClick={() => setSquashOverride("tanh")} className={`px-2.5 py-1.5 ${effectiveSquash === "tanh" ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}>Hyperbolic tangent</button>
             <button onClick={() => setSquashOverride("sigmoid")} className={`px-2.5 py-1.5 border-l border-slate-300 ${effectiveSquash === "sigmoid" ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}>Sigmoid</button>
+            <button
+              onClick={() => setSquashOverride("linear")}
+              title="No squashing function: the model runs on its raw linear dynamics, A(t+1) = A(t) + W·A(t), with nothing keeping activation inside -1 to +1. A model whose feedback amplifies itself will run away, and the run is stopped and marked as diverged when it does."
+              className={`px-2.5 py-1.5 border-l border-slate-300 ${effectiveSquash === "linear" ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+            >No squashing (linear)</button>
           </div>
+          {effectiveSquash !== "linear" && (
           <div
             className="flex items-center gap-2"
             title="Steepness (lambda) of the squash function for this tab only. It is the slope of the curve at 0, so it sets the loop gain of the whole model: too low and every run decays back to 0 whatever the weights say, high enough and activation sustains itself and the run settles elsewhere."
@@ -5713,7 +7050,7 @@ function BaselineEquilibriumTab({
             <input
               type="range" min={0.1} max={5} step={0.1} value={effectiveLambda}
               onChange={(e) => setLambdaOverride(parseFloat(e.target.value))}
-              className="w-28 accent-teal-700"
+              className="w-28 accent-cobalt-700"
             />
             <input
               type="number" min={0.1} max={10} step={0.1} value={effectiveLambda}
@@ -5730,8 +7067,14 @@ function BaselineEquilibriumTab({
               </button>
             )}
           </div>
+          )}
           <Btn variant="accent" onClick={run}><Play size={14} />Run</Btn>
         </div>
+        {effectiveSquash === "linear" && (
+          <p className="basis-full text-[11px] text-slate-500 bg-slate-50 border border-slate-100 rounded px-2.5 py-1.5">
+            No squashing function: this run shows the raw linear dynamics of the weights, <span className="font-mono">A(t+1) = {settings.updateRule === "absolute" ? "W·A(t)" : "A(t) + W·A(t)"}</span>, with nothing holding activation inside -1 to +1 (the chart axis rescales to fit). A model whose feedback amplifies itself will grow without limit; the run is then stopped once a concept passes &plusmn;{LINEAR_DIVERGENCE_LIMIT} and marked as diverged. Steepness (&lambda;) does not apply.
+          </p>
+        )}
       </div>
 
       {!result ? (
@@ -5751,7 +7094,7 @@ function BaselineEquilibriumTab({
           {validation.map((m, i) => (
             <div
               key={i}
-              className={`rounded-md border p-3 text-xs ${m.kind === "warning" ? "bg-amber-50 border-amber-200 text-amber-800" : "bg-teal-50 border-teal-200 text-teal-800"}`}
+              className={`rounded-md border p-3 text-xs ${m.kind === "warning" ? "bg-amber-50 border-amber-200 text-amber-800" : "bg-cobalt-50 border-cobalt-200 text-cobalt-800"}`}
             >
               {m.text}
             </div>
@@ -5766,11 +7109,11 @@ function BaselineEquilibriumTab({
               </div>
               <div>
                 <div className="text-xs text-slate-400 mb-1">Converged</div>
-                <div className={`text-sm font-mono ${result.converged ? "text-teal-700" : "text-amber-700"}`}>{result.converged ? "Yes" : "No"}</div>
+                <div className={`text-sm font-mono ${result.converged ? "text-cobalt-700" : "text-amber-700"}`}>{result.converged ? "Yes" : "No"}</div>
               </div>
               <div>
                 <div className="text-xs text-slate-400 mb-1">Iterations to convergence</div>
-                <div className="text-sm font-mono">{result.converged ? result.iterationsRun : `capped at ${result.iterationsRun}`}</div>
+                <div className="text-sm font-mono">{result.converged ? result.iterationsRun : result.diverged ? `stopped at ${result.iterationsRun} (runaway)` : `capped at ${result.iterationsRun}`}</div>
               </div>
               <div>
                 <div className="text-xs text-slate-400 mb-1">Maximum residual change</div>
@@ -5780,7 +7123,7 @@ function BaselineEquilibriumTab({
             <div className="grid grid-cols-4 gap-4 mt-4 pt-4 border-t border-slate-100">
               <div title="A converged run is, by this engine's definition, a detected fixed point; the two are the same condition here.">
                 <div className="text-xs text-slate-400 mb-1 flex items-center gap-1">Fixed point detected <HelpCircle size={10} className="text-slate-300" /></div>
-                <div className={`text-sm font-mono ${fixedPointDetected ? "text-teal-700" : "text-amber-700"}`}>{fixedPointDetected ? "Yes" : "No"}</div>
+                <div className={`text-sm font-mono ${fixedPointDetected ? "text-cobalt-700" : "text-amber-700"}`}>{fixedPointDetected ? "Yes" : "No"}</div>
               </div>
               <div className="col-span-3">
                 <div className="text-xs text-slate-400 mb-1">Stability</div>
@@ -5792,23 +7135,50 @@ function BaselineEquilibriumTab({
           </div>
 
           <div className="bg-white rounded-lg border border-slate-200 p-4" data-chart="baseline-convergence">
-            <h4 className="text-sm font-semibold mb-2">Convergence plot</h4>
+            <div className="flex items-center justify-between mb-1">
+              <h4 className="text-sm font-semibold">Convergence plot</h4>
+              <Btn variant="outline" onClick={() => setFigConvergenceOpen((v) => !v)}><SlidersHorizontal size={13} />{figConvergenceOpen ? "Hide figure options" : "Customize & export"}</Btn>
+            </div>
             <p className="text-xs text-slate-400 mb-2">Every concept's activation at each iteration, from its initial value through to convergence (or the iteration cap). Use this to check whether the model settles into a stable equilibrium, oscillates, or diverges.</p>
-            <div className="w-full h-72">
+            <div ref={convergenceRef} className="w-full h-72" style={figConvergenceOpen ? { width: mmToPx(figConvergence.widthMm, 96), height: mmToPx(figConvergence.heightMm, 96), maxWidth: "100%" } : undefined}>
               <ResponsiveContainer>
                 <LineChart data={result.series.map((pt) => ({ iteration: pt.iteration, ...pt.values }))}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="iteration" tick={{ fontSize: 10 }} label={{ value: "Iteration", position: "insideBottom", offset: -5, fontSize: 11 }} />
-                  <YAxis domain={[-1, 1]} tick={{ fontSize: 10 }} label={{ value: "Activation", angle: -90, position: "insideLeft", fontSize: 11 }} />
+                  {figConvergence.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
+                  <XAxis dataKey="iteration" tick={{ fontSize: figConvergence.tickFontSize }} label={{ value: figConvergence.xLabel || "Iteration", position: "insideBottom", offset: -5, fontSize: figConvergence.axisFontSize }} />
+                  <YAxis domain={effectiveSquash === "linear" || result.diverged ? ["auto", "auto"] : [-1, 1]} tick={{ fontSize: figConvergence.tickFontSize }} tickFormatter={(v) => fmtDec(v, figConvergence.decimals)} label={{ value: figConvergence.yLabel || "Activation", angle: -90, position: "insideLeft", fontSize: figConvergence.axisFontSize }} />
                   <RTooltip />
-                  <Legend wrapperStyle={{ fontSize: 10 }} />
+                  {figConvergence.legendPosition !== "hidden" && (
+                    <Legend
+                      wrapperStyle={{ fontSize: figConvergence.legendFontSize }}
+                      layout={figConvergence.legendPosition === "left" || figConvergence.legendPosition === "right" ? "vertical" : "horizontal"}
+                      verticalAlign={figConvergence.legendPosition === "left" || figConvergence.legendPosition === "right" ? "middle" : figConvergence.legendPosition}
+                      align={figConvergence.legendPosition === "left" || figConvergence.legendPosition === "right" ? figConvergence.legendPosition : "center"}
+                    />
+                  )}
+                  {figConvergence.title && <text x="50%" y={14} textAnchor="middle" fontSize={figConvergence.titleFontSize} fontWeight={600} fill="#0f172a">{figConvergence.title}</text>}
                   <ReferenceLine y={0} stroke="#cbd5e1" />
-                  {concepts.map((c, i) => (
-                    <Line key={c.id} type="monotone" dataKey={c.id} name={c.name} stroke={lineColors[i % lineColors.length]} strokeWidth={1.75} dot={false} />
+                  {convergenceRows.map((c, i) => (
+                    <Line key={c.id} type="monotone" dataKey={c.id} name={c.name} stroke={figurePalette(figConvergence.palette, convergenceRows.length)[i]} strokeWidth={figConvergence.lineWidth} strokeOpacity={figConvergence.opacity} dot={figConvergence.markerSize > 0 ? { r: figConvergence.markerSize } : false} />
                   ))}
                 </LineChart>
               </ResponsiveContainer>
             </div>
+            {figConvergenceOpen && (
+              <FigurePanel
+                settings={figConvergence} onChange={setFigConvergence} defaults={TRAJECTORY_FIGURE_DEFAULTS}
+                seriesOptions={convergenceSeriesOptions} hiddenKeys={hiddenConvergenceIds} onToggleSeries={toggleHiddenConvergence}
+                sortOptions={CONVERGENCE_ORDER_OPTIONS} sortValue={convergenceOrder} onSortChange={setConvergenceOrder}
+                exporting={figConvergenceBusy}
+                onExport={async () => {
+                  setFigConvergenceBusy(true);
+                  await exportFigure(convergenceRef.current, "baseline-convergence.png", figConvergence, {
+                    title: figConvergence.title || "Baseline Equilibrium: Convergence Plot",
+                    subtitle: `${result.converged ? "Converged" : result.diverged ? "Diverged (unbounded growth)" : "Did not converge"} in ${result.iterationsRun} iterations${effectiveSquash === "linear" ? ", no squashing function" : ""}`,
+                  });
+                  setFigConvergenceBusy(false);
+                }}
+              />
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-5">
@@ -5860,7 +7230,7 @@ function BaselineEquilibriumTab({
 
           <div className="bg-white rounded-lg border border-slate-200 p-4">
             <details>
-              <summary className="text-sm font-semibold cursor-pointer flex items-center gap-1.5"><FlaskConical size={14} className="text-teal-700" />Advanced Diagnostics</summary>
+              <summary className="text-sm font-semibold cursor-pointer flex items-center gap-1.5"><FlaskConical size={14} className="text-cobalt-700" />Advanced Diagnostics</summary>
               <div className="mt-3 space-y-4">
                 <p className="text-xs text-slate-500">Raw mathematical objects behind this run, for verifying the engine matches FCM theory directly: the initial vector A(0), the weight matrix W (row = target, column = source, so W[row][col] is the weight of the relationship column to row), the first few iteration vectors, the final equilibrium A*, and the convergence delta.</p>
 
@@ -6052,7 +7422,7 @@ const DEFAULT_PATHWAY_CONFIG = {
   allowScaleUp: false,   // TP rule only: a lever may return once, raised to full intensity
   strategy: "exhaustive", // "exhaustive" | "beam" | "greedy"
   beamWidth: 10,
-  beamCriterion: "tng",  // "tng" | "pei"
+  beamCriterion: "tog",  // "tog" | "pei"
   resolution: 20,
   flatThreshold: 0.015,
   minGainShare: 0.25,
@@ -6071,6 +7441,8 @@ function readPathwayConfig() {
     const raw = JSON.parse(localStorage.getItem(PATHWAY_CONFIG_KEY) || "null");
     if (!raw || typeof raw !== "object") return DEFAULT_PATHWAY_CONFIG;
     const list = (v, ok) => (Array.isArray(v) ? v.filter((x) => x && typeof x === "object" && ok(x)) : []);
+    // Setups saved by 0.3.0 hold the beam criterion under its old value.
+    if (raw.beamCriterion === "tng") raw.beamCriterion = "tog";
     return {
       ...DEFAULT_PATHWAY_CONFIG,
       ...Object.fromEntries(Object.entries(raw).filter(([k]) => k in DEFAULT_PATHWAY_CONFIG && !["outcomes", "levers", "precedence"].includes(k))),
@@ -6104,6 +7476,10 @@ function makePathwayEngine(concepts, edges, settings) {
   start[n] = src.length;
   const SRC = Int32Array.from(src), W = Float64Array.from(wts);
   const squash = makeSquash(settings.squashFunction, settings.lambda);
+  // Same treatment as simulate(): no squashing function means no clamp, and
+  // a run whose activation passes LINEAR_DIVERGENCE_LIMIT is stopped and
+  // reported as not converged (the analysis already sets such stages aside).
+  const unbounded = settings.squashFunction === "linear";
   const relative = settings.updateRule !== "absolute";
   const maxIter = settings.maxIterations ?? 100;
   const threshold = settings.convergenceThreshold ?? 0.001;
@@ -6125,19 +7501,23 @@ function makePathwayEngine(concepts, edges, settings) {
     let converged = false, t;
     for (t = 1; t <= maxIter; t++) {
       let maxDelta = 0;
+      let runaway = false;
       for (let j = 0; j < n; j++) {
         let v;
         if (locked[j]) v = lv[j];
         else {
           let sum = 0;
           for (let p = start[j]; p < start[j + 1]; p++) sum += cur[SRC[p]] * W[p];
-          v = clamp(squash((relative ? cur[j] : 0) + sum));
+          v = squash((relative ? cur[j] : 0) + sum);
+          if (!unbounded) v = clamp(v);
         }
         next[j] = v;
+        if (unbounded && !(Math.abs(v) <= LINEAR_DIVERGENCE_LIMIT)) runaway = true;
         const d = Math.abs(v - cur[j]);
         if (d > maxDelta) maxDelta = d;
       }
       const tmp = cur; cur = next; next = tmp;
+      if (runaway) break;
       if (maxDelta < threshold) { converged = true; break; }
     }
     return { state: cur, converged, iterations: Math.min(t, maxIter) };
@@ -6232,7 +7612,7 @@ function* pathwayEnumeration(concepts, edges, settings, config, phase = "") {
       pts.push({ u, state: r.state, converged: r.converged, g: gain(r.state), L, V });
     }
     // The transition point: the step with the largest POSITIVE marginal
-    // return in nexus gain, reported at the upper end of that step.
+    // return in outcome gain, reported at the upper end of that step.
     let best = -1, bestR = 1e-9;
     for (let k = 0; k < pts.length - 1; k++) {
       const r = (pts[k + 1].g - pts[k].g) * N;
@@ -6370,7 +7750,7 @@ function* pathwayEnumeration(concepts, edges, settings, config, phase = "") {
   const nameCount = outcomes.length;
   candidates.forEach((c) => {
     const last = c.stages[c.stages.length - 1];
-    c.tng = c.g;
+    c.tog = c.g;
     c.ss = last.outcomes.filter((o) => o.improvement > eps).length;
     c.to = last.outcomes.filter((o) => o.improvement < -eps).length;
     const taus = c.stages.map((s) => s.tauCond).filter((t) => t !== null);
@@ -6418,11 +7798,11 @@ function* pathwayEnumeration(concepts, edges, settings, config, phase = "") {
 function classifyPathways(cands, outcomeCount, eps, minGainShare) {
   const tol = 1e-9;
   const conv = cands.filter((c) => c.converged);
-  const maxTng = conv.reduce((m, c) => Math.max(m, c.tng), -Infinity);
-  const gMin = Math.max((Number.isFinite(Number(minGainShare)) ? Number(minGainShare) : 0.25) * Math.max(0, maxTng), eps * outcomeCount);
+  const maxTog = conv.reduce((m, c) => Math.max(m, c.tog), -Infinity);
+  const gMin = Math.max((Number.isFinite(Number(minGainShare)) ? Number(minGainShare) : 0.25) * Math.max(0, maxTog), eps * outcomeCount);
   cands.forEach((c) => {
-    c.admissible = c.converged && maxTng > 0 && c.tng >= gMin - tol && c.to === 0;
-    c.conditional = c.converged && maxTng > 0 && c.tng >= gMin - tol && c.to > 0;
+    c.admissible = c.converged && maxTog > 0 && c.tog >= gMin - tol && c.to === 0;
+    c.conditional = c.converged && maxTog > 0 && c.tog >= gMin - tol && c.to > 0;
     c.memberships = [];
     c.primary = null;
     c.frontier = false;
@@ -6430,19 +7810,19 @@ function classifyPathways(cands, outcomeCount, eps, minGainShare) {
   });
   const adm = cands.filter((c) => c.admissible);
   const asc = (arr) => arr.filter((v) => v !== null && Number.isFinite(v)).sort((a, b) => a - b);
-  const ciiS = asc(adm.map((c) => c.cii)), tngS = asc(adm.map((c) => c.tng));
+  const ciiS = asc(adm.map((c) => c.cii)), togS = asc(adm.map((c) => c.tog));
   const peiS = asc(adm.map((c) => c.pei)), ebiS = asc(adm.map((c) => c.ebi));
   const q = {
     cii25: pathwayQuantile(ciiS, 0.25), cii75: pathwayQuantile(ciiS, 0.75),
-    tng80: pathwayQuantile(tngS, 0.8), pei80: pathwayQuantile(peiS, 0.8),
+    tog80: pathwayQuantile(togS, 0.8), pei80: pathwayQuantile(peiS, 0.8),
   };
   adm.forEach((c) => {
     const aff = {};
     if (c.cii <= q.cii25 + tol && c.avgTp !== null && c.avgTp <= 1 / 3 + tol && c.ebi !== null && c.ebi > 0.5) {
       c.memberships.push("lhf"); aff.lhf = 1 - pathwayPercentRank(ciiS, c.cii);
     }
-    if (c.tng >= q.tng80 - tol && c.ss === outcomeCount) {
-      c.memberships.push("hi"); aff.hi = pathwayPercentRank(tngS, c.tng);
+    if (c.tog >= q.tog80 - tol && c.ss === outcomeCount) {
+      c.memberships.push("hi"); aff.hi = pathwayPercentRank(togS, c.tog);
     }
     if (c.pei !== null && c.pei >= q.pei80 - tol && c.cii > q.cii25 + tol && c.cii < q.cii75 - tol) {
       c.memberships.push("ef"); aff.ef = pathwayPercentRank(peiS, c.pei);
@@ -6454,23 +7834,23 @@ function classifyPathways(cands, outcomeCount, eps, minGainShare) {
   });
   // efficient frontier: no other admissible pathway has more gain for less effort
   let best = -Infinity;
-  [...adm].sort((a, b) => a.cii - b.cii || b.tng - a.tng).forEach((c) => {
-    if (c.tng > best + tol) { c.frontier = true; best = c.tng; }
+  [...adm].sort((a, b) => a.cii - b.cii || b.tog - a.tog).forEach((c) => {
+    if (c.tog > best + tol) { c.frontier = true; best = c.tog; }
   });
   // For each archetype, how many admissible pathways meet each condition on
   // its own, so an empty archetype can say which condition nobody meets.
   const why = {
     lhf: { "Effort in the lowest quarter": adm.filter((c) => c.cii <= q.cii25 + tol).length, "Average TP at most 1/3": adm.filter((c) => c.avgTp !== null && c.avgTp <= 1 / 3 + tol).length, "EBI above 0.5": adm.filter((c) => c.ebi !== null && c.ebi > 0.5).length },
-    hi: { "Gain in the top fifth": adm.filter((c) => c.tng >= q.tng80 - tol).length, "Every outcome improved": adm.filter((c) => c.ss === outcomeCount).length },
+    hi: { "Gain in the top fifth": adm.filter((c) => c.tog >= q.tog80 - tol).length, "Every outcome improved": adm.filter((c) => c.ss === outcomeCount).length },
     ef: { "Efficiency in the top fifth": adm.filter((c) => c.pei !== null && c.pei >= q.pei80 - tol).length, "Moderate effort (between the lowest and highest quarter)": adm.filter((c) => c.cii > q.cii25 + tol && c.cii < q.cii75 - tol).length, "Both together": adm.filter((c) => c.pei !== null && c.pei >= q.pei80 - tol && c.cii > q.cii25 + tol && c.cii < q.cii75 - tol).length },
     di: { "Effort in the highest quarter": adm.filter((c) => c.cii >= q.cii75 - tol).length, "Average TP above 1/2": adm.filter((c) => c.avgTp !== null && c.avgTp > 0.5).length, "EBI below 0.5": adm.filter((c) => c.ebi !== null && c.ebi < 0.5).length },
   };
   const tie = (a, b) => b.ss - a.ss || (b.ebi ?? -1) - (a.ebi ?? -1) || a.length - b.length;
   const order = {
     lhf: (a, b) => a.cii - b.cii || tie(a, b),
-    hi: (a, b) => b.tng - a.tng || tie(a, b),
+    hi: (a, b) => b.tog - a.tog || tie(a, b),
     ef: (a, b) => b.pei - a.pei || tie(a, b),
-    di: (a, b) => b.tng - a.tng || tie(a, b),
+    di: (a, b) => b.tog - a.tog || tie(a, b),
   };
   const ranked = {};
   PATHWAY_ARCHETYPE_KEYS.forEach((k) => {
@@ -6480,7 +7860,7 @@ function classifyPathways(cands, outcomeCount, eps, minGainShare) {
   const topIds = new Set();
   PATHWAY_ARCHETYPE_KEYS.forEach((k) => ranked[k].slice(0, PATHWAY_TOP_N).forEach((c) => topIds.add(c.id)));
   return {
-    gMin, maxTng: Number.isFinite(maxTng) ? maxTng : null, q, ranked, topIds, why,
+    gMin, maxTog: Number.isFinite(maxTog) ? maxTog : null, q, ranked, topIds, why,
     counts: {
       total: cands.length, converged: conv.length, admissible: adm.length,
       conditional: cands.filter((c) => c.conditional).length,
@@ -6492,11 +7872,11 @@ function classifyPathways(cands, outcomeCount, eps, minGainShare) {
 }
 
 // Step 6 (portfolios): which opening moves keep the best pathways within
-// reach. Regret of a prefix = the largest nexus gain of any candidate minus
-// the largest nexus gain among the candidates that start with that prefix.
+// reach. Regret of a prefix = the largest outcome gain of any candidate minus
+// the largest outcome gain among the candidates that start with that prefix.
 function pathwayPortfolios(cands, summary) {
   const conv = cands.filter((c) => c.converged);
-  const tngStar = conv.reduce((m, c) => Math.max(m, c.tng), -Infinity);
+  const togStar = conv.reduce((m, c) => Math.max(m, c.tog), -Infinity);
   const group = (keyOf, minLength) => {
     const map = new Map();
     conv.forEach((c) => {
@@ -6506,7 +7886,7 @@ function pathwayPortfolios(cands, summary) {
       map.get(k).push(c);
     });
     return [...map.entries()].map(([k, list]) => {
-      const bestTng = list.reduce((m, c) => Math.max(m, c.tng), -Infinity);
+      const bestTog = list.reduce((m, c) => Math.max(m, c.tog), -Infinity);
       const bestBy = {};
       PATHWAY_ARCHETYPE_KEYS.forEach((a) => {
         const hit = summary.ranked[a].find((c) => c.length >= minLength && keyOf(c) === k);
@@ -6515,14 +7895,14 @@ function pathwayPortfolios(cands, summary) {
       return {
         key: k, stages: list.find((c) => c.length === minLength)?.stages.slice(0, minLength) || list[0].stages.slice(0, minLength),
         count: list.length, opens: list.filter((c) => summary.topIds.has(c.id)).length,
-        bestTng, regret: tngStar - bestTng, bestBy,
+        bestTog, regret: togStar - bestTog, bestBy,
       };
     }).sort((a, b) => a.regret - b.regret || b.opens - a.opens);
   };
   const firstKey = (c) => `${c.stages[0].leverId}@${round2(c.stages[0].u)}`;
   const twoKey = (c) => `${firstKey(c)}>${c.stages[1].leverId}${c.stages[1].scaleUp ? "+" : ""}@${round2(c.stages[1].u)}`;
   return {
-    tngStar: Number.isFinite(tngStar) ? tngStar : null,
+    togStar: Number.isFinite(togStar) ? togStar : null,
     firstMoves: group(firstKey, 1),
     openings: group(twoKey, 2).sort((a, b) => b.opens - a.opens || a.regret - b.regret).slice(0, 10),
   };
@@ -6593,11 +7973,15 @@ function* pathwayInvarianceTest(base, summary, maxSets = 12) {
 function pathwayAlternativeSettings(settings) {
   const lam = settings.lambda > 0 ? settings.lambda : 1;
   const alts = [];
-  if (settings.squashFunction !== "trivalent") {
+  // Steepness only means something for the two smooth curves; trivalent is a
+  // hard step and linear has no curve at all, so halving or doubling lambda
+  // there would just re-run the identical analysis under a misleading name.
+  if (settings.squashFunction !== "trivalent" && settings.squashFunction !== "linear") {
     alts.push({ label: `Steepness halved (λ = ${round2(lam / 2)})`, settings: { ...settings, lambda: lam / 2 } });
     alts.push({ label: `Steepness doubled (λ = ${round2(lam * 2)})`, settings: { ...settings, lambda: lam * 2 } });
   }
   if (settings.squashFunction === "sigmoid") alts.push({ label: "Hyperbolic tangent instead of sigmoid", settings: { ...settings, squashFunction: "tanh" } });
+  else if (settings.squashFunction === "linear") alts.push({ label: "Hyperbolic tangent instead of no squashing function", settings: { ...settings, squashFunction: "tanh" } });
   else if (settings.squashFunction !== "trivalent") alts.push({ label: "Sigmoid instead of hyperbolic tangent", settings: { ...settings, squashFunction: "sigmoid" } });
   alts.push(settings.updateRule === "absolute"
     ? { label: "Relative update rule", settings: { ...settings, updateRule: "relative" } }
@@ -6658,45 +8042,315 @@ function* runPathwayAnalysis(concepts, edges, settings, config) {
 // mounted inside containerEl) so callers can either trigger a download
 // (exportChartAsPng, the per-chart "PNG" buttons) or embed the bytes
 // directly into the exported workbook (exportAnalysisWorkbook).
-function svgElementToPngBlob(containerEl) {
+const CHART_EXPORT_FONT = "Inter, system-ui, sans-serif";
+// A figure exported on its own (a PNG download, or one embedded in the
+// Analysis Workbook) leaves behind every bit of context that lives outside
+// the <svg> on screen: the H4 heading next to the button, the caption
+// paragraph under it, which pathway is "selected". None of that survives
+// into the file. So the title/subtitle (and a little breathing room) are
+// baked directly into the exported image itself, not just shown on screen,
+// which is what makes a figure usable on its own in a report or slide deck.
+// Shared by every export path below (PNG, SVG, and the PDF built from the
+// PNG): clones the chart's own <svg>, gives it a plain white background (the
+// original picks up colour from page CSS that doesn't exist once serialized
+// standalone), and bakes in a title/subtitle so the figure still says what
+// it is once it's saved outside the app. Returns the annotated clone plus
+// its final pixel dimensions; callers rasterize or serialize it as needed.
+function buildAnnotatedSvgClone(svg, { title, subtitle, padding = 16 } = {}) {
+  const rect = svg.getBoundingClientRect();
+  if (!rect.width || !rect.height) return null;
+  const NS = "http://www.w3.org/2000/svg";
+  const headerH = title ? (subtitle ? 50 : 28) : 0;
+  const W = Math.ceil(rect.width + padding * 2);
+  const H = Math.ceil(rect.height + padding * 2 + headerH);
+  const clone = svg.cloneNode(true);
+  clone.setAttribute("xmlns", NS);
+  clone.setAttribute("width", W);
+  clone.setAttribute("height", H);
+  clone.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const bg = document.createElementNS(NS, "rect");
+  bg.setAttribute("width", "100%"); bg.setAttribute("height", "100%"); bg.setAttribute("fill", "#ffffff");
+  // Move the chart's own markup (still sized/positioned for the original
+  // rect) into a translated group, so it lands below the title and inset
+  // by the padding, instead of pinned to the top-left corner of the
+  // now-larger canvas.
+  const group = document.createElementNS(NS, "g");
+  group.setAttribute("transform", `translate(${padding}, ${padding + headerH})`);
+  while (clone.firstChild) group.appendChild(clone.firstChild);
+  clone.appendChild(bg);
+  clone.appendChild(group);
+  if (title) {
+    const t = document.createElementNS(NS, "text");
+    t.setAttribute("x", padding); t.setAttribute("y", padding + 15);
+    t.setAttribute("font-family", CHART_EXPORT_FONT);
+    t.setAttribute("font-size", "15"); t.setAttribute("font-weight", "600"); t.setAttribute("fill", "#0f172a");
+    t.textContent = title;
+    clone.appendChild(t);
+    if (subtitle) {
+      const st = document.createElementNS(NS, "text");
+      st.setAttribute("x", padding); st.setAttribute("y", padding + 33);
+      st.setAttribute("font-family", CHART_EXPORT_FONT);
+      st.setAttribute("font-size", "11.5"); st.setAttribute("fill", "#64748b");
+      st.textContent = subtitle;
+      clone.appendChild(st);
+    }
+  }
+  return { clone, width: W, height: H };
+}
+
+function svgElementToPngBlob(containerEl, { title, subtitle, scale = 2, padding = 16 } = {}) {
   return new Promise((resolve) => {
     const svg = containerEl?.querySelector("svg");
-    if (!svg) { resolve(null); return; }
-    const rect = svg.getBoundingClientRect();
-    if (!rect.width || !rect.height) { resolve(null); return; }
-    const clone = svg.cloneNode(true);
-    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-    clone.setAttribute("width", rect.width);
-    clone.setAttribute("height", rect.height);
-    // Recharts elements pick up color from CSS classes that don't exist once
-    // serialized standalone; give the clone a plain white background so the
-    // exported PNG isn't transparent.
-    const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    bg.setAttribute("width", "100%"); bg.setAttribute("height", "100%"); bg.setAttribute("fill", "#ffffff");
-    clone.insertBefore(bg, clone.firstChild);
+    const built = svg && buildAnnotatedSvgClone(svg, { title, subtitle, padding });
+    if (!built) { resolve(null); return; }
+    const { clone, width: W, height: H } = built;
     const svgData = new XMLSerializer().serializeToString(clone);
     const svgUrl = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgData);
-    const scale = 2; // export at 2x for a crisper PNG
     const img = new Image();
     img.onload = () => {
       const canvas = document.createElement("canvas");
-      canvas.width = rect.width * scale;
-      canvas.height = rect.height * scale;
+      canvas.width = Math.round(W * scale);
+      canvas.height = Math.round(H * scale);
       const ctx = canvas.getContext("2d");
       ctx.scale(scale, scale);
-      ctx.drawImage(img, 0, 0, rect.width, rect.height);
-      canvas.toBlob((blob) => resolve(blob ? { blob, width: rect.width, height: rect.height } : null), "image/png");
+      ctx.drawImage(img, 0, 0, W, H);
+      canvas.toBlob((blob) => resolve(blob ? { blob, width: W, height: H } : null), "image/png");
     };
     img.onerror = () => resolve(null);
     img.src = svgUrl;
   });
 }
 
-function exportChartAsPng(containerEl, filename) {
-  svgElementToPngBlob(containerEl).then((result) => {
+// A native-vector export: no rasterization, so it stays crisp at any size
+// and is directly editable in Illustrator/Inkscape — the format academic
+// journals most often ask for.
+function svgElementToSvgBlob(containerEl, { title, subtitle, padding = 16 } = {}) {
+  const svg = containerEl?.querySelector("svg");
+  const built = svg && buildAnnotatedSvgClone(svg, { title, subtitle, padding });
+  if (!built) return null;
+  const svgData = new XMLSerializer().serializeToString(built.clone);
+  return { blob: new Blob([svgData], { type: "image/svg+xml" }), width: built.width, height: built.height };
+}
+
+// ============================================================================
+// Publication-figure customization
+// ============================================================================
+// Sizes chosen so a figure exported at these dimensions drops into a journal
+// page (A4-based) without resizing in an image editor afterwards. Width/
+// height are in millimetres; "custom" leaves the analyst's own numbers alone.
+const FIGURE_SIZE_PRESETS = [
+  { id: "custom", label: "Custom size" },
+  { id: "single-portrait", label: "Single-column portrait", widthMm: 84, heightMm: 110 },
+  { id: "single-square", label: "Single-column square", widthMm: 84, heightMm: 84 },
+  { id: "double-landscape", label: "Double-column landscape", widthMm: 174, heightMm: 100 },
+  { id: "full-portrait", label: "Full-page portrait", widthMm: 170, heightMm: 240 },
+  { id: "full-landscape", label: "Full-page landscape", widthMm: 240, heightMm: 170 },
+];
+const FIGURE_DPI_OPTIONS = [150, 300, 600];
+// Colours ordered so the first few remain distinguishable when the palette
+// is reduced to the number of series a chart actually has.
+const FIGURE_PALETTES = {
+  default: { label: "Default (cobalt accent)", colors: ["#2456d6", "#c2410c", "#7c3aed", "#0f766e", "#be123c", "#4d7c0f", "#a16207", "#0e7490"] },
+  colorblind: { label: "Colorblind-safe (Okabe-Ito)", colors: ["#0072B2", "#E69F00", "#009E73", "#D55E00", "#CC79A7", "#56B4E9", "#F0E442", "#999999"] },
+  grayscale: { label: "Grayscale", colors: ["#111827", "#6b7280", "#9ca3af", "#374151", "#1f2937", "#4b5563", "#d1d5db", "#78716c"] },
+};
+function figurePalette(name, n) {
+  const colors = (FIGURE_PALETTES[name] || FIGURE_PALETTES.default).colors;
+  return Array.from({ length: Math.max(n, 1) }, (_, i) => colors[i % colors.length]);
+}
+const DEFAULT_FIGURE_SETTINGS = {
+  preset: "single-portrait", widthMm: 84, heightMm: 110, lockAspect: true, dpi: 300,
+  title: "", xLabel: "", yLabel: "",
+  titleFontSize: 14, axisFontSize: 12, tickFontSize: 10, legendFontSize: 10,
+  showGridlines: true, legendPosition: "top",
+  palette: "default", lineWidth: 2, markerSize: 3, opacity: 1,
+  decimals: 2, format: "png",
+};
+// The trajectory charts (Baseline Equilibrium, and the baseline, scenario, and
+// difference trajectories of Scenarios & Simulation) are drawn as smooth lines
+// without a marker at every iteration; the marker slider in the figure panel
+// can still add them.
+const TRAJECTORY_FIGURE_DEFAULTS = { ...DEFAULT_FIGURE_SETTINGS, markerSize: 0 };
+const mmToPx = (mm, dpi) => Math.round((mm / 25.4) * dpi);
+const fmtDec = (v, d) => (Number.isFinite(v) ? Number(v).toFixed(d) : "");
+
+// Temporarily resizes containerEl to the exact CSS-pixel size a figure
+// preset implies (millimetres at the 96 px/inch every browser uses for CSS
+// sizing), lets Recharts' ResponsiveContainer reflow into it, captures it at
+// the requested print DPI (a multiple of that 96 px/inch baseline), then
+// restores the on-screen size. This is also what "live preview" uses: the
+// panel applies the same resize while it's open, so what the analyst sees
+// while adjusting settings is pixel-for-pixel what export will capture.
+async function withResizedChart(containerEl, { widthMm, heightMm, shrinkWPx = 0, shrinkHPx = 0 }, fn) {
+  if (!containerEl) return null;
+  const prevWidth = containerEl.style.width, prevHeight = containerEl.style.height;
+  const prevMaxWidth = containerEl.style.maxWidth;
+  // shrinkWPx/shrinkHPx reserve room for the title band and padding that
+  // buildAnnotatedSvgClone adds around the chart, so the FINAL exported
+  // canvas — chart plus that band — comes out at exactly widthMm × heightMm,
+  // not that size plus a bit more for the title.
+  containerEl.style.width = `${Math.max(20, mmToPx(widthMm, 96) - shrinkWPx)}px`;
+  containerEl.style.height = `${Math.max(20, mmToPx(heightMm, 96) - shrinkHPx)}px`;
+  containerEl.style.maxWidth = "none";
+  // A short pause for the ResizeObserver behind Recharts' ResponsiveContainer
+  // to see the new box and finish laying out inside it. A timer rather than
+  // requestAnimationFrame: rAF callbacks are paused entirely while the tab
+  // isn't the visible one, which would hang this indefinitely; a timer still
+  // fires (Chrome throttles a background tab's timers to at most once a
+  // second, but never stops them outright).
+  await new Promise((r) => setTimeout(r, 80));
+  try {
+    return await fn();
+  } finally {
+    containerEl.style.width = prevWidth;
+    containerEl.style.height = prevHeight;
+    containerEl.style.maxWidth = prevMaxWidth;
+  }
+}
+
+// Draws a PNG blob's pixels into a single-page PDF whose page size matches
+// the image at the given DPI, with no external library: the raw RGB bytes
+// are zlib-deflated with the browser's own CompressionStream (the exact
+// format PDF's /FlateDecode expects) and wrapped in a hand-built, minimal
+// PDF object graph (catalog, one page, one image XObject, one content
+// stream painting it edge-to-edge). Returns null where CompressionStream
+// isn't available (older browsers) so callers can fall back to PNG.
+async function pngBlobToPdfBlob(blob, dpi) {
+  if (typeof CompressionStream === "undefined") return null;
+  const bitmap = await createImageBitmap(blob);
+  const { width, height } = bitmap;
+  const canvas = document.createElement("canvas");
+  canvas.width = width; canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(bitmap, 0, 0);
+  const { data } = ctx.getImageData(0, 0, width, height);
+  const rgb = new Uint8Array(width * height * 3);
+  for (let i = 0, j = 0; i < data.length; i += 4, j += 3) {
+    rgb[j] = data[i]; rgb[j + 1] = data[i + 1]; rgb[j + 2] = data[i + 2];
+  }
+  const cs = new CompressionStream("deflate");
+  const writer = cs.writable.getWriter();
+  writer.write(rgb);
+  writer.close();
+  const deflated = new Uint8Array(await new Response(cs.readable).arrayBuffer());
+
+  const enc = new TextEncoder();
+  const parts = [];
+  let offset = 0;
+  const objOffsets = [];
+  const push = (bytes) => { parts.push(bytes); offset += bytes.length; };
+  const pushStr = (s) => push(enc.encode(s));
+  const ptsPerPx = 72 / dpi;
+  const pageW = (width * ptsPerPx).toFixed(2), pageH = (height * ptsPerPx).toFixed(2);
+  const content = `q ${pageW} 0 0 ${pageH} 0 0 cm /Im0 Do Q`;
+  const contentBytes = enc.encode(content);
+
+  pushStr("%PDF-1.4\n%\xE2\xE3\xCF\xD3\n");
+  objOffsets[1] = offset; pushStr("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+  objOffsets[2] = offset; pushStr("2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n");
+  objOffsets[3] = offset; pushStr(`3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageW} ${pageH}] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>\nendobj\n`);
+  objOffsets[4] = offset; pushStr(`4 0 obj\n<< /Type /XObject /Subtype /Image /Width ${width} /Height ${height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length ${deflated.length} >>\nstream\n`);
+  push(deflated);
+  pushStr("\nendstream\nendobj\n");
+  objOffsets[5] = offset; pushStr(`5 0 obj\n<< /Length ${contentBytes.length} >>\nstream\n${content}\nendstream\nendobj\n`);
+  const xrefStart = offset;
+  let xref = "xref\n0 6\n0000000000 65535 f \n";
+  for (let i = 1; i <= 5; i++) xref += String(objOffsets[i]).padStart(10, "0") + " 00000 n \n";
+  pushStr(xref);
+  pushStr(`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`);
+  return new Blob(parts, { type: "application/pdf" });
+}
+
+// Standard PNG CRC32 (polynomial 0xEDB88320), needed to hand-build the pHYs
+// chunk below; the table is built once and reused.
+let PNG_CRC_TABLE = null;
+function png_crc32(bytes) {
+  if (!PNG_CRC_TABLE) {
+    PNG_CRC_TABLE = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      PNG_CRC_TABLE[n] = c >>> 0;
+    }
+  }
+  let crc = 0xFFFFFFFF;
+  for (let i = 0; i < bytes.length; i++) crc = PNG_CRC_TABLE[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+// canvas.toBlob() never records a physical resolution, so an image editor,
+// Word, or LaTeX has no way to know a PNG sized for 300 dpi should print at
+// (say) 84 mm wide rather than at that many pixels / 96 dpi — the figure
+// would land in a document roughly 3x too large until resized by hand. This
+// splices a pHYs chunk (pixels-per-metre, the one PNG chunk that records
+// that) in right after IHDR, which is the only structural edit a PNG needs
+// to carry it; everything else in the file is untouched.
+async function pngWithDpi(blob, dpi) {
+  const buf = new Uint8Array(await blob.arrayBuffer());
+  if (buf.length < 33 || buf[0] !== 0x89 || buf[1] !== 0x50) return blob;
+  const ihdrEnd = 8 + 4 + 4 + 13 + 4; // signature + (length+type+data+crc) of IHDR, always first and always this size
+  const pxPerMeter = Math.round(dpi / 0.0254);
+  const enc = new TextEncoder();
+  const type = enc.encode("pHYs");
+  const data = new Uint8Array(9);
+  const ddv = new DataView(data.buffer);
+  ddv.setUint32(0, pxPerMeter); ddv.setUint32(4, pxPerMeter); data[8] = 1; // unit 1 = metre
+  const crcInput = new Uint8Array(type.length + data.length);
+  crcInput.set(type, 0); crcInput.set(data, type.length);
+  const chunk = new Uint8Array(4 + 4 + 9 + 4);
+  const cdv = new DataView(chunk.buffer);
+  cdv.setUint32(0, 9);
+  chunk.set(type, 4);
+  chunk.set(data, 8);
+  cdv.setUint32(17, png_crc32(crcInput));
+  const out = new Uint8Array(buf.length + chunk.length);
+  out.set(buf.subarray(0, ihdrEnd), 0);
+  out.set(chunk, ihdrEnd);
+  out.set(buf.subarray(ihdrEnd), ihdrEnd + chunk.length);
+  return new Blob([out], { type: "image/png" });
+}
+
+// One entry point for every "Export figure" button: captures the chart at
+// its current on-screen appearance (already driven by `settings` — palette,
+// fonts, gridlines, labels — via the chart's own props), at exactly the
+// physical size `settings` specifies (the title/subtitle band is reserved
+// out of the chart's own box first, so adding a title never makes the
+// exported file larger than the size asked for), in whichever format was
+// chosen. PNG and PDF also carry that physical size as metadata (a pHYs
+// chunk, and the PDF's own page box respectively), so pasting the result
+// into a document reproduces the millimetre size directly, with no manual
+// resizing.
+async function exportFigure(containerEl, filename, settings, { title, subtitle } = {}) {
+  if (!containerEl) return;
+  const padding = 16;
+  const headerH = title ? (subtitle ? 50 : 28) : 0;
+  await withResizedChart(containerEl, { widthMm: settings.widthMm, heightMm: settings.heightMm, shrinkWPx: padding * 2, shrinkHPx: padding * 2 + headerH }, async () => {
+    if (settings.format === "svg") {
+      const result = svgElementToSvgBlob(containerEl, { title, subtitle, padding });
+      if (!result) return;
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(result.blob);
+      a.download = scopedFilename(filename.replace(/\.png$/, ".svg"));
+      a.click();
+      return;
+    }
+    const scale = settings.dpi / 96;
+    const result = await svgElementToPngBlob(containerEl, { title, subtitle, scale, padding });
     if (!result) return;
+    if (settings.format === "pdf") {
+      const pdf = await pngBlobToPdfBlob(result.blob, settings.dpi);
+      const blob = pdf || result.blob;
+      const ext = pdf ? "pdf" : "png";
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = scopedFilename(filename.replace(/\.png$/, `.${ext}`));
+      a.click();
+      if (!pdf) alert("PDF export needs a newer browser (CompressionStream is not available here); downloaded a high-resolution PNG instead.");
+      return;
+    }
+    const tagged = await pngWithDpi(result.blob, settings.dpi);
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(result.blob);
+    a.href = URL.createObjectURL(tagged);
     a.download = scopedFilename(filename);
     a.click();
   });
@@ -6859,16 +8513,20 @@ async function addChartSheet(workbook, name, captured, missingNote, usedNames) {
 // moment after it renders/updates and stores it in the app-shell's
 // chartCache, so a chart generated earlier in the session is still
 // available to embed even after navigating away from its tab.
+// `label` is baked as the exported image's own title (see svgElementToPngBlob)
+// for every "svg"-mode chart, so an image embedded in the workbook, or saved
+// from the cache, still says what it is once it's out of the app; it also
+// doubles as that chart's sheet name in the workbook (see addChartSheet calls).
 const CHART_TARGETS = {
-  networkGraph: { selector: '[data-chart="network-graph"]', mode: "dom" },
-  sensitivityScores: { selector: '[data-chart="sensitivity-scores"]', mode: "svg" },
-  baselineConvergence: { selector: '[data-chart="baseline-convergence"]', mode: "svg" },
-  scenarioComparison: { selector: '[data-chart="scenario-comparison"]', mode: "svg" },
-  transitionCurves: { selector: '[data-chart="transition-curves"]', mode: "svg" },
-  pathwayPlane: { selector: '[data-chart="pathway-plane"]', mode: "svg" },
+  networkGraph: { selector: '[data-chart="network-graph"]', mode: "dom", label: "Network Graph" },
+  sensitivityScores: { selector: '[data-chart="sensitivity-scores"]', mode: "svg", label: "Sensitivity Scores" },
+  baselineConvergence: { selector: '[data-chart="baseline-convergence"]', mode: "svg", label: "Baseline Convergence Plot" },
+  scenarioComparison: { selector: '[data-chart="scenario-comparison"]', mode: "svg", label: "Scenario Comparison Plot" },
+  transitionCurves: { selector: '[data-chart="transition-curves"]', mode: "svg", label: "Transition Point Curves" },
+  pathwayPlane: { selector: '[data-chart="pathway-plane"]', mode: "svg", label: "Transition Pathways: Effort-Gain Plane" },
 };
 
-async function captureOneChart(selector, mode) {
+async function captureOneChart(selector, mode, title) {
   const el = document.querySelector(selector);
   if (!el) return null;
   try {
@@ -6883,23 +8541,25 @@ async function captureOneChart(selector, mode) {
       const blob = await domNodeToPngBlob(el, { pixelRatio: 2, backgroundColor: "#ffffff", skipFonts: true });
       return blob ? { blob, width: rect.width, height: rect.height } : null;
     }
-    return await svgElementToPngBlob(el);
+    return await svgElementToPngBlob(el, { title });
   } catch {
     return null;
   }
 }
 
-// Custom hook: a tab calls this with its own chart's cache key/selector plus
-// whatever data its chart depends on, and a moment after that data settles
-// (debounced, so a slider drag or fast successive re-runs don't fire it
-// repeatedly) the chart is captured into the shared chartCache. setChartCache
-// is undefined for any caller not passed one (none currently), in which case
-// this is a no-op.
-function useCachedChart(setChartCache, key, selector, mode, deps) {
+// Custom hook: a tab calls this with its own chart's cache key (its entry in
+// CHART_TARGETS supplies the selector, capture mode, and baked-in title)
+// plus whatever data its chart depends on, and a moment after that data
+// settles (debounced, so a slider drag or fast successive re-runs don't fire
+// it repeatedly) the chart is captured into the shared chartCache.
+// setChartCache is undefined for any caller not passed one (none currently),
+// in which case this is a no-op.
+function useCachedChart(setChartCache, key, deps) {
   useEffect(() => {
     if (!setChartCache) return;
+    const { selector, mode, label } = CHART_TARGETS[key];
     const t = setTimeout(() => {
-      captureOneChart(selector, mode).then((cap) => {
+      captureOneChart(selector, mode, label).then((cap) => {
         if (cap) setChartCache((prev) => ({ ...prev, [key]: cap }));
       });
     }, 700);
@@ -6914,9 +8574,9 @@ function useCachedChart(setChartCache, key, selector, mode, deps) {
 // since a live capture is always at least as fresh as the cache.
 async function captureAnalysisCharts(chartCache = {}) {
   const out = { ...chartCache };
-  for (const [key, { selector, mode }] of Object.entries(CHART_TARGETS)) {
+  for (const [key, { selector, mode, label }] of Object.entries(CHART_TARGETS)) {
     if (!document.querySelector(selector)) continue; // not mounted right now: keep whatever's cached (or nothing)
-    const cap = await captureOneChart(selector, mode);
+    const cap = await captureOneChart(selector, mode, label);
     if (cap) out[key] = cap;
   }
   return out;
@@ -7176,12 +8836,12 @@ async function buildAnalysisWorkbook({
       { item: "Levers", value: pr.levers.map((l) => `${pn(l.id)} (${l.decrease ? "decrease" : "increase"}, effort ${l.effort})`).join("; ") },
       { item: "Maximum stages", value: pr.J },
       { item: "Stage intensity", value: pr.rule === "tp" ? `Up to the conditional transition point${pr.scaleUpAllowed ? ", scale-up stages allowed" : ""}` : "Full implementation (intensity 1)" },
-      { item: "Pathway construction", value: pr.strategy === "exhaustive" ? "Every order (exhaustive)" : pr.strategy === "greedy" ? "Greedy (highest marginal return)" : `Beam search (width ${cfg.beamWidth}, by ${cfg.beamCriterion === "pei" ? "efficiency" : "nexus gain"})` },
+      { item: "Pathway construction", value: pr.strategy === "exhaustive" ? "Every order (exhaustive)" : pr.strategy === "greedy" ? "Greedy (highest marginal return)" : `Beam search (width ${cfg.beamWidth}, by ${cfg.beamCriterion === "pei" ? "efficiency" : "outcome gain"})` },
       { item: "Order constraints", value: (cfg.precedence || []).map((p) => `${pn(p.after)} after ${pn(p.before)}`).join("; ") || "None" },
       { item: "Intensity resolution (steps)", value: pr.N },
       { item: "Flat-response threshold", value: pr.eps },
       { item: "Minimum gain (share of best)", value: cfg.minGainShare },
-      { item: "Simulation settings", value: `${pr.settingsUsed.squashFunction}, lambda ${pr.settingsUsed.lambda}, ${pr.settingsUsed.updateRule} rule, synchronous, up to ${pr.settingsUsed.maxIterations} iterations, threshold ${pr.settingsUsed.convergenceThreshold}` },
+      { item: "Simulation settings", value: `${pr.settingsUsed.squashFunction === "linear" ? "no squashing function (linear, unbounded)" : `${pr.settingsUsed.squashFunction}, lambda ${pr.settingsUsed.lambda}`}, ${pr.settingsUsed.updateRule} rule, synchronous, up to ${pr.settingsUsed.maxIterations} iterations, threshold ${pr.settingsUsed.convergenceThreshold}` },
       { item: "Pathways evaluated", value: pr.candidates.length },
       { item: "Admissible pathways", value: pr.summary.counts.admissible },
       { item: "Minimum meaningful gain", value: num(pr.summary.gMin) },
@@ -7191,7 +8851,7 @@ async function buildAnalysisWorkbook({
       { item: "Simulation runs (main analysis)", value: pr.runs },
     ], usedNames);
     const rowOf = (c) => ({
-      pathway: ptext(c.stages), stages: c.length, tng: num(c.tng), cii: num(c.cii), pei: num(c.pei), avgTp: num(c.avgTp),
+      pathway: ptext(c.stages), stages: c.length, tog: num(c.tog), cii: num(c.cii), pei: num(c.pei), avgTp: num(c.avgTp),
       ss: c.ss, to: c.to, ebi: num(c.ebi), ig: num(c.ig), shift: num(c.meanShift),
       converged: c.converged ? "Yes" : "No", admissible: c.admissible ? "Yes" : "No",
       archetypes: c.memberships.map(arch).join("; "), primary: c.primary ? arch(c.primary) : pathwayStatus(c),
@@ -7199,7 +8859,7 @@ async function buildAnalysisWorkbook({
     });
     const metricCols = [
       { header: "Pathway", key: "pathway" }, { header: "Stages", key: "stages" },
-      { header: "Total Nexus Gain", key: "tng" }, { header: "Cumulative Intervention Intensity", key: "cii" },
+      { header: "Total Outcome Gain", key: "tog" }, { header: "Cumulative Intervention Intensity", key: "cii" },
       { header: "Pathway Efficiency Index", key: "pei" }, { header: "Average Transition Point", key: "avgTp" },
       { header: "Synergy Score", key: "ss" }, { header: "Trade-offs", key: "to" }, { header: "Early Benefit Index", key: "ebi" },
       { header: "Interaction Gain", key: "ig" }, { header: "Mean TP Shift", key: "shift" },
@@ -7209,7 +8869,7 @@ async function buildAnalysisWorkbook({
       { header: "Converged", key: "converged" }, { header: "Admissible", key: "admissible" },
       { header: "Archetypes", key: "archetypes" }, { header: "Primary Archetype / Status", key: "primary" },
       { header: "Efficient Frontier", key: "frontier" }, { header: "Targets Met", key: "targets" },
-    ], [...pr.candidates].sort((a, b) => b.tng - a.tng).slice(0, 5000).map(rowOf), usedNames);
+    ], [...pr.candidates].sort((a, b) => b.tog - a.tog).slice(0, 5000).map(rowOf), usedNames);
     addDataSheet(workbook, "Pathway Rankings", [{ header: "Archetype", key: "archetype" }, { header: "Rank", key: "rank" }, ...metricCols],
       PATHWAY_ARCHETYPES.flatMap((a) => pr.summary.ranked[a.key].slice(0, 10).map((c, i) => ({ archetype: a.label, rank: i + 1, ...rowOf(c) }))), usedNames);
     const detailed = pr.candidates.filter((c) => pr.summary.topIds.has(c.id) || c.frontier);
@@ -7217,7 +8877,7 @@ async function buildAnalysisWorkbook({
       { header: "Pathway", key: "pathway" }, { header: "Stage", key: "stage" }, { header: "Lever", key: "lever" },
       { header: "Scale-up", key: "scaleUp" }, { header: "Intensity Before", key: "uPrev" }, { header: "Intensity", key: "u" },
       { header: "Isolated TP", key: "tauIso" }, { header: "Conditional TP", key: "tauCond" }, { header: "TP Shift", key: "shift" },
-      { header: "Stage Gain", key: "dg" }, { header: "Nexus Gain After", key: "g" }, { header: "Cumulative Intensity", key: "cii" },
+      { header: "Stage Gain", key: "dg" }, { header: "Outcome Gain After", key: "g" }, { header: "Cumulative Intensity", key: "cii" },
       { header: "Converged", key: "converged" },
       ...pr.outcomes.map((o) => ({ header: `${pn(o.id)} at Stage End`, key: `o_${o.id}` })),
     ], detailed.flatMap((c) => c.stages.map((st, i) => ({
@@ -7229,7 +8889,7 @@ async function buildAnalysisWorkbook({
     addDataSheet(workbook, "Pathway Lever Profiles", [
       { header: "Lever", key: "lever" }, { header: "Direction", key: "dir" }, { header: "Effort Weight", key: "effort" },
       { header: "Isolated TP", key: "tau" }, { header: "Response Type", key: "type" }, { header: "Max Marginal Return", key: "mr" },
-      { header: "Nexus Gain at Full Intensity", key: "full" }, { header: "Synergy", key: "syn" },
+      { header: "Outcome Gain at Full Intensity", key: "full" }, { header: "Synergy", key: "syn" },
       { header: "In Pathways", key: "inc" }, { header: "Reason", key: "reason" },
       ...pr.outcomes.flatMap((o) => [{ header: `${pn(o.id)} Effect at Full Intensity`, key: `e_${o.id}` }, { header: `${pn(o.id)} TP`, key: `t_${o.id}` }]),
     ], pr.iso.map((l) => ({
@@ -7240,10 +8900,10 @@ async function buildAnalysisWorkbook({
     const byId = new Map(pr.candidates.map((c) => [c.id, c]));
     addDataSheet(workbook, "Pathway Portfolios", [
       { header: "Opening", key: "opening" }, { header: "Pathways Starting This Way", key: "count" },
-      { header: "Top-ranked Pathways Opened", key: "opens" }, { header: "Best Total Nexus Gain", key: "best" }, { header: "Regret", key: "regret" },
+      { header: "Top-ranked Pathways Opened", key: "opens" }, { header: "Best Total Outcome Gain", key: "best" }, { header: "Regret", key: "regret" },
       ...PATHWAY_ARCHETYPES.map((a) => ({ header: `Best ${a.label} Pathway`, key: `b_${a.key}` })),
     ], [...pr.portfolios.firstMoves, ...pr.portfolios.openings].map((f) => ({
-      opening: ptext(f.stages), count: f.count, opens: f.opens, best: num(f.bestTng), regret: num(f.regret),
+      opening: ptext(f.stages), count: f.count, opens: f.opens, best: num(f.bestTog), regret: num(f.regret),
       ...Object.fromEntries(PATHWAY_ARCHETYPES.map((a) => [`b_${a.key}`, f.bestBy[a.key] !== null && byId.get(f.bestBy[a.key]) ? ptext(byId.get(f.bestBy[a.key]).stages) : ""])),
     })), usedNames);
     addDataSheet(workbook, "Pathway Invariance Test", [
@@ -7440,7 +9100,7 @@ async function buildAnalysisWorkbook({
 
 const RESPONSE_TYPE_STYLE = {
   "Flat": "bg-slate-100 text-slate-500 border-slate-200",
-  "Front-Loaded": "bg-teal-50 text-teal-800 border-teal-200",
+  "Front-Loaded": "bg-cobalt-50 text-cobalt-800 border-cobalt-200",
   "Threshold-Type": "bg-amber-50 text-amber-800 border-amber-200",
   "Back-Loaded": "bg-rose-50 text-rose-800 border-rose-200",
 };
@@ -7451,9 +9111,19 @@ const RESPONSE_TYPE_HELP = {
   "Back-Loaded": "Requires substantial effort before impacts emerge: the strongest marginal return happens near the maximum intensity.",
 };
 
+const TRANSITION_TABLE_COLUMNS = [
+  { key: "interventionName", label: "Intervention", type: "text" },
+  { key: "outcomeName", label: "Outcome", type: "text" },
+  { key: "tp", label: "TP", type: "num", help: "Transition point: the intensity at which this outcome's response is steepest." },
+  { key: "effect", label: "Max Change", type: "num", help: "Effect size (change from start to end of the sweep)." },
+  { key: "range", label: "Range", type: "num", help: "Total movement of this outcome across the whole sweep; below the flat-response threshold counts as no meaningful response." },
+  { key: "efficiency", label: "Efficiency", type: "num", help: "Total effect divided by the transition point: how much change was achieved relative to how far the intervention had to be pushed." },
+  { key: "responseType", label: "Response Type", type: "text" },
+];
+
 const SYNERGY_STYLE = {
   "Trade-Off": "bg-rose-50 text-rose-800 border-rose-200",
-  "Full Synergy": "bg-teal-50 text-teal-800 border-teal-200",
+  "Full Synergy": "bg-cobalt-50 text-cobalt-800 border-cobalt-200",
   "Partial Synergy": "bg-amber-50 text-amber-800 border-amber-200",
   "Narrow Synergy": "bg-amber-50 text-amber-800 border-amber-200",
   "Full Negative Synergy": "bg-rose-50 text-rose-800 border-rose-200",
@@ -7463,7 +9133,7 @@ const SYNERGY_STYLE = {
 };
 
 function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenarioId, settings, result, setResult, setChartCache, modelVersion }) {
-  useCachedChart(setChartCache, "transitionCurves", '[data-chart="transition-curves"]', "svg", [result]);
+  useCachedChart(setChartCache, "transitionCurves", [result]);
   const [tpIntervention, setTpIntervention] = useState("");
   const [tpDirection, setTpDirection] = useState("increase");
   const [tpOutcomes, setTpOutcomes] = useState([]);
@@ -7473,6 +9143,30 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
 
   const responseChartRef = useRef(null);
   const slopeChartRef = useRef(null);
+
+  // Publication-figure settings for the two curve charts, each independently
+  // sizeable/styleable but sharing which outcomes are shown and in what
+  // order, since that's a property of "what this figure is about" rather
+  // than of one particular chart.
+  const [figResponse, setFigResponse] = useState(DEFAULT_FIGURE_SETTINGS);
+  const [figResponseOpen, setFigResponseOpen] = useState(false);
+  const [figResponseBusy, setFigResponseBusy] = useState(false);
+  const [figSlope, setFigSlope] = useState(DEFAULT_FIGURE_SETTINGS);
+  const [figSlopeOpen, setFigSlopeOpen] = useState(false);
+  const [figSlopeBusy, setFigSlopeBusy] = useState(false);
+  const [hiddenOutcomeKeys, setHiddenOutcomeKeys] = useState(() => new Set());
+  const toggleHiddenOutcome = (id) => setHiddenOutcomeKeys((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const [seriesOrder, setSeriesOrder] = useState("original");
+  const SERIES_ORDER_OPTIONS = [
+    { value: "original", label: "As selected" },
+    { value: "alphabetical", label: "Alphabetical" },
+    { value: "byTP", label: "By transition point" },
+    { value: "byEffect", label: "By effect size" },
+  ];
 
   const availableOutcomeConcepts = useMemo(() => concepts.filter((c) => c.id !== tpIntervention), [concepts, tpIntervention]);
   const toggleOutcome = (id) => setTpOutcomes((os) => (os.includes(id) ? os.filter((o) => o !== id) : [...os, id]));
@@ -7505,7 +9199,7 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
   };
   const isStale = !!result && result.__modelVersion !== modelVersion;
 
-  const lineColors = ["#0f766e", "#c2410c", "#7c3aed", "#0369a1", "#be123c", "#4d7c0f", "#a16207", "#0e7490"];
+  const lineColors = ["#2456d6", "#c2410c", "#7c3aed", "#0f766e", "#be123c", "#4d7c0f", "#a16207", "#0e7490"];
 
   const curveData = useMemo(() => {
     if (!result) return [];
@@ -7544,6 +9238,23 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
     if (!matrixData.length) return 0;
     return round2(matrixData.reduce((s, d) => s + d.y, 0) / matrixData.length);
   }, [matrixData]);
+
+  // Which outcomes actually appear in the two curve charts, and in what
+  // order: hiding an outcome here is a figure-preparation choice (it stays
+  // in the table and the underlying result), and reordering only changes
+  // which line is drawn/coloured first, not the analysis itself.
+  const chartRows = useMemo(() => {
+    if (!result) return [];
+    const rows = result.rows.filter((r) => !hiddenOutcomeKeys.has(r.outcomeId));
+    if (seriesOrder === "alphabetical") rows.sort((a, b) => a.outcomeName.localeCompare(b.outcomeName));
+    else if (seriesOrder === "byTP") rows.sort((a, b) => a.tp - b.tp);
+    else if (seriesOrder === "byEffect") rows.sort((a, b) => Math.abs(b.effect) - Math.abs(a.effect));
+    return rows;
+  }, [result, hiddenOutcomeKeys, seriesOrder]);
+  const outcomeSeriesOptions = useMemo(() => (result ? result.rows.map((r) => ({ key: r.outcomeId, label: r.outcomeName })) : []), [result]);
+
+  const tpTableRows = useMemo(() => (result ? result.rows.map((r) => ({ ...r, interventionName: result.interventionName })) : []), [result]);
+  const { sorted: tpSortedRows, sortKey: tpSortKey, sortDir: tpSortDir, onSort: tpOnSort } = useTableSort(tpTableRows, TRANSITION_TABLE_COLUMNS, { key: "tp", dir: "asc" });
 
   const synergy = useMemo(() => {
     if (!result || result.rows.length < 2) return null;
@@ -7657,7 +9368,7 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
             {availableOutcomeConcepts.map((c) => (
               <button
                 key={c.id} onClick={() => toggleOutcome(c.id)}
-                className={`text-[10px] px-1.5 py-0.5 rounded border ${tpOutcomes.includes(c.id) ? "border-teal-700 bg-teal-50 text-teal-800" : "border-slate-200 text-slate-500 hover:border-slate-400"}`}
+                className={`text-[10px] px-1.5 py-0.5 rounded border ${tpOutcomes.includes(c.id) ? "border-cobalt-700 bg-cobalt-50 text-cobalt-800" : "border-slate-200 text-slate-500 hover:border-slate-400"}`}
               >
                 {c.name}
               </button>
@@ -7685,7 +9396,7 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
                 tone: result.resolution < 50 ? "warn" : undefined,
                 hint: "A transition point can only ever be reported at one of the sampled levels, so the sweep resolution sets how precise it can possibly be.",
               },
-              { label: "Transfer function / λ", value: `${settings.squashFunction ?? "tanh"} / ${settings.lambda ?? 1}` },
+              { label: "Transfer function / λ", value: transferFunctionLabel(settings) },
               {
                 label: "Near-flat outcomes",
                 value: `${result.rows.filter((r) => r.range <= result.flatThreshold).length} of ${result.rows.length}`,
@@ -7703,51 +9414,99 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
           <div className="bg-white rounded-lg border border-slate-200 p-4">
             <div className="flex items-center justify-between mb-1">
               <h4 className="text-sm font-semibold">Response curves: {result.interventionName} ({result.direction === "increase" ? "0→1" : "1→0"})</h4>
-              <Btn variant="outline" onClick={() => exportChartAsPng(responseChartRef.current, "transition-response-curves.png")}><Download size={13} />PNG</Btn>
+              <Btn variant="outline" onClick={() => setFigResponseOpen((v) => !v)}><SlidersHorizontal size={13} />{figResponseOpen ? "Hide figure options" : "Customize & export"}</Btn>
             </div>
             <p className="text-[11px] text-slate-400 mb-2">Dashed vertical lines mark each outcome's transition point (greatest marginal return). Drag the strip below the chart to zoom into an intensity range.</p>
-            <div ref={responseChartRef} data-chart="transition-curves" className="w-full h-80">
+            <div ref={responseChartRef} data-chart="transition-curves" className="w-full h-80" style={figResponseOpen ? { width: mmToPx(figResponse.widthMm, 96), height: mmToPx(figResponse.heightMm, 96), maxWidth: "100%" } : undefined}>
               <ResponsiveContainer>
                 <LineChart data={curveData} margin={{ bottom: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="x" type="number" domain={[0, 1]} tick={{ fontSize: 10 }} label={{ value: "Intervention Intensity", position: "insideBottom", offset: -12, fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 10 }} label={{ value: "Equilibrium Outcome", angle: -90, position: "insideLeft", fontSize: 11 }} />
+                  {figResponse.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
+                  <XAxis dataKey="x" type="number" domain={[0, 1]} tick={{ fontSize: figResponse.tickFontSize }} tickFormatter={(v) => fmtDec(v, figResponse.decimals)} label={{ value: figResponse.xLabel || "Intervention Intensity", position: "insideBottom", offset: -12, fontSize: figResponse.axisFontSize }} />
+                  <YAxis tick={{ fontSize: figResponse.tickFontSize }} tickFormatter={(v) => fmtDec(v, figResponse.decimals)} label={{ value: figResponse.yLabel || "Equilibrium Outcome", angle: -90, position: "insideLeft", fontSize: figResponse.axisFontSize }} />
                   <RTooltip />
-                  <Legend wrapperStyle={{ fontSize: 10 }} />
-                  {result.rows.map((r, i) => (
-                    <ReferenceLine key={`tp-${r.outcomeId}`} x={round2(r.tp)} stroke={lineColors[i % lineColors.length]} strokeDasharray="4 4"
-                      label={i === 0 ? { value: `TP = ${round2(r.tp)}`, position: "top", fontSize: 10, fill: lineColors[i % lineColors.length] } : undefined} />
+                  {figResponse.legendPosition !== "hidden" && (
+                    <Legend
+                      wrapperStyle={{ fontSize: figResponse.legendFontSize }}
+                      layout={figResponse.legendPosition === "left" || figResponse.legendPosition === "right" ? "vertical" : "horizontal"}
+                      verticalAlign={figResponse.legendPosition === "left" || figResponse.legendPosition === "right" ? "middle" : figResponse.legendPosition}
+                      align={figResponse.legendPosition === "left" || figResponse.legendPosition === "right" ? figResponse.legendPosition : "center"}
+                    />
+                  )}
+                  {figResponse.title && <text x="50%" y={14} textAnchor="middle" fontSize={figResponse.titleFontSize} fontWeight={600} fill="#0f172a">{figResponse.title}</text>}
+                  {chartRows.map((r, i) => (
+                    <ReferenceLine key={`tp-${r.outcomeId}`} x={round2(r.tp)} stroke={figurePalette(figResponse.palette, chartRows.length)[i]} strokeDasharray="4 4"
+                      label={i === 0 ? { value: `TP = ${round2(r.tp)}`, position: "top", fontSize: figResponse.tickFontSize, fill: figurePalette(figResponse.palette, chartRows.length)[i] } : undefined} />
                   ))}
-                  {result.rows.map((r, i) => (
-                    <Line key={r.outcomeId} type="monotone" dataKey={r.outcomeId} name={r.outcomeName} stroke={lineColors[i % lineColors.length]} strokeWidth={2} dot={false} />
+                  {chartRows.map((r, i) => (
+                    <Line key={r.outcomeId} type="monotone" dataKey={r.outcomeId} name={r.outcomeName} stroke={figurePalette(figResponse.palette, chartRows.length)[i]} strokeWidth={figResponse.lineWidth} strokeOpacity={figResponse.opacity} dot={figResponse.markerSize > 0 ? { r: figResponse.markerSize } : false} />
                   ))}
-                  <Brush dataKey="x" height={20} stroke="#0f766e" travellerWidth={8} />
+                  <Brush dataKey="x" height={20} stroke="#2456d6" travellerWidth={8} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
+            {figResponseOpen && (
+              <FigurePanel
+                settings={figResponse} onChange={setFigResponse}
+                seriesOptions={outcomeSeriesOptions} hiddenKeys={hiddenOutcomeKeys} onToggleSeries={toggleHiddenOutcome}
+                sortOptions={SERIES_ORDER_OPTIONS} sortValue={seriesOrder} onSortChange={setSeriesOrder}
+                exporting={figResponseBusy}
+                onExport={async () => {
+                  setFigResponseBusy(true);
+                  await exportFigure(responseChartRef.current, "transition-response-curves.png", figResponse, {
+                    title: figResponse.title || `Response curves: ${result.interventionName} (${result.direction === "increase" ? "0→1" : "1→0"})`,
+                    subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}`,
+                  });
+                  setFigResponseBusy(false);
+                }}
+              />
+            )}
           </div>
 
           <div className="bg-white rounded-lg border border-slate-200 p-4">
             <div className="flex items-center justify-between mb-1">
               <h4 className="text-sm font-semibold">Marginal return: Greatest Marginal Return highlighted</h4>
-              <Btn variant="outline" onClick={() => exportChartAsPng(slopeChartRef.current, "transition-marginal-returns.png")}><Download size={13} />PNG</Btn>
+              <Btn variant="outline" onClick={() => setFigSlopeOpen((v) => !v)}><SlidersHorizontal size={13} />{figSlopeOpen ? "Hide figure options" : "Customize & export"}</Btn>
             </div>
             <p className="text-[11px] text-slate-400 mb-2">Slope(i) = (Y(i+1) − Y(i)) / Δx at every intensity step. The peak of each curve is that outcome's transition point.</p>
-            <div ref={slopeChartRef} className="w-full h-72">
+            <div ref={slopeChartRef} className="w-full h-72" style={figSlopeOpen ? { width: mmToPx(figSlope.widthMm, 96), height: mmToPx(figSlope.heightMm, 96), maxWidth: "100%" } : undefined}>
               <ResponsiveContainer>
                 <LineChart data={slopeData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="x" type="number" domain={[0, 1]} tick={{ fontSize: 10 }} label={{ value: "Intervention Intensity", position: "insideBottom", offset: -5, fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 10 }} label={{ value: "Slope (Marginal Return)", angle: -90, position: "insideLeft", fontSize: 11 }} />
+                  {figSlope.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
+                  <XAxis dataKey="x" type="number" domain={[0, 1]} tick={{ fontSize: figSlope.tickFontSize }} tickFormatter={(v) => fmtDec(v, figSlope.decimals)} label={{ value: figSlope.xLabel || "Intervention Intensity", position: "insideBottom", offset: -5, fontSize: figSlope.axisFontSize }} />
+                  <YAxis tick={{ fontSize: figSlope.tickFontSize }} tickFormatter={(v) => fmtDec(v, figSlope.decimals)} label={{ value: figSlope.yLabel || "Slope (Marginal Return)", angle: -90, position: "insideLeft", fontSize: figSlope.axisFontSize }} />
                   <RTooltip />
-                  <Legend wrapperStyle={{ fontSize: 10 }} />
+                  {figSlope.legendPosition !== "hidden" && (
+                    <Legend
+                      wrapperStyle={{ fontSize: figSlope.legendFontSize }}
+                      layout={figSlope.legendPosition === "left" || figSlope.legendPosition === "right" ? "vertical" : "horizontal"}
+                      verticalAlign={figSlope.legendPosition === "left" || figSlope.legendPosition === "right" ? "middle" : figSlope.legendPosition}
+                      align={figSlope.legendPosition === "left" || figSlope.legendPosition === "right" ? figSlope.legendPosition : "center"}
+                    />
+                  )}
+                  {figSlope.title && <text x="50%" y={14} textAnchor="middle" fontSize={figSlope.titleFontSize} fontWeight={600} fill="#0f172a">{figSlope.title}</text>}
                   <ReferenceLine y={0} stroke="#cbd5e1" />
-                  {result.rows.map((r, i) => (
-                    <Line key={r.outcomeId} type="monotone" dataKey={r.outcomeId} name={r.outcomeName} stroke={lineColors[i % lineColors.length]} strokeWidth={2} dot={false} />
+                  {chartRows.map((r, i) => (
+                    <Line key={r.outcomeId} type="monotone" dataKey={r.outcomeId} name={r.outcomeName} stroke={figurePalette(figSlope.palette, chartRows.length)[i]} strokeWidth={figSlope.lineWidth} strokeOpacity={figSlope.opacity} dot={figSlope.markerSize > 0 ? { r: figSlope.markerSize } : false} />
                   ))}
                 </LineChart>
               </ResponsiveContainer>
             </div>
+            {figSlopeOpen && (
+              <FigurePanel
+                settings={figSlope} onChange={setFigSlope}
+                seriesOptions={outcomeSeriesOptions} hiddenKeys={hiddenOutcomeKeys} onToggleSeries={toggleHiddenOutcome}
+                sortOptions={SERIES_ORDER_OPTIONS} sortValue={seriesOrder} onSortChange={setSeriesOrder}
+                exporting={figSlopeBusy}
+                onExport={async () => {
+                  setFigSlopeBusy(true);
+                  await exportFigure(slopeChartRef.current, "transition-marginal-returns.png", figSlope, {
+                    title: figSlope.title || `Marginal return: ${result.interventionName}`,
+                    subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}`,
+                  });
+                  setFigSlopeBusy(false);
+                }}
+              />
+            )}
           </div>
 
           <div className="bg-white rounded-lg border border-slate-200 p-4">
@@ -7755,23 +9514,22 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
               <h4 className="text-sm font-semibold">Transition point results</h4>
               <Btn variant="outline" onClick={exportTableCSV}><Download size={13} />Export CSV</Btn>
             </div>
+            <p className="text-[10px] text-slate-400 mb-1.5">Click a column header to sort by it; click again to reverse the direction.</p>
             <table className="w-full text-xs">
               <thead>
                 <tr className="text-left text-slate-400 border-b border-slate-100">
-                  <th className="py-1 font-medium pr-3">Intervention</th>
-                  <th className="py-1 font-medium pr-3">Outcome</th>
-                  <th className="py-1 font-medium pr-3">TP</th>
-                  <th className="py-1 font-medium pr-3">Max Change</th>
-                  <th className="py-1 font-medium pr-3" title="See the definitions above the results.">Response Type <HelpCircle size={10} className="inline text-slate-300" /></th>
+                  {TRANSITION_TABLE_COLUMNS.map((col) => <SortHeader key={col.key} col={col} sortKey={tpSortKey} sortDir={tpSortDir} onSort={tpOnSort} />)}
                 </tr>
               </thead>
               <tbody>
-                {result.rows.map((r) => (
+                {tpSortedRows.map((r) => (
                   <tr key={r.outcomeId} className="border-b border-slate-50">
-                    <td className="py-1 pr-3">{result.interventionName}</td>
+                    <td className="py-1 pr-3">{r.interventionName}</td>
                     <td className="py-1 pr-3">{r.outcomeName}</td>
                     <td className="py-1 pr-3 font-mono">{round2(r.tp)}</td>
                     <td className="py-1 pr-3 font-mono">{r.effect >= 0 ? "+" : ""}{round2(r.effect)}</td>
+                    <td className="py-1 pr-3 font-mono">{round2(r.range)}</td>
+                    <td className="py-1 pr-3 font-mono">{r.efficiency >= 0 ? "+" : ""}{round2(r.efficiency)}</td>
                     <td className="py-1 pr-3">
                       <span title={RESPONSE_TYPE_HELP[r.responseType]} className={`text-[10px] px-1.5 py-0.5 rounded-full border ${RESPONSE_TYPE_STYLE[r.responseType]}`}>{r.responseType}</span>
                     </td>
@@ -7867,8 +9625,8 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
               <Btn variant="outline" onClick={exportSlopeCSV}><Download size={13} />Marginal return curves (CSV)</Btn>
               <Btn variant="outline" onClick={exportTableCSV}><Download size={13} />TP table (CSV)</Btn>
               <Btn variant="outline" onClick={exportRankingsCSV} disabled={!kpis}><Download size={13} />Rankings (CSV)</Btn>
-              <Btn variant="outline" onClick={() => exportChartAsPng(responseChartRef.current, "transition-response-curves.png")}><Download size={13} />Response chart (PNG)</Btn>
-              <Btn variant="outline" onClick={() => exportChartAsPng(slopeChartRef.current, "transition-marginal-returns.png")}><Download size={13} />Marginal chart (PNG)</Btn>
+              <Btn variant="outline" onClick={() => exportFigure(responseChartRef.current, "transition-response-curves.png", figResponse, { title: figResponse.title || `Response curves: ${result.interventionName} (${result.direction === "increase" ? "0→1" : "1→0"})`, subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}` })}><Download size={13} />Response chart ({figResponse.format.toUpperCase()})</Btn>
+              <Btn variant="outline" onClick={() => exportFigure(slopeChartRef.current, "transition-marginal-returns.png", figSlope, { title: figSlope.title || `Marginal return: ${result.interventionName}`, subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}` })}><Download size={13} />Marginal chart ({figSlope.format.toUpperCase()})</Btn>
             </div>
             <p className="text-[10px] text-slate-400 mt-2 italic">PDF export is not yet implemented (see the roadmap note at the bottom of the page). Use PNG for images and CSV for data in the meantime.</p>
           </div>
@@ -7883,47 +9641,47 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
 // ============================================================================
 const PATHWAY_ARCHETYPES = [
   {
-    key: "lhf", label: "Low-Hanging Fruit", color: "#0f766e", badge: "bg-teal-50 text-teal-800 border-teal-200",
+    key: "lhf", label: "Low-Hanging Fruit", color: "#2456d6", badge: "bg-cobalt-50 text-cobalt-800 border-cobalt-200",
     rule: "Effort in the lowest quarter, average transition point at most 1/3, and benefits arriving ahead of effort (EBI above 0.5).",
     purpose: "Quick wins under resource constraints: meaningful gains at very low intervention intensity.",
     ranking: "Lowest effort first",
   },
   {
     key: "hi", label: "High-Impact", color: "#7c3aed", badge: "bg-violet-50 text-violet-800 border-violet-200",
-    rule: "Total nexus gain in the top fifth, and every nexus outcome improved.",
+    rule: "Total outcome gain in the top fifth, and every nexus outcome improved.",
     purpose: "The largest overall improvement across the nexus outcomes, whatever the effort.",
-    ranking: "Highest total nexus gain first",
+    ranking: "Highest total outcome gain first",
   },
   {
     key: "ef", label: "Efficiency", color: "#0369a1", badge: "bg-sky-50 text-sky-800 border-sky-200",
     rule: "Efficiency (gain per unit of effort) in the top fifth, at moderate effort (between the lowest and the highest quarter).",
-    purpose: "The greatest nexus gain per unit of intervention.",
+    purpose: "The greatest outcome gain per unit of intervention.",
     ranking: "Highest efficiency first",
   },
   {
     key: "di", label: "Deep Investment", color: "#c2410c", badge: "bg-orange-50 text-orange-800 border-orange-200",
     rule: "Effort in the highest quarter, average transition point above 1/2, and most of the gain arriving after most of the effort (EBI below 0.5).",
     purpose: "Long-term transformation: sustained effort before substantial, possibly large, gains.",
-    ranking: "Highest total nexus gain first",
+    ranking: "Highest total outcome gain first",
   },
 ];
 const PATHWAY_ARCHETYPE_BY_KEY = Object.fromEntries(PATHWAY_ARCHETYPES.map((a) => [a.key, a]));
 
 const PATHWAY_METRIC_HELP = {
-  tng: "Total Nexus Gain: the improvement of the nexus outcomes in the final state compared with Business-as-Usual, each outcome counted in its desirable direction and weighted.",
+  tog: "Total Outcome Gain: the improvement of the nexus outcomes in the final state compared with Business-as-Usual, each outcome counted in its desirable direction and weighted.",
   cii: "Cumulative Intervention Intensity: the total effort, as the sum of the final lever intensities (times their effort weights). 1 means one lever at full intensity.",
-  pei: "Pathway Efficiency Index: total nexus gain divided by cumulative intensity; nexus gain per unit of effort.",
+  pei: "Pathway Efficiency Index: total outcome gain divided by cumulative intensity; outcome gain per unit of effort.",
   avgTp: "Average Transition Point: the mean conditional transition point of the stages. Low values mean the levers deliver early in their range (front-loaded).",
   ss: "Synergy Score: how many nexus outcomes the pathway improves by more than the flat-response threshold.",
   ebi: "Early Benefit Index: the area under the benefit accrual curve (share of effort spent against share of gain realized). Above 0.5 the benefits come ahead of the effort; below 0.5 they come late.",
-  ig: "Interaction Gain: the pathway's nexus gain minus the sum of what each lever achieves on its own from Business-as-Usual at the same intensity. Positive: the levers reinforce each other.",
+  ig: "Interaction Gain: the pathway's outcome gain minus the sum of what each lever achieves on its own from Business-as-Usual at the same intensity. Positive: the levers reinforce each other.",
   shift: "Mean TP shift: how much earlier (negative) or later (positive) the levers reach their peak return in this pathway than on their own.",
 };
 
 const PATHWAY_TABLE_COLUMNS = [
   { key: "label", label: "Pathway", type: "text" },
   { key: "length", label: "Stages", type: "num" },
-  { key: "tng", label: "TNG", type: "num", help: PATHWAY_METRIC_HELP.tng },
+  { key: "tog", label: "TOG", type: "num", help: PATHWAY_METRIC_HELP.tog },
   { key: "cii", label: "CII", type: "num", help: PATHWAY_METRIC_HELP.cii },
   { key: "pei", label: "PEI", type: "num", help: PATHWAY_METRIC_HELP.pei },
   { key: "avgTp", label: "Avg TP", type: "num", help: PATHWAY_METRIC_HELP.avgTp },
@@ -8008,7 +9766,7 @@ function TransitionPathwaysGuide() {
 }
 
 function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, result, setResult, setChartCache, modelVersion }) {
-  useCachedChart(setChartCache, "pathwayPlane", '[data-chart="pathway-plane"]', "svg", [result]);
+  useCachedChart(setChartCache, "pathwayPlane", [result]);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
@@ -8017,7 +9775,35 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
   const runnerRef = useRef(null);
   const planeRef = useRef(null);
   const trajectoryRef = useRef(null);
+  const accrualRef = useRef(null);
   useEffect(() => () => { if (runnerRef.current) runnerRef.current.cancelled = true; }, []);
+
+  // Publication-figure settings, one independent set per chart (they're
+  // different shapes with different natural sizes) plus a "how many points"
+  // cap shared by the effort-gain plane, which is the one chart here where a
+  // large run can plot far more points than a figure can usefully show.
+  const [figPlane, setFigPlane] = useState(DEFAULT_FIGURE_SETTINGS);
+  const [figPlaneOpen, setFigPlaneOpen] = useState(false);
+  const [figPlaneBusy, setFigPlaneBusy] = useState(false);
+  const [planeMaxPoints, setPlaneMaxPoints] = useState(500);
+  const [figTrajectory, setFigTrajectory] = useState(DEFAULT_FIGURE_SETTINGS);
+  const [figTrajectoryOpen, setFigTrajectoryOpen] = useState(false);
+  const [figTrajectoryBusy, setFigTrajectoryBusy] = useState(false);
+  const [figAccrual, setFigAccrual] = useState(DEFAULT_FIGURE_SETTINGS);
+  const [figAccrualOpen, setFigAccrualOpen] = useState(false);
+  const [figAccrualBusy, setFigAccrualBusy] = useState(false);
+  const [hiddenTrajectoryOutcomes, setHiddenTrajectoryOutcomes] = useState(() => new Set());
+  const toggleHiddenTrajectoryOutcome = (id) => setHiddenTrajectoryOutcomes((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const [trajectoryOrder, setTrajectoryOrder] = useState("original");
+  const TRAJECTORY_ORDER_OPTIONS = [
+    { value: "original", label: "As selected" },
+    { value: "alphabetical", label: "Alphabetical" },
+    { value: "byValue", label: "By final value" },
+  ];
 
   const conceptById = useMemo(() => new Map(concepts.map((c) => [c.id, c])), [concepts]);
   const nameOf = useCallback((id) => conceptById.get(id)?.name || id, [conceptById]);
@@ -8115,22 +9901,26 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
       : c.memberships.includes(filter);
     return result.candidates.filter(keep).map((c) => ({
       id: c.id, c, label: c.stages.map((s) => `${nameOf(s.leverId)} ${round2(s.u)}`).join(" > "),
-      length: c.length, tng: c.tng, cii: c.cii, pei: c.pei, avgTp: c.avgTp, ss: c.ss, ebi: c.ebi, ig: c.ig, meanShift: c.meanShift,
+      length: c.length, tog: c.tog, cii: c.cii, pei: c.pei, avgTp: c.avgTp, ss: c.ss, ebi: c.ebi, ig: c.ig, meanShift: c.meanShift,
       status: pathwayStatus(c),
     }));
   }, [result, filter, nameOf]);
-  const { sorted, sortKey, sortDir, onSort } = useTableSort(tableRows, PATHWAY_TABLE_COLUMNS, { key: "tng", dir: "desc" });
+  const { sorted, sortKey, sortDir, onSort } = useTableSort(tableRows, PATHWAY_TABLE_COLUMNS, { key: "tog", dir: "desc" });
 
   const plane = useMemo(() => {
     if (!result) return null;
-    const pt = (c) => ({ x: round3(c.cii), y: round3(c.tng), id: c.id });
+    const pt = (c) => ({ x: round3(c.cii), y: round3(c.tog), id: c.id });
+    // Every classified/frontier point is always shown (that's the actual
+    // result of the analysis); the cap only thins the unclassified
+    // background scatter, which is what actually clutters a large run.
+    const capped = (cands) => [...cands].sort((a, b) => b.tog - a.tog).slice(0, planeMaxPoints).map(pt);
     const series = PATHWAY_ARCHETYPES.map((a) => ({ ...a, data: result.candidates.filter((c) => c.primary === a.key).map(pt) }));
-    const intermediate = result.candidates.filter((c) => c.admissible && !c.primary).map(pt);
-    const other = result.candidates.filter((c) => c.converged && !c.admissible).map(pt);
+    const intermediate = capped(result.candidates.filter((c) => c.admissible && !c.primary));
+    const other = capped(result.candidates.filter((c) => c.converged && !c.admissible));
     const frontier = result.candidates.filter((c) => c.frontier).sort((a, b) => a.cii - b.cii).map(pt);
     // Axis range with a margin of 8% of the spread on both sides, so no point
     // sits on the edge, and zoomed to the data rather than forced through 0.
-    const ys = result.candidates.filter((c) => c.converged).map((c) => c.tng);
+    const ys = result.candidates.filter((c) => c.converged).map((c) => c.tog);
     const lo = ys.length ? Math.min(...ys) : 0, hi = ys.length ? Math.max(...ys) : 1;
     const pad = Math.max(0.02, (hi - lo) * 0.08);
     const raw = (hi - lo + 2 * pad) / 8;
@@ -8140,7 +9930,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
     const yTicks = [];
     for (let v = y0; v <= y1 + step / 2; v += step) yTicks.push(Math.round(v * 1e6) / 1e6);
     return { series, intermediate, other, frontier, yDomain: [y0, y1], yTicks };
-  }, [result]);
+  }, [result, planeMaxPoints]);
 
   const selected = selectedId !== null ? candById.get(selectedId) : null;
   const trajectory = useMemo(() => {
@@ -8152,13 +9942,25 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
       rows.push(row);
     });
     const accrual = [{ x: 0, y: 0 }];
-    if (selected.tng > 0 && selected.cii > 0) {
-      selected.stages.forEach((s) => s.segment.forEach(([C, G]) => accrual.push({ x: round3(C / selected.cii), y: round3(G / selected.tng) })));
+    if (selected.tog > 0 && selected.cii > 0) {
+      selected.stages.forEach((s) => s.segment.forEach(([C, G]) => accrual.push({ x: round3(C / selected.cii), y: round3(G / selected.tog) })));
     }
     return { rows, accrual };
   }, [selected, result]);
 
-  const lineColors = ["#0f766e", "#c2410c", "#7c3aed", "#0369a1", "#be123c", "#4d7c0f", "#a16207", "#0e7490"];
+  // Which outcome lines the trajectory chart actually draws, and in what
+  // order — a figure-preparation choice, independent of which outcomes the
+  // analysis itself used.
+  const trajectoryOutcomeRows = useMemo(() => {
+    if (!result || !trajectory) return [];
+    const rows = result.outcomes.filter((o) => !hiddenTrajectoryOutcomes.has(o.id)).map((o) => ({ id: o.id, name: nameOf(o.id), finalValue: trajectory.rows[trajectory.rows.length - 1]?.[o.id] ?? 0 }));
+    if (trajectoryOrder === "alphabetical") rows.sort((a, b) => a.name.localeCompare(b.name));
+    else if (trajectoryOrder === "byValue") rows.sort((a, b) => Math.abs(b.finalValue) - Math.abs(a.finalValue));
+    return rows;
+  }, [result, trajectory, hiddenTrajectoryOutcomes, trajectoryOrder, nameOf]);
+  const trajectorySeriesOptions = useMemo(() => (result ? result.outcomes.map((o) => ({ key: o.id, label: nameOf(o.id) })) : []), [result, nameOf]);
+
+  const lineColors = ["#2456d6", "#c2410c", "#7c3aed", "#0f766e", "#be123c", "#4d7c0f", "#a16207", "#0e7490"];
   const selectPathway = (id) => {
     setSelectedId(id);
     setTimeout(() => document.querySelector('[data-pathway-detail]')?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
@@ -8167,20 +9969,20 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
   // ---- exports --------------------------------------------------------------------
   const pathwayCsvRow = (c) => [
     c.stages.map((s) => `${nameOf(s.leverId)} (${s.scaleUp ? "raised to " : ""}${round2(s.u)})`).join(" -> "), c.length,
-    round3(c.tng), round3(c.cii), c.pei === null ? "" : round3(c.pei), c.avgTp === null ? "" : round3(c.avgTp), c.ss, c.to,
+    round3(c.tog), round3(c.cii), c.pei === null ? "" : round3(c.pei), c.avgTp === null ? "" : round3(c.avgTp), c.ss, c.to,
     c.ebi === null ? "" : round3(c.ebi), round3(c.ig), c.meanShift === null ? "" : round3(c.meanShift),
     c.converged ? "Yes" : "No", c.admissible ? "Yes" : "No", c.memberships.map((k) => PATHWAY_ARCHETYPE_BY_KEY[k].label).join("; "),
     c.primary ? PATHWAY_ARCHETYPE_BY_KEY[c.primary].label : pathwayStatus(c), c.frontier ? "Yes" : "",
     c.targetsSet ? `${c.targetsMet} of ${c.targetsSet}` : "",
   ];
-  const PATHWAY_CSV_HEADER = ["Pathway", "Stages", "Total Nexus Gain", "Cumulative Intervention Intensity", "Pathway Efficiency Index", "Average Transition Point", "Synergy Score", "Trade-offs", "Early Benefit Index", "Interaction Gain", "Mean TP Shift", "Converged", "Admissible", "Archetypes", "Primary Archetype / Status", "Efficient Frontier", "Targets Met"];
+  const PATHWAY_CSV_HEADER = ["Pathway", "Stages", "Total Outcome Gain", "Cumulative Intervention Intensity", "Pathway Efficiency Index", "Average Transition Point", "Synergy Score", "Trade-offs", "Early Benefit Index", "Interaction Gain", "Mean TP Shift", "Converged", "Admissible", "Archetypes", "Primary Archetype / Status", "Efficient Frontier", "Targets Met"];
   const exportPathwaysCSV = () => {
     if (!result) return;
-    downloadCSV([PATHWAY_CSV_HEADER, ...[...result.candidates].sort((a, b) => b.tng - a.tng).map(pathwayCsvRow)], "transition-pathways.csv");
+    downloadCSV([PATHWAY_CSV_HEADER, ...[...result.candidates].sort((a, b) => b.tog - a.tog).map(pathwayCsvRow)], "transition-pathways.csv");
   };
   const exportStagesCSV = () => {
     if (!selected || !result) return;
-    const header = ["Stage", "Lever", "Scale-up", "Intensity Before", "Intensity", "Isolated TP", "Conditional TP", "TP Shift", "Stage Gain", "Nexus Gain After", "Cumulative Intensity", "Stage Efficiency", "Converged",
+    const header = ["Stage", "Lever", "Scale-up", "Intensity Before", "Intensity", "Isolated TP", "Conditional TP", "TP Shift", "Stage Gain", "Outcome Gain After", "Cumulative Intensity", "Stage Efficiency", "Converged",
       ...result.outcomes.map((o) => `${nameOf(o.id)} at stage end`)];
     const rows = selected.stages.map((s, i) => [
       i + 1, nameOf(s.leverId), s.scaleUp ? "Yes" : "", round3(s.uPrev), round3(s.u), s.tauIso === null ? "" : round3(s.tauIso), s.tauCond === null ? "" : round3(s.tauCond),
@@ -8192,7 +9994,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
   };
   const exportLeversCSV = () => {
     if (!result) return;
-    const header = ["Lever", "Direction", "Effort Weight", "Isolated TP", "Response Type", "Max Marginal Return", "Nexus Gain at Full Intensity", "Synergy", "Included", "Reason",
+    const header = ["Lever", "Direction", "Effort Weight", "Isolated TP", "Response Type", "Max Marginal Return", "Outcome Gain at Full Intensity", "Synergy", "Included", "Reason",
       ...result.outcomes.flatMap((o) => [`${nameOf(o.id)} effect at full intensity`, `${nameOf(o.id)} TP`])];
     const rows = result.iso.map((l) => [nameOf(l.id), l.decrease ? "Decrease (1 to 0)" : "Increase (0 to 1)", l.effort, l.tau === null ? "" : round3(l.tau), l.responseType,
       l.maxReturn === null ? "" : round3(l.maxReturn), round3(l.gainAtFull), l.synergy.type, l.included ? "Yes" : "No", l.reason,
@@ -8202,9 +10004,9 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
   const exportPortfoliosCSV = () => {
     if (!result) return;
     const bestLabel = (id) => { const c = candById.get(id); return c ? c.stages.map((s) => `${nameOf(s.leverId)} (${round2(s.u)})`).join(" -> ") : ""; };
-    const header = ["Opening", "Pathways Starting This Way", "Top-ranked Pathways Opened", "Best Total Nexus Gain", "Regret", ...PATHWAY_ARCHETYPES.map((a) => `Best ${a.label} Continuation`)];
+    const header = ["Opening", "Pathways Starting This Way", "Top-ranked Pathways Opened", "Best Total Outcome Gain", "Regret", ...PATHWAY_ARCHETYPES.map((a) => `Best ${a.label} Continuation`)];
     const rows = [...result.portfolios.firstMoves, ...result.portfolios.openings].map((f) => [
-      f.stages.map((s) => `${nameOf(s.leverId)} (${round2(s.u)})`).join(" -> "), f.count, f.opens, round3(f.bestTng), round3(f.regret),
+      f.stages.map((s) => `${nameOf(s.leverId)} (${round2(s.u)})`).join(" -> "), f.count, f.opens, round3(f.bestTog), round3(f.regret),
       ...PATHWAY_ARCHETYPES.map((a) => bestLabel(f.bestBy[a.key])),
     ]);
     downloadCSV([header, ...rows], "transition-pathway-portfolios.csv");
@@ -8212,6 +10014,13 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
 
   const s = result?.summary;
   const pct = progress ? Math.min(100, Math.round((100 * progress.done) / Math.max(1, progress.total))) : 0;
+  // A one-line reminder of what was actually analysed, baked into exported
+  // chart images so a figure saved for a report still says which outcomes
+  // and levers it describes once it's outside the app.
+  const pathwayContextLine = result
+    ? `Outcomes: ${result.outcomes.map((o) => `${nameOf(o.id)} (${o.d === 1 ? "higher" : "lower"} is better)`).join(", ")}`
+    : "";
+  const selectedLabel = selected ? selected.stages.map((st) => nameOf(st.leverId)).join(" → ") : "";
 
   return (
     <div className="space-y-5">
@@ -8238,7 +10047,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
                 <tr className="text-left text-slate-400 border-b border-slate-100">
                   <th className="py-1 font-medium pr-3">Outcome</th>
                   <th className="py-1 font-medium pr-3" title="Which direction counts as an improvement for this outcome.">Improvement means <HelpCircle size={10} className="inline text-slate-300" /></th>
-                  <th className="py-1 font-medium pr-3" title="Relative importance in the total nexus gain. 1 for every outcome weighs them equally.">Weight <HelpCircle size={10} className="inline text-slate-300" /></th>
+                  <th className="py-1 font-medium pr-3" title="Relative importance in the total outcome gain. 1 for every outcome weighs them equally.">Weight <HelpCircle size={10} className="inline text-slate-300" /></th>
                   <th className="py-1 font-medium pr-3" title="Optional. The level this outcome should reach in the desired future state (on the -1 to +1 activation scale). Pathways report how many targets they reach.">Desired level (optional) <HelpCircle size={10} className="inline text-slate-300" /></th>
                   <th />
                 </tr>
@@ -8337,7 +10146,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
                   <input type="number" min={1} max={200} value={config.beamWidth} onChange={(e) => patch({ beamWidth: e.target.value })} className="w-12 border border-slate-200 rounded px-1 py-0.5 font-mono" />
                   best by
                   <select value={config.beamCriterion} onChange={(e) => patch({ beamCriterion: e.target.value })} className="border border-slate-200 rounded px-1 py-0.5">
-                    <option value="tng">nexus gain</option>
+                    <option value="tog">outcome gain</option>
                     <option value="pei">efficiency</option>
                   </select>
                 </div>
@@ -8356,7 +10165,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
               <input type="number" step={0.005} min={0} max={1} value={config.flatThreshold} onChange={(e) => patch({ flatThreshold: e.target.value })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 font-mono" />
             </div>
             <div>
-              <div className="text-[11px] text-slate-500 mb-0.5" title="Pathways count as admissible (and are classified into archetypes) only if their total nexus gain is at least this share of the best pathway's gain, and they have no trade-offs.">Minimum gain (% of best) <HelpCircle size={10} className="inline text-slate-300" /></div>
+              <div className="text-[11px] text-slate-500 mb-0.5" title="Pathways count as admissible (and are classified into archetypes) only if their total outcome gain is at least this share of the best pathway's gain, and they have no trade-offs.">Minimum gain (% of best) <HelpCircle size={10} className="inline text-slate-300" /></div>
               <input type="number" step={5} min={0} max={100} value={Math.round((Number(config.minGainShare) || 0) * 100)} onChange={(e) => patch({ minGainShare: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) / 100 })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 font-mono" />
             </div>
             <div>
@@ -8417,7 +10226,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
               <span>{progress.phase ? `${progress.phase}: ` : ""}{progress.stage}</span>
               <span className="font-mono">{progress.done.toLocaleString()} / {progress.total.toLocaleString()}</span>
             </div>
-            <div className="h-1.5 bg-slate-100 rounded overflow-hidden"><div className="h-full bg-teal-600 transition-all" style={{ width: `${pct}%` }} /></div>
+            <div className="h-1.5 bg-slate-100 rounded overflow-hidden"><div className="h-full bg-cobalt-600 transition-all" style={{ width: `${pct}%` }} /></div>
           </div>
         )}
       </div>
@@ -8433,21 +10242,30 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
             </div>
           )}
 
+          {result.settingsUsed.squashFunction === "linear" && s.counts.nonConverged > 0 && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900 flex items-start gap-1.5">
+              <Info size={13} className="shrink-0 mt-0.5" />
+              <span>
+                This analysis ran with no squashing function, and {s.counts.nonConverged} of {s.counts.total} pathway{s.counts.total === 1 ? "" : "s"} did not converge: with nothing bounding activation, feedback in the model can run away, and such a run is stopped and counted as not converged. Only the pathways that stayed stable are ranked below. If that is few or none, the model is unstable without squashing (check the Baseline Equilibrium tab), and a bounded transfer function is needed to compare pathways.
+              </span>
+            </div>
+          )}
+
           <MethodPanel
             stats={[
               { label: "Pathways evaluated", value: result.candidates.length.toLocaleString(), hint: "Every pathway and every shorter opening of it is a candidate." },
-              { label: "Admissible", value: `${s.counts.admissible} of ${s.counts.total}`, hint: `Converged, no trade-offs, and a total nexus gain of at least ${fmtNum(s.gMin)} (${Math.round((Number(result.config.minGainShare) || 0) * 100)}% of the best, or the flat threshold per outcome).` },
+              { label: "Admissible", value: `${s.counts.admissible} of ${s.counts.total}`, hint: `Converged, no trade-offs, and a total outcome gain of at least ${fmtNum(s.gMin)} (${Math.round((Number(result.config.minGainShare) || 0) * 100)}% of the best, or the flat threshold per outcome).` },
               { label: "Simulation runs", value: result.runs.toLocaleString(), hint: "One run to equilibrium per sampled intensity, per lever, per stage (main analysis)." },
-              { label: "Did not converge", value: `${s.counts.nonConverged}`, tone: s.counts.nonConverged ? "warn" : undefined, hint: "Pathways with a stage that did not settle within the iteration limit (usually a sustained oscillation). They are reported but not classified." },
+              { label: "Did not converge", value: `${s.counts.nonConverged}`, tone: s.counts.nonConverged ? "warn" : undefined, hint: "Pathways with a stage that did not settle within the iteration limit (usually a sustained oscillation, or with no squashing function, a runaway). They are reported but not classified." },
               { label: "Transition point precision", value: `±${round2(1 / result.N)}`, hint: "A transition point can only fall on one of the sampled intensity steps." },
-              { label: "Transfer function / λ", value: `${result.settingsUsed.squashFunction ?? "tanh"} / ${result.settingsUsed.lambda ?? 1}` },
+              { label: "Transfer function / λ", value: transferFunctionLabel(result.settingsUsed) },
               { label: "Update / iterations", value: `${result.settingsUsed.updateRule ?? "relative"}, synchronous, ≤ ${result.settingsUsed.maxIterations}`, hint: "Pathway runs are always synchronous (deterministic) and use this analysis's own iteration limit; everything else follows the global simulation settings." },
               { label: "Path dependence", value: result.invariance.tested ? `${result.invariance.pathDependent} of ${result.invariance.tested} lever sets` : "not tested", tone: result.invariance.pathDependent ? "warn" : undefined, hint: "Invariance test: the lever sets of the top pathways were simulated in every order at the same intensities. Different end states mean the order decides where the system ends up." },
             ]}
           >
-            <p><strong>Pathways are built stage by stage from Business-as-Usual.</strong> Business-as-Usual is the equilibrium of the model's own starting values with no scenario applied. In each stage a lever is swept from its current intensity to 1 in {result.N} steps, each run starting from the equilibrium the pathway has reached, with the earlier levers held in place. {result.rule === "tp" ? "The lever is implemented at its conditional transition point: the upper end of the step with the largest positive marginal return in total nexus gain." : "The lever is implemented at full intensity (the reference rule)."} Levers with no improving step from the current state are not added. A stage can still lower the total gain, when a lever first worsens the outcomes before its steepest improving step; such stage gains are shown in orange, and the efficient frontier and the rankings show whether the stage is worth taking.</p>
+            <p><strong>Pathways are built stage by stage from Business-as-Usual.</strong> Business-as-Usual is the equilibrium of the model's own starting values with no scenario applied. In each stage a lever is swept from its current intensity to 1 in {result.N} steps, each run starting from the equilibrium the pathway has reached, with the earlier levers held in place. {result.rule === "tp" ? "The lever is implemented at its conditional transition point: the upper end of the step with the largest positive marginal return in total outcome gain." : "The lever is implemented at full intensity (the reference rule)."} Levers with no improving step from the current state are not added. A stage can still lower the total gain, when a lever first worsens the outcomes before its steepest improving step; such stage gains are shown in orange, and the efficient frontier and the rankings show whether the stage is worth taking.</p>
             <p><strong>This transition point differs from the one on the Transition Point tab in two ways.</strong> It is signed by the desirability of the outcomes (it marks the largest improvement, not the steepest change of any kind), and it is reported at the upper end of the steepest step, so that implementing a lever up to it realizes that step in full.</p>
-            <p><strong>Metrics.</strong> TNG is the weighted, direction-signed improvement of the outcomes relative to Business-as-Usual; CII the sum of final intensities times effort weights; PEI their ratio; the average TP the mean conditional transition point; SS the number of outcomes improved by more than {result.eps}; IG the gain beyond what the same levers achieve on their own at the same intensities (strongly negative when each lever alone already moves much of the system, so their separate effects overlap). The Early Benefit Index is the area under the accrual curve of gain against effort, traced at the sweep resolution within each stage (the stage-level formula uses only the stage end points; the finer curve keeps single-stage pathways classifiable).</p>
+            <p><strong>Metrics.</strong> TOG is the weighted, direction-signed improvement of the outcomes relative to Business-as-Usual; CII the sum of final intensities times effort weights; PEI their ratio; the average TP the mean conditional transition point; SS the number of outcomes improved by more than {result.eps}; IG the gain beyond what the same levers achieve on their own at the same intensities (strongly negative when each lever alone already moves much of the system, so their separate effects overlap). The Early Benefit Index is the area under the accrual curve of gain against effort, traced at the sweep resolution within each stage (the stage-level formula uses only the stage end points; the finer curve keeps single-stage pathways classifiable).</p>
             <p><strong>Archetype thresholds are relative.</strong> Quartiles and quintiles are taken across the {s.counts.admissible} admissible pathways of this run{s.counts.admissible < 10 ? ", which is a small set, so the thresholds are coarse" : ""}. The rules are conventions that structure the comparison, not properties of the system; the robustness test shows how much the top pathways depend on the simulation settings.</p>
             <p><strong>What this does not tell you.</strong> Stages are implementation phases, not periods of time, and each is assumed to last long enough for the system to settle. Implemented levers are assumed to stay in place. Results are relative comparisons between pathways in the units of the map, implications of the causal structure as drawn rather than forecasts.</p>
           </MethodPanel>
@@ -8463,7 +10281,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
                   </div>
                   <p className="text-[10px] text-slate-400 mt-1">{a.purpose}</p>
                   {top ? (
-                    <button onClick={() => selectPathway(top.id)} className="mt-2 text-left text-[11px] text-slate-700 hover:text-teal-800">
+                    <button onClick={() => selectPathway(top.id)} className="mt-2 text-left text-[11px] text-slate-700 hover:text-cobalt-800">
                       <div className="text-[10px] text-slate-400 uppercase tracking-wide">Best: {a.ranking.toLowerCase()}</div>
                       <PathwayStagesText c={top} nameOf={nameOf} compact />
                     </button>
@@ -8480,40 +10298,78 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
           <div className="bg-white rounded-lg border border-slate-200 p-4">
             <div className="flex items-center justify-between mb-1">
               <h4 className="text-sm font-semibold">Effort-gain plane</h4>
-              <Btn variant="outline" onClick={() => exportChartAsPng(planeRef.current, "transition-pathways-effort-gain.png")}><Download size={13} />PNG</Btn>
+              <Btn variant="outline" onClick={() => setFigPlaneOpen((v) => !v)}><SlidersHorizontal size={13} />{figPlaneOpen ? "Hide figure options" : "Customize & export"}</Btn>
             </div>
-            <p className="text-[11px] text-slate-400 mb-2">Every pathway by the effort it needs (cumulative intervention intensity) and what it achieves (total nexus gain), coloured by primary archetype. The dashed line is the efficient frontier: no other pathway achieves more with less. Lines through the origin join pathways of equal efficiency. Click a point to open that pathway below.</p>
-            <div ref={planeRef} data-chart="pathway-plane" className="w-full h-96">
+            <p className="text-[11px] text-slate-400 mb-2">Every pathway by the effort it needs (cumulative intervention intensity) and what it achieves (total outcome gain), coloured by primary archetype. The dashed line is the efficient frontier: no other pathway achieves more with less. The selected pathway is ringed and labelled directly on the chart, so it stays identifiable once the image is saved. Click a point to open that pathway below.</p>
+            <div ref={planeRef} data-chart="pathway-plane" className="w-full h-96" style={figPlaneOpen ? { width: mmToPx(figPlane.widthMm, 96), height: mmToPx(figPlane.heightMm, 96), maxWidth: "100%" } : undefined}>
               <ResponsiveContainer>
-                <ScatterChart margin={{ top: 10, right: 20, bottom: 24, left: 10 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis type="number" dataKey="x" name="CII" tick={{ fontSize: 10 }} label={{ value: "Cumulative intervention intensity (effort)", position: "insideBottom", offset: -12, fontSize: 11 }} />
+                <ScatterChart margin={{ top: 10, right: 24, bottom: 24, left: 16 }}>
+                  {figPlane.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
+                  <XAxis type="number" dataKey="x" name="CII" tick={{ fontSize: figPlane.tickFontSize }} tickFormatter={(v) => fmtDec(v, figPlane.decimals)} label={{ value: figPlane.xLabel || "Cumulative intervention intensity (effort)", position: "insideBottom", offset: -12, fontSize: figPlane.axisFontSize }} />
                   {/* Zoomed to the data: in a saturating map the pathways' gains
                       can differ only in the first decimal, which an axis from 0
                       would flatten into a single line. */}
-                  <YAxis type="number" dataKey="y" name="TNG" domain={plane.yDomain} ticks={plane.yTicks} tickFormatter={(v) => round2(v)} tick={{ fontSize: 10 }} label={{ value: "Total nexus gain", angle: -90, position: "insideLeft", fontSize: 11 }} />
-                  <ZAxis range={[46, 46]} />
+                  <YAxis type="number" dataKey="y" name="TOG" domain={plane.yDomain} ticks={plane.yTicks} tickFormatter={(v) => fmtDec(v, figPlane.decimals)} tick={{ fontSize: figPlane.tickFontSize }} label={{ value: figPlane.yLabel || "Total outcome gain", angle: -90, position: "insideLeft", fontSize: figPlane.axisFontSize }} />
+                  <ZAxis range={[36 * figPlane.markerSize / 3, 36 * figPlane.markerSize / 3]} />
                   <RTooltip cursor={{ strokeDasharray: "3 3" }} content={({ active, payload }) => {
                     const c = active && payload?.[0] ? candById.get(payload[0].payload.id) : null;
                     return c ? (
                       <div className="bg-white border border-slate-200 rounded shadow-sm p-2 text-[11px] max-w-xs">
                         <div className="font-semibold mb-0.5"><PathwayStagesText c={c} nameOf={nameOf} compact /></div>
-                        <div>TNG {fmtNum(c.tng)}, CII {fmtNum(c.cii)}, PEI {fmtNum(c.pei)}</div>
+                        <div>TOG {fmtNum(c.tog)}, CII {fmtNum(c.cii)}, PEI {fmtNum(c.pei)}</div>
                         <div className="text-slate-500">{pathwayStatus(c)}</div>
                       </div>
                     ) : null;
                   }} />
-                  <Legend wrapperStyle={{ fontSize: 10, lineHeight: "16px" }} verticalAlign="top" height={40} />
-                  <Scatter name="Other converged pathways" data={plane.other} fill="#cbd5e1" onClick={(p) => selectPathway(p?.payload?.id ?? p?.id)} isAnimationActive={false} />
-                  <Scatter name="Intermediate" data={plane.intermediate} fill="#94a3b8" onClick={(p) => selectPathway(p?.payload?.id ?? p?.id)} isAnimationActive={false} />
-                  {plane.series.map((a) => (
-                    <Scatter key={a.key} name={a.label} data={a.data} fill={a.color} onClick={(p) => selectPathway(p?.payload?.id ?? p?.id)} isAnimationActive={false} />
+                  {figPlane.legendPosition !== "hidden" && (
+                    <Legend
+                      wrapperStyle={{ fontSize: figPlane.legendFontSize, lineHeight: "17px" }}
+                      layout={figPlane.legendPosition === "left" || figPlane.legendPosition === "right" ? "vertical" : "horizontal"}
+                      verticalAlign={figPlane.legendPosition === "left" || figPlane.legendPosition === "right" ? "middle" : figPlane.legendPosition}
+                      align={figPlane.legendPosition === "left" || figPlane.legendPosition === "right" ? figPlane.legendPosition : "center"}
+                      height={figPlane.legendPosition === "top" || figPlane.legendPosition === "bottom" ? 42 : undefined}
+                    />
+                  )}
+                  {figPlane.title && <text x="50%" y={14} textAnchor="middle" fontSize={figPlane.titleFontSize} fontWeight={600} fill="#0f172a">{figPlane.title}</text>}
+                  <Scatter name="Other converged pathways" data={plane.other} fill="#cbd5e1" fillOpacity={figPlane.opacity} onClick={(p) => selectPathway(p?.payload?.id ?? p?.id)} isAnimationActive={false} />
+                  <Scatter name="Intermediate" data={plane.intermediate} fill="#94a3b8" fillOpacity={figPlane.opacity} onClick={(p) => selectPathway(p?.payload?.id ?? p?.id)} isAnimationActive={false} />
+                  {plane.series.map((a, i) => (
+                    <Scatter key={a.key} name={a.label} data={a.data} fill={figPlane.palette === "default" ? a.color : figurePalette(figPlane.palette, PATHWAY_ARCHETYPES.length)[i]} fillOpacity={figPlane.opacity} onClick={(p) => selectPathway(p?.payload?.id ?? p?.id)} isAnimationActive={false} />
                   ))}
-                  <Scatter name="Efficient frontier" data={plane.frontier} fill="none" line={{ stroke: "#334155", strokeDasharray: "5 4" }} shape={() => null} legendType="plainline" isAnimationActive={false} />
-                  {selected && <Scatter name="Selected" data={[{ x: round3(selected.cii), y: round3(selected.tng), id: selected.id }]} fill="none" shape={(p) => <circle cx={p.cx} cy={p.cy} r={9} fill="none" stroke="#0f172a" strokeWidth={2} />} legendType="none" isAnimationActive={false} />}
+                  <Scatter name="Efficient frontier" data={plane.frontier} fill="none" line={{ stroke: "#334155", strokeDasharray: "5 4", strokeWidth: figPlane.lineWidth }} shape={() => null} legendType="plainline" isAnimationActive={false} />
+                  {selected && (
+                    <Scatter
+                      name="Selected" data={[{ x: round3(selected.cii), y: round3(selected.tog), id: selected.id }]}
+                      fill="none" legendType="none" isAnimationActive={false}
+                      shape={(p) => (
+                        <g>
+                          <circle cx={p.cx} cy={p.cy} r={9} fill="none" stroke="#0f172a" strokeWidth={2} />
+                          <text x={p.cx} y={p.cy - 14} textAnchor="middle" fontSize={figPlane.tickFontSize} fontWeight={600} fill="#0f172a" stroke="#ffffff" strokeWidth={3} style={{ paintOrder: "stroke" }}>
+                            {selectedLabel}
+                          </text>
+                        </g>
+                      )}
+                    />
+                  )}
                 </ScatterChart>
               </ResponsiveContainer>
             </div>
+            {figPlaneOpen && (
+              <FigurePanel
+                settings={figPlane} onChange={setFigPlane}
+                maxPoints={planeMaxPoints} onMaxPointsChange={setPlaneMaxPoints} maxPointsCap={Math.max(result.candidates.length, 1)}
+                maxPointsLabel="Show only the top N unclassified pathways (by total outcome gain)"
+                exporting={figPlaneBusy}
+                onExport={async () => {
+                  setFigPlaneBusy(true);
+                  await exportFigure(planeRef.current, "transition-pathways-effort-gain.png", figPlane, {
+                    title: figPlane.title || "Transition Pathways: Effort-Gain Plane",
+                    subtitle: `${pathwayContextLine} · ${s.counts.admissible} of ${s.counts.total} pathways admissible`,
+                  });
+                  setFigPlaneBusy(false);
+                }}
+              />
+            )}
           </div>
 
           <div className="bg-white rounded-lg border border-slate-200 p-4">
@@ -8534,7 +10390,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
                           <button onClick={() => selectPathway(c.id)} className={`w-full text-left text-[11px] px-1.5 py-1 rounded hover:bg-slate-50 flex gap-2 ${selectedId === c.id ? "bg-slate-100" : ""}`}>
                             <span className="font-mono text-slate-400 w-4 shrink-0">{i + 1}</span>
                             <span className="flex-1"><PathwayStagesText c={c} nameOf={nameOf} compact /></span>
-                            <span className="font-mono text-slate-500 shrink-0">{a.key === "ef" ? `PEI ${fmtNum(c.pei)}` : a.key === "lhf" ? `CII ${fmtNum(c.cii)}` : `TNG ${fmtNum(c.tng)}`}</span>
+                            <span className="font-mono text-slate-500 shrink-0">{a.key === "ef" ? `PEI ${fmtNum(c.pei)}` : a.key === "lhf" ? `CII ${fmtNum(c.cii)}` : `TOG ${fmtNum(c.tog)}`}</span>
                           </button>
                         </li>
                       ))}
@@ -8556,7 +10412,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
                 <Btn variant="outline" onClick={exportStagesCSV}><Download size={13} />Stages (CSV)</Btn>
               </div>
               <div className="grid grid-cols-3 md:grid-cols-8 gap-2">
-                {[["TNG", selected.tng, PATHWAY_METRIC_HELP.tng], ["CII", selected.cii, PATHWAY_METRIC_HELP.cii], ["PEI", selected.pei, PATHWAY_METRIC_HELP.pei], ["Avg TP", selected.avgTp, PATHWAY_METRIC_HELP.avgTp],
+                {[["TOG", selected.tog, PATHWAY_METRIC_HELP.tog], ["CII", selected.cii, PATHWAY_METRIC_HELP.cii], ["PEI", selected.pei, PATHWAY_METRIC_HELP.pei], ["Avg TP", selected.avgTp, PATHWAY_METRIC_HELP.avgTp],
                   ["SS", selected.ss, PATHWAY_METRIC_HELP.ss], ["EBI", selected.ebi, PATHWAY_METRIC_HELP.ebi], ["IG", selected.ig, PATHWAY_METRIC_HELP.ig], ["TP shift", selected.meanShift, PATHWAY_METRIC_HELP.shift]].map(([k, v, h]) => (
                   <div key={k} className="border border-slate-200 rounded p-2" title={h}>
                     <div className="text-[10px] text-slate-400">{k}</div>
@@ -8577,8 +10433,8 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
                       <th className="py-1 font-medium pr-3" title="The lever's transition point in the state this pathway has reached.">TP here</th>
                       <th className="py-1 font-medium pr-3" title="Negative: earlier stages bring the lever's peak return forward (enabling). Positive: they push it later.">Shift</th>
                       <th className="py-1 font-medium pr-3">Intensity</th>
-                      <th className="py-1 font-medium pr-3" title="Nexus gain added by this stage.">Stage gain</th>
-                      <th className="py-1 font-medium pr-3">Nexus gain after</th>
+                      <th className="py-1 font-medium pr-3" title="Outcome gain added by this stage.">Stage gain</th>
+                      <th className="py-1 font-medium pr-3">Outcome gain after</th>
                       <th className="py-1 font-medium pr-3" title="Stage gain per unit of effort spent in this stage.">Efficiency</th>
                       {result.outcomes.map((o) => (
                         <th key={o.id} className="py-1 font-medium pr-3" title="The value this outcome reaches at the end of the stage: a reference level to monitor before moving on to the next stage.">{nameOf(o.id)}</th>
@@ -8599,9 +10455,9 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
                           <td className="py-1 pr-3">{nameOf(st.leverId)}{st.scaleUp && <span className="text-[10px] text-slate-400"> (scale-up)</span>}{!st.converged && <span className="text-[10px] text-amber-700"> (not converged)</span>}</td>
                           <td className="py-1 pr-3 font-mono">{fmtNum(st.tauIso)}</td>
                           <td className="py-1 pr-3 font-mono">{fmtNum(st.tauCond)}</td>
-                          <td className={`py-1 pr-3 font-mono ${st.shift < 0 ? "text-teal-700" : st.shift > 0 ? "text-orange-700" : ""}`}>{st.shift === null ? "" : fmtSigned(st.shift)}</td>
+                          <td className={`py-1 pr-3 font-mono ${st.shift < 0 ? "text-cobalt-700" : st.shift > 0 ? "text-orange-700" : ""}`}>{st.shift === null ? "" : fmtSigned(st.shift)}</td>
                           <td className="py-1 pr-3 font-mono">{st.scaleUp ? `${round2(st.uPrev)} to ` : ""}{round2(st.u)}</td>
-                          <td className={`py-1 pr-3 font-mono ${dG < -1e-6 ? "text-orange-700" : ""}`} title={dG < -1e-6 ? "This stage lowers the total nexus gain: from this state the lever first worsens the outcomes before its steepest improving step." : undefined}>{fmtSigned(dG)}</td>
+                          <td className={`py-1 pr-3 font-mono ${dG < -1e-6 ? "text-orange-700" : ""}`} title={dG < -1e-6 ? "This stage lowers the total outcome gain: from this state the lever first worsens the outcomes before its steepest improving step." : undefined}>{fmtSigned(dG)}</td>
                           <td className="py-1 pr-3 font-mono">{fmtNum(st.gainAfter)}</td>
                           <td className="py-1 pr-3 font-mono">{du > 0 ? fmtNum(dG / (st.effort * du)) : "n/a"}</td>
                           {st.outcomes.map((o) => <td key={o.id} className="py-1 pr-3 font-mono">{fmtNum(o.value)}</td>)}
@@ -8614,42 +10470,90 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <div className="text-xs font-medium text-slate-600 mb-1">Outcome trajectory</div>
-                  <p className="text-[10px] text-slate-400 mb-1">Improvement of each outcome relative to Business-as-Usual after every stage (up is better for every outcome), and the total nexus gain.</p>
-                  <div ref={trajectoryRef} className="h-60">
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="text-xs font-medium text-slate-600">Outcome trajectory</div>
+                    <Btn variant="outline" onClick={() => setFigTrajectoryOpen((v) => !v)}><SlidersHorizontal size={13} />{figTrajectoryOpen ? "Hide figure options" : "Customize & export"}</Btn>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mb-1">Improvement of each outcome relative to Business-as-Usual after every stage (up is better for every outcome), and the total outcome gain.</p>
+                  <div ref={trajectoryRef} className="h-60" style={figTrajectoryOpen ? { width: mmToPx(figTrajectory.widthMm, 96), height: mmToPx(figTrajectory.heightMm, 96), maxWidth: "100%" } : undefined}>
                     <ResponsiveContainer>
-                      <LineChart data={trajectory.rows} margin={{ top: 5, right: 10, bottom: 5, left: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                        <XAxis dataKey="stage" tick={{ fontSize: 10 }} />
-                        <YAxis tick={{ fontSize: 10 }} />
+                      <LineChart data={trajectory.rows} margin={{ top: 16, right: 10, bottom: 5, left: 0 }}>
+                        {figTrajectory.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
+                        <XAxis dataKey="stage" tick={{ fontSize: figTrajectory.tickFontSize }} label={figTrajectory.xLabel ? { value: figTrajectory.xLabel, position: "insideBottom", offset: -2, fontSize: figTrajectory.axisFontSize } : undefined} />
+                        <YAxis tick={{ fontSize: figTrajectory.tickFontSize }} tickFormatter={(v) => fmtDec(v, figTrajectory.decimals)} label={{ value: figTrajectory.yLabel || "vs. BAU", angle: -90, position: "insideLeft", fontSize: figTrajectory.axisFontSize }} />
                         <RTooltip />
-                        <Legend wrapperStyle={{ fontSize: 10 }} />
+                        {figTrajectory.legendPosition !== "hidden" && (
+                          <Legend
+                            wrapperStyle={{ fontSize: figTrajectory.legendFontSize }}
+                            layout={figTrajectory.legendPosition === "left" || figTrajectory.legendPosition === "right" ? "vertical" : "horizontal"}
+                            verticalAlign={figTrajectory.legendPosition === "left" || figTrajectory.legendPosition === "right" ? "middle" : figTrajectory.legendPosition}
+                            align={figTrajectory.legendPosition === "left" || figTrajectory.legendPosition === "right" ? figTrajectory.legendPosition : "center"}
+                          />
+                        )}
+                        {figTrajectory.title && <text x="50%" y={14} textAnchor="middle" fontSize={figTrajectory.titleFontSize} fontWeight={600} fill="#0f172a">{figTrajectory.title}</text>}
                         <ReferenceLine y={0} stroke="#94a3b8" />
-                        {result.outcomes.map((o, i) => (
-                          <Line key={o.id} type="linear" dataKey={o.id} name={nameOf(o.id)} stroke={lineColors[i % lineColors.length]} strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false} />
+                        {trajectoryOutcomeRows.map((o, i) => (
+                          <Line key={o.id} type="linear" dataKey={o.id} name={o.name} stroke={figurePalette(figTrajectory.palette, trajectoryOutcomeRows.length)[i]} strokeWidth={figTrajectory.lineWidth} strokeOpacity={figTrajectory.opacity} dot={figTrajectory.markerSize > 0 ? { r: figTrajectory.markerSize } : false} isAnimationActive={false} />
                         ))}
-                        <Line type="linear" dataKey="total" name="Total nexus gain" stroke="#0f172a" strokeDasharray="5 4" strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false} />
+                        <Line type="linear" dataKey="total" name="Total outcome gain" stroke="#0f172a" strokeDasharray="5 4" strokeWidth={figTrajectory.lineWidth} dot={figTrajectory.markerSize > 0 ? { r: figTrajectory.markerSize } : false} isAnimationActive={false}>
+                          <LabelList dataKey="total" position="top" formatter={(v) => fmtDec(v, figTrajectory.decimals)} style={{ fontSize: figTrajectory.tickFontSize, fill: "#0f172a", fontWeight: 600 }} />
+                        </Line>
                       </LineChart>
                     </ResponsiveContainer>
                   </div>
+                  {figTrajectoryOpen && (
+                    <FigurePanel
+                      settings={figTrajectory} onChange={setFigTrajectory}
+                      seriesOptions={trajectorySeriesOptions} hiddenKeys={hiddenTrajectoryOutcomes} onToggleSeries={toggleHiddenTrajectoryOutcome}
+                      sortOptions={TRAJECTORY_ORDER_OPTIONS} sortValue={trajectoryOrder} onSortChange={setTrajectoryOrder}
+                      exporting={figTrajectoryBusy}
+                      onExport={async () => {
+                        setFigTrajectoryBusy(true);
+                        await exportFigure(trajectoryRef.current, "transition-pathway-trajectory.png", figTrajectory, {
+                          title: figTrajectory.title || `Outcome trajectory: ${selectedLabel}`,
+                          subtitle: pathwayContextLine,
+                        });
+                        setFigTrajectoryBusy(false);
+                      }}
+                    />
+                  )}
                 </div>
                 <div>
-                  <div className="text-xs font-medium text-slate-600 mb-1">Benefit accrual (EBI {fmtNum(selected.ebi)})</div>
-                  <p className="text-[10px] text-slate-400 mb-1">Share of the final gain realized against share of the effort spent. Above the diagonal, benefits come ahead of effort; the Early Benefit Index is the area under the curve.</p>
-                  <div className="h-60">
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="text-xs font-medium text-slate-600">Benefit accrual (EBI {fmtNum(selected.ebi)})</div>
+                    <Btn variant="outline" onClick={() => setFigAccrualOpen((v) => !v)} disabled={trajectory.accrual.length <= 1}><SlidersHorizontal size={13} />{figAccrualOpen ? "Hide figure options" : "Customize & export"}</Btn>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mb-1">Share of the final gain realized against share of the effort spent. The shaded area is the Early Benefit Index itself; above the dashed diagonal, benefits arrive ahead of effort.</p>
+                  <div ref={accrualRef} className="h-60" style={figAccrualOpen ? { width: mmToPx(figAccrual.widthMm, 96), height: mmToPx(figAccrual.heightMm, 96), maxWidth: "100%" } : undefined}>
                     {trajectory.accrual.length > 1 ? (
                       <ResponsiveContainer>
-                        <LineChart data={trajectory.accrual} margin={{ top: 5, right: 10, bottom: 18, left: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                          <XAxis type="number" dataKey="x" domain={[0, 1]} tick={{ fontSize: 10 }} label={{ value: "Share of effort", position: "insideBottom", offset: -8, fontSize: 10 }} />
-                          <YAxis type="number" domain={[(m) => Math.min(0, m), (m) => Math.max(1, m)]} tick={{ fontSize: 10 }} tickFormatter={(v) => round2(v)} />
-                          <RTooltip formatter={(v) => round2(v)} labelFormatter={(v) => `effort ${round2(v)}`} />
+                        <AreaChart data={trajectory.accrual} margin={{ top: 16, right: 10, bottom: 18, left: 0 }}>
+                          {figAccrual.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
+                          <XAxis type="number" dataKey="x" domain={[0, 1]} tick={{ fontSize: figAccrual.tickFontSize }} tickFormatter={(v) => fmtDec(v, figAccrual.decimals)} label={{ value: figAccrual.xLabel || "Share of effort", position: "insideBottom", offset: -8, fontSize: figAccrual.axisFontSize }} />
+                          <YAxis type="number" domain={[(m) => Math.min(0, m), (m) => Math.max(1, m)]} tick={{ fontSize: figAccrual.tickFontSize }} tickFormatter={(v) => fmtDec(v, figAccrual.decimals)} label={{ value: figAccrual.yLabel || "Share of gain", angle: -90, position: "insideLeft", fontSize: figAccrual.axisFontSize }} />
+                          <RTooltip formatter={(v) => fmtDec(v, figAccrual.decimals)} labelFormatter={(v) => `effort ${fmtDec(v, figAccrual.decimals)}`} />
+                          {figAccrual.legendPosition !== "hidden" && <Legend wrapperStyle={{ fontSize: figAccrual.legendFontSize }} verticalAlign={figAccrual.legendPosition === "left" || figAccrual.legendPosition === "right" ? "middle" : figAccrual.legendPosition} align={figAccrual.legendPosition === "left" || figAccrual.legendPosition === "right" ? figAccrual.legendPosition : "center"} />}
+                          {figAccrual.title && <text x="50%" y={14} textAnchor="middle" fontSize={figAccrual.titleFontSize} fontWeight={600} fill="#0f172a">{figAccrual.title}</text>}
                           <ReferenceLine segment={[{ x: 0, y: 0 }, { x: 1, y: 1 }]} stroke="#94a3b8" strokeDasharray="4 4" />
-                          <Line type="linear" dataKey="y" name="Share of gain" stroke="#0f766e" strokeWidth={2} dot={false} isAnimationActive={false} />
-                        </LineChart>
+                          <Area type="linear" dataKey="y" name="Share of gain" stroke={figurePalette(figAccrual.palette, 1)[0]} strokeWidth={figAccrual.lineWidth} fill={figurePalette(figAccrual.palette, 1)[0]} fillOpacity={0.22 * figAccrual.opacity} dot={figAccrual.markerSize > 0 ? { r: figAccrual.markerSize } : false} isAnimationActive={false} />
+                        </AreaChart>
                       </ResponsiveContainer>
                     ) : <p className="text-[11px] text-slate-400 italic">Not defined for a pathway without a positive gain and effort.</p>}
                   </div>
+                  {figAccrualOpen && trajectory.accrual.length > 1 && (
+                    <FigurePanel
+                      settings={figAccrual} onChange={setFigAccrual}
+                      exporting={figAccrualBusy}
+                      onExport={async () => {
+                        setFigAccrualBusy(true);
+                        await exportFigure(accrualRef.current, "transition-pathway-benefit-accrual.png", figAccrual, {
+                          title: figAccrual.title || `Benefit accrual: ${selectedLabel}`,
+                          subtitle: `Early Benefit Index ${fmtNum(selected.ebi)}: share of the final gain realized against share of effort spent`,
+                        });
+                        setFigAccrualBusy(false);
+                      }}
+                    />
+                  )}
                 </div>
               </div>
             </div>
@@ -8679,10 +10583,10 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
                 </thead>
                 <tbody>
                   {sorted.slice(0, showCount).map((r) => (
-                    <tr key={r.id} onClick={() => selectPathway(r.id)} className={`border-b border-slate-50 cursor-pointer hover:bg-slate-50 ${selectedId === r.id ? "bg-teal-50/60" : ""}`}>
+                    <tr key={r.id} onClick={() => selectPathway(r.id)} className={`border-b border-slate-50 cursor-pointer hover:bg-slate-50 ${selectedId === r.id ? "bg-cobalt-50/60" : ""}`}>
                       <td className="py-1 pr-3"><PathwayStagesText c={r.c} nameOf={nameOf} compact /></td>
                       <td className="py-1 pr-3 font-mono">{r.length}</td>
-                      <td className="py-1 pr-3 font-mono">{fmtNum(r.tng)}</td>
+                      <td className="py-1 pr-3 font-mono">{fmtNum(r.tog)}</td>
                       <td className="py-1 pr-3 font-mono">{fmtNum(r.cii)}</td>
                       <td className="py-1 pr-3 font-mono">{fmtNum(r.pei)}</td>
                       <td className="py-1 pr-3 font-mono">{fmtNum(r.avgTp)}</td>
@@ -8697,7 +10601,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
               </table>
             </div>
             {sorted.length > showCount && (
-              <button onClick={() => setShowCount((n) => n + 100)} className="mt-2 text-xs text-teal-700 hover:underline">Show 100 more ({sorted.length - showCount} not shown)</button>
+              <button onClick={() => setShowCount((n) => n + 100)} className="mt-2 text-xs text-cobalt-700 hover:underline">Show 100 more ({sorted.length - showCount} not shown)</button>
             )}
           </div>
 
@@ -8706,7 +10610,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
               <h4 className="text-sm font-semibold">Implementation portfolios</h4>
               <Btn variant="outline" onClick={exportPortfoliosCSV}><Download size={13} />Export CSV</Btn>
             </div>
-            <p className="text-[11px] text-slate-400 mb-2">Every pathway starts with one of these opening moves. <strong className="text-slate-600">Regret</strong> is how much total nexus gain an opening gives up compared with the best pathway of all (0: the best outcome stays within reach). <strong className="text-slate-600">Top pathways opened</strong> counts how many of the top {PATHWAY_TOP_N} pathways of each archetype start this way; a low-regret opening that opens many of them is a no-regret first move.</p>
+            <p className="text-[11px] text-slate-400 mb-2">Every pathway starts with one of these opening moves. <strong className="text-slate-600">Regret</strong> is how much total outcome gain an opening gives up compared with the best pathway of all (0: the best outcome stays within reach). <strong className="text-slate-600">Top pathways opened</strong> counts how many of the top {PATHWAY_TOP_N} pathways of each archetype start this way; a low-regret opening that opens many of them is a no-regret first move.</p>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
@@ -8721,13 +10625,13 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
                   {[...result.portfolios.firstMoves, ...result.portfolios.openings].map((f, i) => (
                     <tr key={f.key} className={`border-b border-slate-50 ${i === result.portfolios.firstMoves.length ? "border-t-2 border-t-slate-200" : ""}`}>
                       <td className="py-1 pr-3"><PathwayStagesText c={{ stages: f.stages, length: f.stages.length }} nameOf={nameOf} compact /></td>
-                      <td className={`py-1 pr-3 font-mono ${f.regret <= 1e-6 ? "text-teal-700 font-semibold" : ""}`}>{fmtNum(f.regret)}</td>
+                      <td className={`py-1 pr-3 font-mono ${f.regret <= 1e-6 ? "text-cobalt-700 font-semibold" : ""}`}>{fmtNum(f.regret)}</td>
                       <td className="py-1 pr-3 font-mono">{f.opens}</td>
                       {PATHWAY_ARCHETYPES.map((a) => {
                         const c = f.bestBy[a.key] !== null ? candById.get(f.bestBy[a.key]) : null;
                         return (
                           <td key={a.key} className="py-1 pr-3">
-                            {c ? <button onClick={() => selectPathway(c.id)} className="text-left hover:text-teal-800"><PathwayStagesText c={{ ...c, stages: c.stages.slice(f.stages.length), length: c.length - f.stages.length }} nameOf={nameOf} compact />{c.length === f.stages.length && <span className="text-slate-400">(stop here)</span>}</button> : <span className="text-slate-300">none</span>}
+                            {c ? <button onClick={() => selectPathway(c.id)} className="text-left hover:text-cobalt-800"><PathwayStagesText c={{ ...c, stages: c.stages.slice(f.stages.length), length: c.length - f.stages.length }} nameOf={nameOf} compact />{c.length === f.stages.length && <span className="text-slate-400">(stop here)</span>}</button> : <span className="text-slate-300">none</span>}
                           </td>
                         );
                       })}
@@ -8744,7 +10648,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
               <h4 className="text-sm font-semibold">Lever profiles (each lever on its own, from Business-as-Usual)</h4>
               <Btn variant="outline" onClick={exportLeversCSV}><Download size={13} />Export CSV</Btn>
             </div>
-            <p className="text-[11px] text-slate-400 mb-2">Step 1 of the method: the building blocks. Levers that move no outcome, or never improve the nexus gain, are left out of the pathways.</p>
+            <p className="text-[11px] text-slate-400 mb-2">Step 1 of the method: the building blocks. Levers that move no outcome, or never improve the outcome gain, are left out of the pathways.</p>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
@@ -8752,7 +10656,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
                     <th className="py-1 font-medium pr-3">Lever</th>
                     <th className="py-1 font-medium pr-3">TP</th>
                     <th className="py-1 font-medium pr-3">Response type</th>
-                    <th className="py-1 font-medium pr-3" title="Nexus gain with the lever at full intensity, on its own.">Gain at full intensity</th>
+                    <th className="py-1 font-medium pr-3" title="Outcome gain with the lever at full intensity, on its own.">Gain at full intensity</th>
                     <th className="py-1 font-medium pr-3">Synergy</th>
                     {result.outcomes.map((o) => <th key={o.id} className="py-1 font-medium pr-3" title="Improvement at full intensity, and the outcome's own transition point in brackets.">{nameOf(o.id)}</th>)}
                     <th className="py-1 font-medium pr-3">In pathways</th>
@@ -8767,7 +10671,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
                       <td className="py-1 pr-3 font-mono">{fmtSigned(l.gainAtFull)}</td>
                       <td className="py-1 pr-3"><span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${SYNERGY_STYLE[l.synergy.type]}`}>{l.synergy.type}</span></td>
                       {l.outcomeRows.map((r) => <td key={r.id} className="py-1 pr-3 font-mono">{fmtSigned(r.effect)} <span className="text-slate-400">({fmtNum(r.tp)})</span></td>)}
-                      <td className="py-1 pr-3">{l.included ? <Check size={13} className="text-teal-700" /> : <span className="text-[10px] text-amber-700" title={l.reason}>No: {l.reason.split(":")[0]}</span>}</td>
+                      <td className="py-1 pr-3">{l.included ? <Check size={13} className="text-cobalt-700" /> : <span className="text-[10px] text-amber-700" title={l.reason}>No: {l.reason.split(":")[0]}</span>}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -8796,7 +10700,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
                       <td className="py-1 pr-3">{r.ids.map((id) => `${nameOf(id)} (${round2(r.final[id])})`).join(", ")}</td>
                       <td className="py-1 pr-3 font-mono">{r.perms}</td>
                       <td className="py-1 pr-3 font-mono">{fmtNum(r.maxDiff, 3)}</td>
-                      <td className="py-1 pr-3">{!r.allConverged ? <span className="text-slate-500">Not all orders converged: undecided</span> : r.pathDependent ? <span className="text-amber-700 font-medium">Path dependent: the order matters</span> : <span className="text-teal-700">Same end state in every order</span>}</td>
+                      <td className="py-1 pr-3">{!r.allConverged ? <span className="text-slate-500">Not all orders converged: undecided</span> : r.pathDependent ? <span className="text-amber-700 font-medium">Path dependent: the order matters</span> : <span className="text-cobalt-700">Same end state in every order</span>}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -8823,10 +10727,10 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
                     const c = candById.get(r.id);
                     return (
                       <tr key={`${r.id}-${r.archetype}`} className="border-b border-slate-50">
-                        <td className="py-1 pr-3">{c ? <button onClick={() => selectPathway(c.id)} className="text-left hover:text-teal-800"><PathwayStagesText c={c} nameOf={nameOf} compact /></button> : r.sig}</td>
+                        <td className="py-1 pr-3">{c ? <button onClick={() => selectPathway(c.id)} className="text-left hover:text-cobalt-800"><PathwayStagesText c={c} nameOf={nameOf} compact /></button> : r.sig}</td>
                         <td className="py-1 pr-3"><span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${PATHWAY_ARCHETYPE_BY_KEY[r.archetype].badge}`}>{PATHWAY_ARCHETYPE_BY_KEY[r.archetype].label}</span> <span className="font-mono text-slate-500">#{r.rank}</span></td>
                         <td className="py-1 pr-3 font-mono">{r.admissible} of {r.of}</td>
-                        <td className={`py-1 pr-3 font-mono ${r.sameArchetype === r.of ? "text-teal-700" : r.sameArchetype === 0 ? "text-orange-700" : ""}`}>{r.sameArchetype} of {r.of}</td>
+                        <td className={`py-1 pr-3 font-mono ${r.sameArchetype === r.of ? "text-cobalt-700" : r.sameArchetype === 0 ? "text-orange-700" : ""}`}>{r.sameArchetype} of {r.of}</td>
                         <td className="py-1 pr-3 font-mono">{r.top} of {r.of}</td>
                       </tr>
                     );
@@ -8843,8 +10747,9 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
               <Btn variant="outline" onClick={exportStagesCSV} disabled={!selected}><Download size={13} />Selected pathway stages (CSV)</Btn>
               <Btn variant="outline" onClick={exportLeversCSV}><Download size={13} />Lever profiles (CSV)</Btn>
               <Btn variant="outline" onClick={exportPortfoliosCSV}><Download size={13} />Portfolios (CSV)</Btn>
-              <Btn variant="outline" onClick={() => exportChartAsPng(planeRef.current, "transition-pathways-effort-gain.png")}><Download size={13} />Effort-gain plane (PNG)</Btn>
-              <Btn variant="outline" onClick={() => exportChartAsPng(trajectoryRef.current, "transition-pathway-trajectory.png")} disabled={!selected}><Download size={13} />Selected trajectory (PNG)</Btn>
+              <Btn variant="outline" onClick={() => exportFigure(planeRef.current, "transition-pathways-effort-gain.png", figPlane, { title: figPlane.title || "Transition Pathways: Effort-Gain Plane", subtitle: `${pathwayContextLine} · ${s.counts.admissible} of ${s.counts.total} pathways admissible` })}><Download size={13} />Effort-gain plane ({figPlane.format.toUpperCase()})</Btn>
+              <Btn variant="outline" onClick={() => exportFigure(trajectoryRef.current, "transition-pathway-trajectory.png", figTrajectory, { title: figTrajectory.title || `Outcome trajectory: ${selectedLabel}`, subtitle: pathwayContextLine })} disabled={!selected}><Download size={13} />Selected trajectory ({figTrajectory.format.toUpperCase()})</Btn>
+              <Btn variant="outline" onClick={() => exportFigure(accrualRef.current, "transition-pathway-benefit-accrual.png", figAccrual, { title: figAccrual.title || `Benefit accrual: ${selectedLabel}`, subtitle: `Early Benefit Index ${fmtNum(selected?.ebi)}` })} disabled={!selected || !trajectory || trajectory.accrual.length <= 1}><Download size={13} />Selected benefit accrual ({figAccrual.format.toUpperCase()})</Btn>
             </div>
             <p className="text-[10px] text-slate-400 mt-2">The Export Analysis Workbook in the header also includes these results (pathways, rankings, stages of the top pathways, lever profiles, portfolios, and the invariance and robustness tests).</p>
           </div>
@@ -8888,7 +10793,7 @@ class AppCrashBoundary extends React.Component {
           <p>Something went wrong while showing the page. Your model is saved in this browser, and reloading the page usually solves this.</p>
           <p className="text-xs text-slate-400 font-mono break-words">{String(this.state.error?.message || this.state.error)}</p>
           <div className="flex flex-wrap gap-2 pt-1">
-            <button onClick={() => window.location.reload()} className="px-3 py-1.5 rounded-md bg-teal-700 text-white text-sm">Reload</button>
+            <button onClick={() => window.location.reload()} className="px-3 py-1.5 rounded-md bg-cobalt-700 text-white text-sm">Reload</button>
             <button onClick={() => this.downloadSaved()} className="px-3 py-1.5 rounded-md border border-slate-300 text-sm">Download the saved model</button>
             {!this.state.confirmFresh ? (
               <button onClick={() => this.setState({ confirmFresh: true })} className="px-3 py-1.5 rounded-md border border-rose-300 text-rose-700 text-sm">Start fresh</button>
@@ -8916,8 +10821,58 @@ export default function SpaghettiEngine() {
   );
 }
 
+// The tabs, grouped by what the user is doing. The first group is the part a
+// participatory session mostly needs; the others are analyst tools. Tab ids
+// are unchanged, so every setTab(...) call and per-tab render block keeps working.
+const TAB_GROUPS = [
+  {
+    id: "building", label: "Model building",
+    hint: "Build and explore the model. Well suited to working through with participants.",
+    tabs: [
+      { id: "editor", label: "Model editor", icon: Table2 },
+      { id: "network", label: "Network", icon: Share2 },
+      { id: "metrics", label: "Influence Metrics", icon: BarChart3 },
+      { id: "routes", label: "Influence Routes", icon: Route },
+    ],
+  },
+  {
+    id: "state", label: "State and scenario analysis",
+    hint: "See where the system settles, and compare what-if scenarios.",
+    tabs: [
+      { id: "equilibrium", label: "Baseline Equilibrium", icon: Activity },
+      { id: "scenarios", label: "Scenarios & Simulation", icon: GitCompare },
+    ],
+  },
+  {
+    id: "sensitivity", label: "Sensitivity analyses",
+    hint: "Test how far the results depend on the weights and starting values. Mainly for the analyst.",
+    tabs: [
+      { id: "sensitivity", label: "Sensitivity Analysis", icon: SlidersHorizontal },
+      { id: "montecarlo", label: "Monte Carlo", icon: Dices },
+    ],
+  },
+  {
+    id: "transition", label: "Transition analyses",
+    hint: "Find tipping points and effective routes to change. Mainly for the analyst.",
+    tabs: [
+      { id: "transition", label: "Transition Point Analysis", icon: TrendingUp },
+      { id: "pathways", label: "Transition Pathways", icon: Waypoints },
+    ],
+  },
+  {
+    id: "about", label: "About & documentation", accent: true,
+    hint: "What the tool is for, the documentation as PDF, and who to contact.",
+    tabs: [
+      { id: "about", label: "About the Spaghetti Engine", icon: Info },
+    ],
+  },
+];
+
 function SpaghettiEngineApp() {
-  const [tab, setTab] = useState("editor");
+  // The tool opens on the About & documentation page.
+  const [tab, setTab] = useState("about");
+  // The tab each group was last left on, so switching back to a group returns you to it.
+  const lastTabInGroup = useRef({});
   // Whatever was autosaved in this browser, if anything (read once).
   const [restored] = useState(readAutosave);
   const [concepts, setConcepts] = useState(() => restored?.concepts ?? makeTemplate("nexus").concepts);
@@ -9085,6 +11040,7 @@ function SpaghettiEngineApp() {
   // every tab to be re-run at export time.
   const [baselineResult, setBaselineResult] = useState(null);
   const [sensitivityResult, setSensitivityResult] = useState(null);
+  const [monteCarloResult, setMonteCarloResult] = useState(null);
   const [transitionResult, setTransitionResult] = useState(null);
   // Transition Pathways: the setup and the last result, kept here so both
   // survive switching tabs and the result can go into the workbook. The
@@ -9117,7 +11073,35 @@ function SpaghettiEngineApp() {
   // The scenario comparison chart is rendered inline in this component's own
   // JSX (Scenarios & Simulation tab), not a separate tab component, so it's
   // cached here directly rather than via a prop like the other five charts.
-  useCachedChart(setChartCache, "scenarioComparison", '[data-chart="scenario-comparison"]', "svg", [results, compareIds]);
+  useCachedChart(setChartCache, "scenarioComparison", [results, compareIds]);
+
+  // Publication-figure controls for the Scenarios & Simulation tab's charts.
+  // "Comparison to baseline" is one bar chart; "Trajectory comparison" is
+  // three small-multiple line charts (baseline / scenario / difference) that
+  // share one appearance so a published figure reads as one consistent set,
+  // but export separately since each is its own image.
+  const comparisonBarRef = useRef(null);
+  const [figComparisonBar, setFigComparisonBar] = useState(DEFAULT_FIGURE_SETTINGS);
+  const [figComparisonBarOpen, setFigComparisonBarOpen] = useState(false);
+  const [figComparisonBarBusy, setFigComparisonBarBusy] = useState(false);
+  const trajBaselineRef = useRef(null);
+  const trajScenarioRef = useRef(null);
+  const trajDifferenceRef = useRef(null);
+  const [figTrajComparison, setFigTrajComparison] = useState(TRAJECTORY_FIGURE_DEFAULTS);
+  const [figTrajComparisonOpen, setFigTrajComparisonOpen] = useState(false);
+  const [figTrajComparisonBusy, setFigTrajComparisonBusy] = useState(false);
+  const [hiddenTrajComparisonIds, setHiddenTrajComparisonIds] = useState(() => new Set());
+  const toggleHiddenTrajComparison = (id) => setHiddenTrajComparisonIds((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const [trajComparisonOrder, setTrajComparisonOrder] = useState("original");
+  const TRAJ_COMPARISON_ORDER_OPTIONS = [
+    { value: "original", label: "As modelled" },
+    { value: "alphabetical", label: "Alphabetical" },
+  ];
+
   const [matrixText, setMatrixText] = useState("");
   const [showMatrixPanel, setShowMatrixPanel] = useState(false);
   const [showInitialValueHelp, setShowInitialValueHelp] = useState(false);
@@ -9514,7 +11498,9 @@ function SpaghettiEngineApp() {
         setResultsSignatureAtRun(null);
         setBaselineResult(null);
         setSensitivityResult(null);
+        setMonteCarloResult(null);
         setTransitionResult(null);
+        setPathwayResult(null);
         setChartCache({});
         setNetworkView(DEFAULT_NETWORK_VIEW);
         setBaselineInit(DEFAULT_BASELINE_INIT);
@@ -9633,7 +11619,9 @@ function SpaghettiEngineApp() {
       // for the next Export Analysis Workbook.
       setBaselineResult(null);
       setSensitivityResult(null);
+      setMonteCarloResult(null);
       setTransitionResult(null);
+      setPathwayResult(null);
       setChartCache({});
       setNetworkView(DEFAULT_NETWORK_VIEW);
       setBaselineInit(DEFAULT_BASELINE_INIT);
@@ -9655,13 +11643,16 @@ function SpaghettiEngineApp() {
     setConcepts(t.concepts);
     setEdges(t.edges);
     setScenarios(t.scenarios || [{ ...BASELINE_SCENARIO }]);
+    if (t.settings) setSettings({ ...DEFAULT_SETTINGS, ...t.settings });
     setActiveScenarioId("baseline");
     setCompareIds([]);
     setResults({});
     setResultsSignatureAtRun(null);
     setBaselineResult(null);
     setSensitivityResult(null);
+    setMonteCarloResult(null);
     setTransitionResult(null);
+    setPathwayResult(null);
     setChartCache({});
     setNetworkView(DEFAULT_NETWORK_VIEW);
     setBaselineInit(DEFAULT_BASELINE_INIT);
@@ -9704,6 +11695,15 @@ function SpaghettiEngineApp() {
     }
     return { baseline, scenario, difference };
   }, [comparedIds, results, aConcepts]);
+  // Which concepts the three trajectory-comparison charts actually draw, and
+  // in what order: a figure-preparation choice, shared across all three
+  // since they're published as one set.
+  const trajComparisonRows = useMemo(() => {
+    const rows = aConcepts.filter((c) => !hiddenTrajComparisonIds.has(c.id));
+    if (trajComparisonOrder === "alphabetical") rows.sort((a, b) => a.name.localeCompare(b.name));
+    return rows;
+  }, [aConcepts, hiddenTrajComparisonIds, trajComparisonOrder]);
+  const trajComparisonSeriesOptions = useMemo(() => aConcepts.map((c) => ({ key: c.id, label: c.name })), [aConcepts]);
 
   const selectedConcept = selected?.kind === "concept" ? concepts.find((c) => c.id === selected.id) : null;
   const selectedEdge = selected?.kind === "edge" ? edges.find((e) => e.id === selected.id) : null;
@@ -9730,30 +11730,29 @@ function SpaghettiEngineApp() {
     setFocusRequest({ kind, id, source: e?.source, target: e?.target, at: Date.now() });
   };
 
-  const TabButton = ({ id, icon: Icon, children }) => (
-    <button
-      onClick={() => setTab(id)}
-      className={`flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-        tab === id ? "border-teal-700 text-teal-800" : "border-transparent text-slate-500 hover:text-slate-800"
-      }`}
-    >
-      <Icon size={15} /> {children}
-    </button>
-  );
+  const activeGroup = TAB_GROUPS.find((g) => g.tabs.some((t) => t.id === tab)) || TAB_GROUPS[0];
+  const goToGroup = (g) => {
+    if (g.id === activeGroup.id) return;
+    lastTabInGroup.current[activeGroup.id] = tab;
+    setTab(lastTabInGroup.current[g.id] || g.tabs[0].id);
+  };
 
   return (
     <div className="w-full h-full min-h-[820px] bg-white text-slate-800 flex flex-col" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
       {/* Top bar */}
-      <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-slate-900 text-white">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded bg-teal-500 flex items-center justify-center font-bold text-sm">SE</div>
-          <span className="font-semibold tracking-tight">The Spaghetti Engine</span>
-          <span className="text-xs text-slate-400 ml-2">Visual System Modelling Workspace</span>
-        </div>
-        <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-5 py-2.5 border-b-2 border-citrus-400 bg-ink text-white">
+        <button onClick={() => setTab("about")} className="flex items-center gap-2.5 text-left rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-citrus-400" title="About the Spaghetti Engine, and the documentation">
+          <BrandMark size={32} />
+          <span className="leading-tight">
+            <span className="block font-semibold tracking-tight whitespace-nowrap">The Spaghetti Engine</span>
+            <span className="hidden lg:block text-[10px] uppercase tracking-[0.12em] text-slate-400 whitespace-nowrap">Visual system modelling workspace</span>
+          </span>
+          <span className="ml-1 text-[10px] font-mono px-1.5 py-0.5 rounded border border-slate-700 bg-slate-800 text-citrus-400" title="Version">v{APP_VERSION}</span>
+        </button>
+        <div className="flex flex-wrap items-center gap-2">
           {savedAt && (
             <span className="text-[11px] text-slate-400 mr-1 flex items-center gap-1" title="Your model is saved automatically in this browser. Use Export JSON to keep a file copy or move it to another computer.">
-              <Check size={12} className="text-teal-400" />Saved in this browser {new Date(savedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+              <Check size={12} className="text-cobalt-400" />Saved in this browser {new Date(savedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
             </span>
           )}
           <select
@@ -9766,6 +11765,7 @@ function SpaghettiEngineApp() {
             <option value="" disabled>New / example model…</option>
             <option value="blank">Blank model</option>
             <option value="nexus">Water-energy-food nexus (5 modules)</option>
+            <option value="peat">Peat meadow nexus (Dutch case study)</option>
             <option value="energy">Energy transition</option>
           </select>
           <Btn
@@ -9784,8 +11784,8 @@ function SpaghettiEngineApp() {
       <ModuleSuggestions concepts={concepts} />
 
       {restoreNotice && (
-        <div className="flex items-center gap-3 flex-wrap px-5 py-2 text-xs bg-teal-50 border-b border-teal-200 text-teal-900">
-          <Check size={14} className="text-teal-700" />
+        <div className="flex items-center gap-3 flex-wrap px-5 py-2 text-xs bg-cobalt-50 border-b border-cobalt-200 text-cobalt-900">
+          <Check size={14} className="text-cobalt-700" />
           <span>
             <strong>Welcome back.</strong> Your model ({concepts.length} concept{concepts.length === 1 ? "" : "s"}, {edges.length} relationship{edges.length === 1 ? "" : "s"}) was restored from this browser
             {restored?.savedAt ? `, as saved on ${new Date(restored.savedAt).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}` : ""}.
@@ -9811,11 +11811,11 @@ function SpaghettiEngineApp() {
             <div className="flex flex-wrap justify-end gap-2 pt-1">
               <button onClick={() => closeConfirm(false)} className="px-3 py-1.5 rounded-md border border-slate-300 text-sm text-slate-700 hover:bg-slate-50">Cancel</button>
               {confirmState.secondary && (
-                <button onClick={() => { confirmState.secondary.action(); closeConfirm(true); }} className="px-3 py-1.5 rounded-md border border-teal-300 bg-teal-50 text-sm text-teal-800 hover:bg-teal-100">
+                <button onClick={() => { confirmState.secondary.action(); closeConfirm(true); }} className="px-3 py-1.5 rounded-md border border-cobalt-300 bg-cobalt-50 text-sm text-cobalt-800 hover:bg-cobalt-100">
                   {confirmState.secondary.label}
                 </button>
               )}
-              <button autoFocus onClick={() => closeConfirm(true)} className="px-3 py-1.5 rounded-md bg-teal-700 text-white text-sm hover:bg-teal-800">{confirmState.confirmLabel || "Continue"}</button>
+              <button autoFocus onClick={() => closeConfirm(true)} className="px-3 py-1.5 rounded-md bg-cobalt-700 text-white text-sm hover:bg-cobalt-800">{confirmState.confirmLabel || "Continue"}</button>
             </div>
           </div>
         </div>
@@ -9835,32 +11835,64 @@ function SpaghettiEngineApp() {
       {toast && (
         <div className="fixed bottom-12 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-slate-900 text-white text-xs rounded-md shadow-lg px-3.5 py-2.5" role="status">
           <span>{toast.text}</span>
-          <button onClick={() => { undo(); setToast(null); }} className="font-semibold text-teal-300 hover:text-teal-200">Undo</button>
+          <button onClick={() => { undo(); setToast(null); }} className="font-semibold text-cobalt-300 hover:text-cobalt-200">Undo</button>
           <button onClick={() => setToast(null)} className="text-slate-400 hover:text-white" aria-label="Dismiss"><X size={13} /></button>
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="flex border-b border-slate-200 px-5 bg-white overflow-x-auto">
-        <TabButton id="editor" icon={Table2}>Model editor</TabButton>
-        <TabButton id="network" icon={Share2}>Network</TabButton>
-        <TabButton id="metrics" icon={BarChart3}>Influence Metrics</TabButton>
-        <TabButton id="routes" icon={Route}>Influence Routes</TabButton>
-        <TabButton id="equilibrium" icon={Activity}>Baseline Equilibrium</TabButton>
-        <TabButton id="scenarios" icon={GitCompare}>Scenarios & Simulation</TabButton>
-        <TabButton id="sensitivity" icon={SlidersHorizontal}>Sensitivity Analysis</TabButton>
-        <TabButton id="transition" icon={TrendingUp}>Transition Point Analysis</TabButton>
-        <TabButton id="pathways" icon={Waypoints}>Transition Pathways</TabButton>
+      {/* Tabs: the groups on top, and the tabs of the active group beneath */}
+      <div className="bg-white">
+        <div role="tablist" aria-label="Workspace sections" className="flex flex-wrap items-center gap-1.5 px-5 pt-2.5 pb-1">
+          {TAB_GROUPS.map((g) => {
+            const on = g.id === activeGroup.id;
+            return (
+              <button
+                key={g.id}
+                role="tab"
+                aria-selected={on}
+                onClick={() => goToGroup(g)}
+                title={g.hint}
+                className={`px-3.5 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${g.accent ? "ml-auto " : ""}${
+                  g.accent
+                    ? (on ? "bg-citrus-400 text-slate-900" : "bg-citrus-50 text-citrus-700 border border-citrus-300 hover:bg-citrus-100")
+                    : (on ? "bg-cobalt-700 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900")
+                }`}
+              >
+                {g.label}
+              </button>
+            );
+          })}
+        </div>
+        {activeGroup.tabs.length < 2 ? <div className="mt-1 border-b border-slate-200" /> : (
+        <div className="flex items-center justify-between gap-4 px-5 border-b border-slate-200 overflow-x-auto">
+          <div role="tablist" aria-label={activeGroup.label} className="flex">
+            {activeGroup.tabs.map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                role="tab"
+                aria-selected={tab === id}
+                onClick={() => setTab(id)}
+                className={`flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                  tab === id ? "border-cobalt-700 text-cobalt-800" : "border-transparent text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                <Icon size={15} /> {label}
+              </button>
+            ))}
+          </div>
+          <span className="hidden xl:block text-xs text-slate-400 whitespace-nowrap">{activeGroup.hint}</span>
+        </div>
+        )}
       </div>
 
-      <AnalysisScopeBar viewInfo={viewInfo} modules={modules} networkView={networkView} setNetworkView={setNetworkView} />
+      {tab !== "about" && <AnalysisScopeBar viewInfo={viewInfo} modules={modules} networkView={networkView} setNetworkView={setNetworkView} />}
 
       <div className="flex-1 overflow-auto p-5 bg-slate-50">
         {/* A display error in one tab stays in that tab: the rest of the app,
             the tab bar, and the model are unaffected, and switching tabs
             (the key) starts that tab fresh. */}
         <ErrorBoundary key={tab} label="this tab">
-        {["metrics", "routes", "equilibrium", "scenarios", "sensitivity", "transition", "pathways"].includes(tab) && viewInfo.isFiltered && (
+        {["metrics", "routes", "equilibrium", "scenarios", "sensitivity", "montecarlo", "transition", "pathways"].includes(tab) && viewInfo.isFiltered && (
           <div className="mb-5"><ViewScopeBanner viewInfo={viewInfo} /></div>
         )}
         {/* ============================= EDITOR ============================= */}
@@ -9869,7 +11901,7 @@ function SpaghettiEngineApp() {
             <ModelCheck concepts={concepts} edges={edges} onSelectConcept={(id) => revealItem("concept", id)} onSelectEdge={(id) => revealItem("edge", id)} />
             <div className="bg-white rounded-lg border border-slate-200 p-4">
               <button onClick={() => setShowMatrixPanel((v) => !v)} className="flex items-center gap-1.5 text-sm font-semibold w-full text-left">
-                <ClipboardPaste size={15} className="text-teal-700" />
+                <ClipboardPaste size={15} className="text-cobalt-700" />
                 Build from an adjacency matrix
                 {showMatrixPanel ? <ChevronDown size={14} className="ml-auto text-slate-400" /> : <ChevronRight size={14} className="ml-auto text-slate-400" />}
               </button>
@@ -9882,36 +11914,36 @@ function SpaghettiEngineApp() {
                     value={matrixText}
                     onChange={(e) => setMatrixText(e.target.value)}
                     placeholder={"Paste directly from Excel, e.g.:\n\t Concept A\tConcept B\tConcept C\nConcept A\t0\t0.5\t0\nConcept B\t-0.25\t0\t0.5\nConcept C\t0\t0\t0"}
-                    className="w-full h-32 text-xs font-mono border border-slate-200 rounded p-2 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                    className="w-full h-32 text-xs font-mono border border-slate-200 rounded p-2 focus:outline-none focus:ring-1 focus:ring-cobalt-500"
                   />
                   <div className="flex items-center gap-2">
                     <Btn onClick={buildFromMatrix} disabled={!matrixText.trim()}><ClipboardPaste size={13} />Build model from matrix</Btn>
                     {matrixError && <span className="text-xs text-rose-600">{matrixError}</span>}
-                    {matrixSuccess && <span className="text-xs text-teal-700 flex items-center gap-1"><Check size={12} />{matrixSuccess}</span>}
+                    {matrixSuccess && <span className="text-xs text-cobalt-700 flex items-center gap-1"><Check size={12} />{matrixSuccess}</span>}
                   </div>
                 </div>
               )}
             </div>
 
-            <div className="bg-teal-50 border border-teal-100 rounded-lg p-3 text-xs text-teal-800">
+            <div className="bg-cobalt-50 border border-cobalt-100 rounded-lg p-3 text-xs text-cobalt-800">
               Prefer building visually? The <button onClick={() => setTab("network")} className="underline font-medium">Network tab</button> is now the primary way to create and edit concepts and relationships by dragging on a canvas (this table view is for bulk review and editing).
             </div>
 
             <div className="bg-white rounded-lg border border-slate-200 p-4">
               <button onClick={() => setShowInitialValueHelp((v) => !v)} className="flex items-center gap-1.5 text-sm font-semibold w-full text-left">
-                <HelpCircle size={15} className="text-teal-700" />
+                <HelpCircle size={15} className="text-cobalt-700" />
                 How to set each concept's "Initial" value
                 {showInitialValueHelp ? <ChevronDown size={14} className="ml-auto text-slate-400" /> : <ChevronRight size={14} className="ml-auto text-slate-400" />}
               </button>
               {showInitialValueHelp && (
                 <div className="mt-3 space-y-2.5 text-xs text-slate-600">
-                  <p>This is <strong>A(0)</strong>: each concept's activation at the start of a run, on the same -1 (fully suppressed) to +1 (fully active) scale as relationship weights. It's what the <button onClick={() => setTab("equilibrium")} className="underline font-medium text-teal-700">Baseline Equilibrium tab</button> starts from.</p>
+                  <p>This is <strong>A(0)</strong>: each concept's activation at the start of a run, on the same -1 (fully suppressed) to +1 (fully active) scale as relationship weights. It's what the <button onClick={() => setTab("equilibrium")} className="underline font-medium text-cobalt-700">Baseline Equilibrium tab</button> starts from.</p>
 
                   <p><strong>Important: all-zero will always stay at zero.</strong> If every concept is set to 0 here, the Baseline Equilibrium run cannot move away from zero, no matter how strong or complex the causal weights are. This isn't a limit of this app; it's a mathematical property of the tanh/sigmoid update rule itself, since tanh(0) = sigmoid(0) = 0: with nothing pushing a concept away from zero, the model has no way to activate itself from nothing. Use this "all zeros" setup only when you specifically want that structural check ("could this network run away on its own from total rest, e.g. because of a strong self-reinforcing loop") rather than a realistic system state.</p>
 
                   <p><strong>For a meaningful, non-trivial baseline equilibrium: give at least the currently-active concepts a real starting value</strong>, reflecting the stakeholder-elicited or observed current state of the system, on the same -1 to +1 scale used for weights (e.g. "already strongly present" -&gt; +0.75 to +1; "moderately present" -&gt; +0.25 to +0.5; "actively suppressed" -&gt; negative). This is what produces an equilibrium that actually diverges from zero: the model's own structure then carries those starting conditions forward to wherever the causal relationships settle.</p>
 
-                  <p><strong>Don't use this field to test interventions or policies</strong> once you have a meaningful baseline set up. Setting, say, "Fertiliser use" to +1 to see "what if fertiliser use were at its maximum" changes what the baseline itself represents, so it stops being a clean reference to compare against. For that, use the <button onClick={() => setTab("scenarios")} className="underline font-medium text-teal-700">Scenarios &amp; Simulation tab</button> instead: its driver controls (▲/▼) hold a concept at full activation for a whole run without touching these baseline values, and every scenario there is automatically compared back against this baseline.</p>
+                  <p><strong>Don't use this field to test interventions or policies</strong> once you have a meaningful baseline set up. Setting, say, "Fertiliser use" to +1 to see "what if fertiliser use were at its maximum" changes what the baseline itself represents, so it stops being a clean reference to compare against. For that, use the <button onClick={() => setTab("scenarios")} className="underline font-medium text-cobalt-700">Scenarios &amp; Simulation tab</button> instead: its driver controls (▲/▼) hold a concept at full activation for a whole run without touching these baseline values, and every scenario there is automatically compared back against this baseline.</p>
 
                   <p className="text-slate-400">After setting values here, open Baseline Equilibrium and click Run. With any concept away from zero, expect a multi-iteration trace toward wherever the structure settles; with everything still at zero, expect immediate convergence back to zero, exactly as described above, and the diagnostics panel there will say so explicitly.</p>
                 </div>
@@ -9936,9 +11968,9 @@ function SpaghettiEngineApp() {
                         ref={c.id === newConceptId ? (el) => { if (el) { el.focus(); el.select(); setNewConceptId(null); } } : undefined}
                         onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
                         placeholder="Concept name"
-                        className="flex-1 text-sm font-medium border-none focus:outline-none focus:ring-1 focus:ring-teal-500 rounded px-1"
+                        className="flex-1 text-sm font-medium border-none focus:outline-none focus:ring-1 focus:ring-cobalt-500 rounded px-1"
                       />
-                      <button onClick={() => revealItem("concept", c.id)} className="text-[11px] text-slate-400 hover:text-teal-700" title="Show this concept on the map">show</button>
+                      <button onClick={() => revealItem("concept", c.id)} className="text-[11px] text-slate-400 hover:text-cobalt-700" title="Show this concept on the map">show</button>
                       <button onClick={() => { commitHistory(); removeConcept(c.id); }} className="text-slate-300 hover:text-red-500" title="Delete this concept"><Trash2 size={14} /></button>
                     </div>
                     <div className="flex items-center gap-2 mt-1.5">
@@ -9948,7 +11980,7 @@ function SpaghettiEngineApp() {
                         title="The module (subsystem) this concept belongs to. Existing modules are suggested as you type."
                         value={c.category || ""}
                         onChange={(e) => updateConcept(c.id, { category: e.target.value })}
-                        className="text-xs flex-1 border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                        className="text-xs flex-1 border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-cobalt-500"
                       />
                       <label className="text-[11px] text-slate-500" title="Starting value for simulations, from -1 (very low) to +1 (very high)">Start</label>
                       <input
@@ -9963,7 +11995,7 @@ function SpaghettiEngineApp() {
                       placeholder="Definition: what this concept means and how it is measured"
                       aria-label={`Definition of ${c.name}`}
                       rows={2}
-                      className="mt-1.5 w-full text-xs border border-slate-200 rounded px-1.5 py-1 resize-y focus:outline-none focus:ring-1 focus:ring-teal-500"
+                      className="mt-1.5 w-full text-xs border border-slate-200 rounded px-1.5 py-1 resize-y focus:outline-none focus:ring-1 focus:ring-cobalt-500"
                     />
                   </div>
                 ))}
@@ -10001,7 +12033,7 @@ function SpaghettiEngineApp() {
 
             <div className="bg-white rounded-lg border border-slate-200 p-4">
               <div className="flex items-center gap-3 flex-wrap">
-                <h3 className="font-semibold text-sm flex items-center gap-1.5"><Download size={15} className="text-teal-700" />Export model tables</h3>
+                <h3 className="font-semibold text-sm flex items-center gap-1.5"><Download size={15} className="text-cobalt-700" />Export model tables</h3>
                 <span className="text-xs text-slate-500">The complete model as tables, for a report, an appendix, or other software.</span>
               </div>
               <div className="flex items-center gap-2 flex-wrap mt-3">
@@ -10060,7 +12092,7 @@ function SpaghettiEngineApp() {
           <div className="space-y-5">
             <div className="bg-white rounded-lg border border-slate-200 p-4">
               <button onClick={() => setShowScenarioHelp((v) => !v)} className="flex items-center gap-1.5 text-sm font-semibold w-full text-left">
-                <HelpCircle size={15} className="text-teal-700" />
+                <HelpCircle size={15} className="text-cobalt-700" />
                 What-If Scenario Analysis: how it works
                 {showScenarioHelp ? <ChevronDown size={14} className="ml-auto text-slate-400" /> : <ChevronRight size={14} className="ml-auto text-slate-400" />}
               </button>
@@ -10099,7 +12131,7 @@ function SpaghettiEngineApp() {
               </div>
               <div className="space-y-1.5">
                 {scenarios.map((s) => (
-                  <div key={s.id} className={`rounded-md border p-2 cursor-pointer ${activeScenarioId === s.id ? "border-teal-600 bg-teal-50" : "border-slate-200"}`} onClick={() => setActiveScenarioId(s.id)}>
+                  <div key={s.id} className={`rounded-md border p-2 cursor-pointer ${activeScenarioId === s.id ? "border-cobalt-600 bg-cobalt-50" : "border-slate-200"}`} onClick={() => setActiveScenarioId(s.id)}>
                     <div className="flex items-center justify-between">
                       <input
                         value={s.name}
@@ -10171,16 +12203,17 @@ function SpaghettiEngineApp() {
                       </select>
                     </label>
                     <label className="text-xs text-slate-500 flex justify-between items-center">
-                      <span className="flex items-center gap-1" title="Maps a concept's total incoming influence onto the -1..+1 activation scale. Hyperbolic tangent: smooth and symmetric, tanh(x), with gain 1 at zero. Sigmoid: smooth and symmetric, 2/(1+e^-λx)-1, but with gain 0.5 at zero, half as responsive to weak signals as tanh, so the same weights can settle at a different, sometimes zero, equilibrium under each. Trivalent (step): a hard threshold that snaps straight to -1, 0, or +1 with no smooth transition.">Squashing function <HelpCircle size={10} className="text-slate-300" /></span>
+                      <span className="flex items-center gap-1" title="Maps a concept's total incoming influence onto the -1..+1 activation scale. Hyperbolic tangent: smooth and symmetric, tanh(x), with gain 1 at zero. Sigmoid: smooth and symmetric, 2/(1+e^-λx)-1, but with gain 0.5 at zero, half as responsive to weak signals as tanh, so the same weights can settle at a different, sometimes zero, equilibrium under each. Trivalent (step): a hard threshold that snaps straight to -1, 0, or +1 with no smooth transition. None (linear): no squashing at all, so the model runs on the raw dynamics of its weight matrix, A(t+1) = A(t) + W·A(t); activation is no longer held inside -1 to +1, and a model whose feedback amplifies itself runs away (the run is stopped and marked as diverged once a concept passes ±1000).">Squashing function <HelpCircle size={10} className="text-slate-300" /></span>
                       <select value={settings.squashFunction} onChange={(e) => setSettings((s) => ({ ...s, squashFunction: e.target.value }))} className="text-xs border border-slate-200 rounded px-1">
                         <option value="tanh">Hyperbolic tangent</option>
                         <option value="sigmoid">Sigmoid</option>
                         <option value="trivalent">Trivalent (step)</option>
+                        <option value="linear">None (linear, unbounded)</option>
                       </select>
                     </label>
-                    {settings.squashFunction !== "trivalent" && (
+                    {settings.squashFunction !== "trivalent" && settings.squashFunction !== "linear" && (
                       <label className="text-xs text-slate-500 flex justify-between items-center">
-                        <span className="flex items-center gap-1" title="Multiplies a concept's total incoming influence before it's passed through the squashing function, controlling how sharply activation responds. Higher values make the model behave more like a step function (fast transitions between -1 and +1 for a given change in influence); lower values make it respond more gradually to the same influence. Not shown for Trivalent, which is already a hard step regardless of this.">λ (steepness) <HelpCircle size={10} className="text-slate-300" /></span>
+                        <span className="flex items-center gap-1" title="Multiplies a concept's total incoming influence before it's passed through the squashing function, controlling how sharply activation responds. Higher values make the model behave more like a step function (fast transitions between -1 and +1 for a given change in influence); lower values make it respond more gradually to the same influence. Not shown for Trivalent (already a hard step regardless of this) or for None (linear), which has no curve to steepen.">λ (steepness) <HelpCircle size={10} className="text-slate-300" /></span>
                         <input
                           type="number" step={0.1} min={0.1} max={10} value={settings.lambda}
                           onChange={(e) => setSettings((s) => ({ ...s, lambda: parseFloat(e.target.value) || 1 }))}
@@ -10217,7 +12250,7 @@ function SpaghettiEngineApp() {
                         <button
                           onClick={() => setDriver(activeScenario.id, c.id, 1)}
                           title="Driver: increase (locked at +1)"
-                          className={`text-[10px] w-5 h-5 rounded border leading-none ${isIncreaseDriver ? "border-teal-700 bg-teal-50 text-teal-800" : "border-slate-200 text-slate-400 hover:border-slate-400"}`}
+                          className={`text-[10px] w-5 h-5 rounded border leading-none ${isIncreaseDriver ? "border-cobalt-700 bg-cobalt-50 text-cobalt-800" : "border-slate-200 text-slate-400 hover:border-slate-400"}`}
                         >▲</button>
                         <button
                           onClick={() => setDriver(activeScenario.id, c.id, -1)}
@@ -10231,7 +12264,7 @@ function SpaghettiEngineApp() {
                           onChange={(e) => e.target.value === "" ? clearOverride(activeScenario.id, c.id) : setOverride(activeScenario.id, c.id, clamp(parseFloat(e.target.value)))}
                           className="w-14 text-xs border border-slate-200 rounded px-1 py-0.5"
                         />
-                        <button onClick={() => toggleLock(activeScenario.id, c.id, ov ?? c.initialValue)} title="Lock this value for the whole run" className={locked ? "text-teal-700" : "text-slate-300 hover:text-slate-500"}>
+                        <button onClick={() => toggleLock(activeScenario.id, c.id, ov ?? c.initialValue)} title="Lock this value for the whole run" className={locked ? "text-cobalt-700" : "text-slate-300 hover:text-slate-500"}>
                           {locked ? <Lock size={13} /> : <Unlock size={13} />}
                         </button>
                       </div>
@@ -10250,7 +12283,10 @@ function SpaghettiEngineApp() {
                 <div className="bg-white rounded-lg border border-slate-200 p-4" data-chart="scenario-comparison">
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="font-semibold text-sm">Comparison to baseline</h3>
-                    <Btn variant="outline" onClick={exportComparisonCSV} disabled={!Object.keys(results).length}><Download size={13} />Export CSV</Btn>
+                    <div className="flex items-center gap-2">
+                      <Btn variant="outline" onClick={() => setFigComparisonBarOpen((v) => !v)} disabled={!Object.keys(results).length}><SlidersHorizontal size={13} />{figComparisonBarOpen ? "Hide figure options" : "Customize & export"}</Btn>
+                      <Btn variant="outline" onClick={exportComparisonCSV} disabled={!Object.keys(results).length}><Download size={13} />Export CSV</Btn>
+                    </div>
                   </div>
                   {!Object.keys(results).length ? (
                     <p className="text-xs text-slate-400 italic">Run the simulation to see results here.</p>
@@ -10268,7 +12304,7 @@ function SpaghettiEngineApp() {
                           title="Method & diagnostics for this comparison"
                           stats={[
                             { label: "Scenarios simulated", value: 1 + comparedIds.length, hint: "The baseline plus every scenario selected for comparison. Each is an independent run." },
-                            { label: "Transfer function / λ", value: `${settings.squashFunction ?? "tanh"} / ${settings.lambda ?? 1}` },
+                            { label: "Transfer function / λ", value: transferFunctionLabel(settings) },
                             { label: "Update rule / mode", value: `${settings.updateRule ?? "relative"} / ${settings.mode ?? "synchronous"}` },
                             {
                               label: "All runs converged",
@@ -10276,6 +12312,12 @@ function SpaghettiEngineApp() {
                               tone: ["baseline", ...comparedIds].every((id) => !results[id] || results[id].converged) ? "good" : "warn",
                               hint: "A run that hit the iteration cap without converging has not reached a steady state, so its 'final' values are wherever it happened to stop.",
                             },
+                            ...(settings.squashFunction === "linear" ? [{
+                              label: "Runs that diverged",
+                              value: `${["baseline", ...comparedIds].filter((id) => results[id]?.diverged).length}`,
+                              tone: ["baseline", ...comparedIds].some((id) => results[id]?.diverged) ? "warn" : "good",
+                              hint: `With no squashing function nothing keeps activation inside -1 to +1. A run is stopped and marked diverged once a concept passes ±${LINEAR_DIVERGENCE_LIMIT}: its 'final' values are where it was stopped, not a steady state.`,
+                            }] : []),
                           ]}
                         >
                           <p><strong>"Synergy" and "Trade-Off" describe direction of movement, not whether something got better.</strong> The classification counts how many outcome concepts moved up versus down relative to baseline by more than the threshold. This tool has no notion of which direction is desirable for any given concept, so a scenario that drives a harmful concept (a pollution or loss indicator, for instance) upward is counted exactly as an improvement would be. Apply your own valence to each concept before repeating any of these labels in writing.</p>
@@ -10296,30 +12338,38 @@ function SpaghettiEngineApp() {
                           return row;
                         });
                         const baselineAllZero = !!results.baseline && aConcepts.every((c) => Math.abs(results.baseline.final[c.id] ?? 0) < 1e-9);
-                        const colors = ["#0f766e", "#c2410c", "#7c3aed", "#0369a1", "#be123c", "#4d7c0f"];
+                        const colors = figurePalette(figComparisonBar.palette, Math.max(comparedIds.length, 1));
                         const short = (t) => (t.length > 18 ? `${t.slice(0, 17)}\u2026` : t);
                         const ConceptTick = ({ x, y, payload }) => (
                           <g transform={`translate(${x},${y})`}>
                             <title>{payload.value}</title>
-                            <text dy={10} textAnchor="end" transform="rotate(-35)" fontSize={10} fill="#475569">{short(payload.value)}</text>
+                            <text dy={10} textAnchor="end" transform="rotate(-35)" fontSize={figComparisonBar.tickFontSize} fill="#475569">{short(payload.value)}</text>
                           </g>
                         );
                         return (
                           <>
-                            <div className="w-full mb-2" style={{ height: 300 }}>
+                            <div ref={comparisonBarRef} className="w-full mb-2" style={figComparisonBarOpen ? { width: mmToPx(figComparisonBar.widthMm, 96), height: mmToPx(figComparisonBar.heightMm, 96), maxWidth: "100%" } : { height: 300 }}>
                               <ResponsiveContainer>
-                                <BarChart data={data} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
-                                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                                  <XAxis dataKey="concept" interval={0} height={90} tick={(p) => <ConceptTick {...p} />} />
-                                  <YAxis domain={[-1, 1]} tick={{ fontSize: 10 }} />
+                                <BarChart data={data} margin={{ top: 16, right: 16, left: 0, bottom: 8 }}>
+                                  {figComparisonBar.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
+                                  <XAxis dataKey="concept" interval={0} height={90} tick={(p) => <ConceptTick {...p} />} label={figComparisonBar.xLabel ? { value: figComparisonBar.xLabel, position: "bottom", offset: 60, fontSize: figComparisonBar.axisFontSize } : undefined} />
+                                  <YAxis domain={settings.squashFunction === "linear" ? ["auto", "auto"] : [-1, 1]} tick={{ fontSize: figComparisonBar.tickFontSize }} tickFormatter={(v) => fmtDec(v, figComparisonBar.decimals)} label={{ value: figComparisonBar.yLabel || "Activation", angle: -90, position: "insideLeft", fontSize: figComparisonBar.axisFontSize }} />
                                   <RTooltip formatter={(v, name) => [v === null ? "not run" : v.toFixed(2), name]} />
-                                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                                  {figComparisonBar.legendPosition !== "hidden" && (
+                                    <Legend
+                                      wrapperStyle={{ fontSize: figComparisonBar.legendFontSize }}
+                                      layout={figComparisonBar.legendPosition === "left" || figComparisonBar.legendPosition === "right" ? "vertical" : "horizontal"}
+                                      verticalAlign={figComparisonBar.legendPosition === "left" || figComparisonBar.legendPosition === "right" ? "middle" : figComparisonBar.legendPosition}
+                                      align={figComparisonBar.legendPosition === "left" || figComparisonBar.legendPosition === "right" ? figComparisonBar.legendPosition : "center"}
+                                    />
+                                  )}
+                                  {figComparisonBar.title && <text x="50%" y={14} textAnchor="middle" fontSize={figComparisonBar.titleFontSize} fontWeight={600} fill="#0f172a">{figComparisonBar.title}</text>}
                                   <ReferenceLine y={0} stroke="#94a3b8" />
                                   {/* minPointSize: a value of exactly 0 is drawn as a thin bar on the
                                       zero line, so "settled at 0" is visibly different from "missing". */}
-                                  <Bar dataKey="baseline" name={comparisonNames.baseline} fill="#64748b" radius={[3, 3, 0, 0]} minPointSize={2} />
+                                  <Bar dataKey="baseline" name={comparisonNames.baseline} fill="#64748b" fillOpacity={figComparisonBar.opacity} radius={[3, 3, 0, 0]} minPointSize={2} />
                                   {comparedIds.map((id, i) => (
-                                    <Bar key={id} dataKey={id} name={comparisonNames[id]} fill={colors[i % colors.length]} radius={[3, 3, 0, 0]} minPointSize={2} />
+                                    <Bar key={id} dataKey={id} name={comparisonNames[id]} fill={colors[i % colors.length]} fillOpacity={figComparisonBar.opacity} radius={[3, 3, 0, 0]} minPointSize={2} />
                                   ))}
                                 </BarChart>
                               </ResponsiveContainer>
@@ -10329,6 +12379,22 @@ function SpaghettiEngineApp() {
                                 The baseline settles at 0 for every concept, so its bars are the thin grey marks on the zero line. That happens when every concept starts at 0 and nothing is held fixed;
                                 give concepts a starting value (Inspector or Model editor) for a baseline that reflects the current state of the system.
                               </p>
+                            )}
+                            {figComparisonBarOpen && (
+                              <div className="mb-4">
+                                <FigurePanel
+                                  settings={figComparisonBar} onChange={setFigComparisonBar}
+                                  exporting={figComparisonBarBusy}
+                                  onExport={async () => {
+                                    setFigComparisonBarBusy(true);
+                                    await exportFigure(comparisonBarRef.current, "scenario-comparison.png", figComparisonBar, {
+                                      title: figComparisonBar.title || "Scenario Comparison to Baseline",
+                                      subtitle: `Scenarios: ${["baseline", ...comparedIds].map((id) => comparisonNames[id]).join(", ")}`,
+                                    });
+                                    setFigComparisonBarBusy(false);
+                                  }}
+                                />
+                              </div>
                             )}
                           </>
                         );
@@ -10368,27 +12434,60 @@ function SpaghettiEngineApp() {
 
                       {trajectoryComparison && (
                         <div className="mt-5 pt-4 border-t border-slate-100 space-y-4">
-                          <h4 className="text-sm font-semibold flex items-center gap-1.5"><Activity size={14} className="text-teal-700" />Trajectory comparison</h4>
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-sm font-semibold flex items-center gap-1.5"><Activity size={14} className="text-cobalt-700" />Trajectory comparison</h4>
+                            <Btn variant="outline" onClick={() => setFigTrajComparisonOpen((v) => !v)}><SlidersHorizontal size={13} />{figTrajComparisonOpen ? "Hide figure options" : "Customize & export"}</Btn>
+                          </div>
                           <p className="text-xs text-slate-400">
                             The baseline is always computed and shown alongside every scenario run. Baseline (no scenario applied) and "{comparisonNames[comparedIds[0]]}", iteration by iteration, plus their difference (scenario minus baseline).
                           </p>
+                          {figTrajComparisonOpen && (
+                            <FigurePanel
+                              settings={figTrajComparison} onChange={setFigTrajComparison} defaults={TRAJECTORY_FIGURE_DEFAULTS}
+                              seriesOptions={trajComparisonSeriesOptions} hiddenKeys={hiddenTrajComparisonIds} onToggleSeries={toggleHiddenTrajComparison}
+                              sortOptions={TRAJ_COMPARISON_ORDER_OPTIONS} sortValue={trajComparisonOrder} onSortChange={setTrajComparisonOrder}
+                              exporting={figTrajComparisonBusy}
+                              onExport={async () => {
+                                setFigTrajComparisonBusy(true);
+                                const targets = [
+                                  { ref: trajBaselineRef, key: "baseline", title: "Baseline (time series)" },
+                                  { ref: trajScenarioRef, key: "scenario", title: `${comparisonNames[comparedIds[0]]} (time series)` },
+                                  { ref: trajDifferenceRef, key: "difference", title: "Difference (scenario minus baseline)" },
+                                ];
+                                for (const t of targets) {
+                                  // eslint-disable-next-line no-await-in-loop
+                                  await exportFigure(t.ref.current, `scenario-trajectory-${t.key}.png`, figTrajComparison, { title: figTrajComparison.title || t.title, subtitle: "Trajectory comparison" });
+                                }
+                                setFigTrajComparisonBusy(false);
+                              }}
+                            />
+                          )}
                           {[
-                            { key: "baseline", title: "Baseline (time series)" },
-                            { key: "scenario", title: `${comparisonNames[comparedIds[0]]} (time series)` },
-                            { key: "difference", title: "Difference (scenario minus baseline)" },
-                          ].map(({ key, title }) => (
+                            { key: "baseline", title: "Baseline (time series)", ref: trajBaselineRef },
+                            { key: "scenario", title: `${comparisonNames[comparedIds[0]]} (time series)`, ref: trajScenarioRef },
+                            { key: "difference", title: "Difference (scenario minus baseline)", ref: trajDifferenceRef },
+                          ].map(({ key, title, ref }) => (
                             <div key={key}>
                               <div className="text-xs font-medium text-slate-600 mb-1">{title}</div>
-                              <div className="w-full h-52">
+                              <div ref={ref} className="w-full h-52" style={figTrajComparisonOpen ? { width: mmToPx(figTrajComparison.widthMm, 96), height: mmToPx(figTrajComparison.heightMm, 96), maxWidth: "100%" } : undefined}>
                                 <ResponsiveContainer>
                                   <LineChart data={trajectoryComparison[key]}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                                    <XAxis dataKey="iteration" tick={{ fontSize: 9 }} />
-                                    <YAxis domain={key === "difference" ? ["auto", "auto"] : [-1, 1]} tick={{ fontSize: 9 }} />
+                                    {figTrajComparison.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
+                                    <XAxis dataKey="iteration" tick={{ fontSize: figTrajComparison.tickFontSize }} label={figTrajComparison.xLabel ? { value: figTrajComparison.xLabel, position: "insideBottom", offset: -2, fontSize: figTrajComparison.axisFontSize } : undefined} />
+                                    <YAxis domain={key === "difference" || settings.squashFunction === "linear" ? ["auto", "auto"] : [-1, 1]} tick={{ fontSize: figTrajComparison.tickFontSize }} tickFormatter={(v) => fmtDec(v, figTrajComparison.decimals)} label={figTrajComparison.yLabel ? { value: figTrajComparison.yLabel, angle: -90, position: "insideLeft", fontSize: figTrajComparison.axisFontSize } : undefined} />
                                     <RTooltip />
+                                    {figTrajComparison.legendPosition !== "hidden" && (
+                                      <Legend
+                                        wrapperStyle={{ fontSize: figTrajComparison.legendFontSize }}
+                                        layout={figTrajComparison.legendPosition === "left" || figTrajComparison.legendPosition === "right" ? "vertical" : "horizontal"}
+                                        verticalAlign={figTrajComparison.legendPosition === "left" || figTrajComparison.legendPosition === "right" ? "middle" : figTrajComparison.legendPosition}
+                                        align={figTrajComparison.legendPosition === "left" || figTrajComparison.legendPosition === "right" ? figTrajComparison.legendPosition : "center"}
+                                      />
+                                    )}
+                                    {figTrajComparison.title && <text x="50%" y={14} textAnchor="middle" fontSize={figTrajComparison.titleFontSize} fontWeight={600} fill="#0f172a">{figTrajComparison.title}</text>}
                                     <ReferenceLine y={0} stroke="#cbd5e1" />
-                                    {aConcepts.map((c, i) => (
-                                      <Line key={c.id} type="monotone" dataKey={c.id} name={c.name} stroke={["#0f766e", "#c2410c", "#7c3aed", "#0369a1", "#be123c", "#4d7c0f", "#a16207", "#0e7490"][i % 8]} strokeWidth={1.5} dot={false} />
+                                    {trajComparisonRows.map((c, i) => (
+                                      <Line key={c.id} type="monotone" dataKey={c.id} name={c.name} stroke={figurePalette(figTrajComparison.palette, trajComparisonRows.length)[i]} strokeWidth={figTrajComparison.lineWidth} strokeOpacity={figTrajComparison.opacity} dot={figTrajComparison.markerSize > 0 ? { r: figTrajComparison.markerSize } : false} />
                                     ))}
                                   </LineChart>
                                 </ResponsiveContainer>
@@ -10400,7 +12499,7 @@ function SpaghettiEngineApp() {
 
                       {componentChangeData && (
                         <div className="mt-5 pt-4 border-t border-slate-100">
-                          <h4 className="text-sm font-semibold mb-1 flex items-center gap-1.5"><GitCompare size={14} className="text-teal-700" />Component change vs. baseline</h4>
+                          <h4 className="text-sm font-semibold mb-1 flex items-center gap-1.5"><GitCompare size={14} className="text-cobalt-700" />Component change vs. baseline</h4>
                           <p className="text-xs text-slate-400 mb-3">
                             Mental-Modeler-style output: each concept's equilibrium activation under "{comparisonNames[comparedIds[0]]}", expressed in percentage points of the full −100%…+100% activation range, relative to baseline. Sorted by magnitude of change.
                           </p>
@@ -10441,19 +12540,36 @@ function SpaghettiEngineApp() {
 
         {/* ============================= SENSITIVITY ANALYSIS ============================= */}
         {tab === "sensitivity" && (
-          <SensitivityAnalysisTab
+          <div className="space-y-5">
+            <LinearModeNote settings={settings} />
+            <SensitivityAnalysisTab
+              concepts={aConcepts} edges={aEdges} scenarios={scenarios} activeScenarioId={activeScenarioId} settings={settings}
+              result={sensitivityResult} setResult={setSensitivityResult} setChartCache={setChartCache} modelVersion={modelVersion}
+            />
+          </div>
+        )}
+
+        {/* ============================= MONTE CARLO SIMULATION ============================= */}
+        {tab === "montecarlo" && (
+          <MonteCarloTab
             concepts={aConcepts} edges={aEdges} scenarios={scenarios} activeScenarioId={activeScenarioId} settings={settings}
-            result={sensitivityResult} setResult={setSensitivityResult} setChartCache={setChartCache} modelVersion={modelVersion}
+            result={monteCarloResult} setResult={setMonteCarloResult} modelVersion={modelVersion}
           />
         )}
 
         {/* ============================= TRANSITION POINT ANALYSIS ============================= */}
         {tab === "transition" && (
-          <TransitionPointAnalysisTab
-            concepts={aConcepts} edges={aEdges} scenarios={scenarios} activeScenarioId={activeScenarioId} settings={settings}
-            result={transitionResult} setResult={setTransitionResult} setChartCache={setChartCache} modelVersion={modelVersion}
-          />
+          <div className="space-y-5">
+            <LinearModeNote settings={settings} />
+            <TransitionPointAnalysisTab
+              concepts={aConcepts} edges={aEdges} scenarios={scenarios} activeScenarioId={activeScenarioId} settings={settings}
+              result={transitionResult} setResult={setTransitionResult} setChartCache={setChartCache} modelVersion={modelVersion}
+            />
+          </div>
         )}
+
+        {/* ============================= ABOUT & DOCUMENTATION ============================= */}
+        {tab === "about" && <AboutTab onOpenTab={setTab} />}
 
         {/* ============================= TRANSITION PATHWAYS ============================= */}
         {tab === "pathways" && (
@@ -10466,8 +12582,11 @@ function SpaghettiEngineApp() {
         </ErrorBoundary>
       </div>
 
-      <div className="px-5 py-2 border-t border-slate-200 bg-white text-[11px] text-slate-400 flex items-center gap-1.5">
-        <Info size={12} /> Prototype scope: runs entirely in your browser. Your model is saved automatically in this browser only; use Export JSON to keep a copy or move it to another computer. Analysis results are not saved and are re-run on demand. Monte Carlo and PDF/DOCX/PPTX export are not yet implemented.
+      <div className="px-5 py-2 border-t border-slate-200 bg-white text-[11px] text-slate-500 flex items-center gap-1.5">
+        <Info size={12} className="shrink-0" />
+        <span className="flex-1 hidden sm:inline">Prototype scope: runs entirely in your browser. Your model is saved automatically in this browser only; use Export JSON to keep a copy or move it to another computer. Analysis results are not saved and are re-run on demand. PDF/DOCX/PPTX export are not yet implemented.</span>
+        <span className="flex-1 sm:hidden">Prototype: runs in your browser; your model is saved in this browser only.</span>
+        <a href={`mailto:${CONTACT.email}?subject=${encodeURIComponent(`The Spaghetti Engine v${APP_VERSION}`)}`} className="shrink-0 text-cobalt-700 hover:underline" title={`Contact ${CONTACT.name}`}>Contact: {CONTACT.name}</a>
       </div>
     </div>
   );
