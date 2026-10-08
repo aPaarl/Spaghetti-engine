@@ -6,7 +6,7 @@ The Spaghetti Engine is a visual system modelling workspace for Fuzzy Cognitive 
 
 Developer and contact: Alfred Paarlberg, Wageningen University & Research, alfred.paarlberg@wur.nl.
 
-Version 0.4.0. The tool opens on an About & documentation page, which offers the user manual, the methodological annex, and the development log as PDF downloads.
+Version 0.4.1. The tool opens on an About & documentation page, which offers the user manual, the methodological annex, and the development log as PDF downloads.
 
 ## Running it
 
@@ -37,12 +37,13 @@ Netlify builds and deploys the site from the `main` branch.
 | `public/docs/` | The three PDFs that the About page links to. |
 | `public/favicon.svg`, `public/apple-touch-icon.png` | Site icons. |
 | `brand-assets/` | Logo files (SVG and PNG) for use in documents and slides. Not deployed. |
-| `tools/` | Scripts that produce the PDFs and the manifest (see below). |
+| `tools/` | Scripts that produce the PDFs and the manifest, and a helper for editing the Word documents (see below). |
+| `tests/` | Checks that load the engine straight from `src/SpaghettiEngine.jsx`; run with `node tests/test_transition_direction.cjs`. |
 
 ## Releasing a new version
 
 1. Raise `version` in `package.json` (the version chip, the About page, and the file names of the PDFs follow from it).
-2. Update the three Word documents (user manual, methodological annex, development log).
+2. Update the three Word documents (user manual, methodological annex, development log). Start from the previous version's files, saved in a new version folder; `tools/docx_edit.py` replaces text and clones paragraphs and tables without losing formatting.
 3. Convert each Word file to a PDF and store it in `public/docs/`, named `The-Spaghetti-Engine-User-Manual-v<version>.pdf`, `The-Spaghetti-Engine-Methodological-Annex-v<version>.pdf`, and `The-Spaghetti-Engine-Development-Log-v<version>.pdf`:
 
    ```bash

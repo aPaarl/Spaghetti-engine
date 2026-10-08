@@ -7306,9 +7306,13 @@ function BaselineEquilibriumTab({
 // a different analytical question, so it gets its own module rather than
 // living inside Sensitivity Analysis.
 
-// Sweeps one "intervention" concept from 0 to 1 in equal steps, locking it
+// Sweeps one "intervention" concept away from 0 in equal steps, locking it
 // (clamped for the whole run, the same convention setDriver already uses
-// for scenario "drivers") at the direction-mapped value. This measures a
+// for scenario "drivers") at the direction-mapped value: an increase locks it
+// at +x (0 to +1), a decrease at -x (0 to -1), where x is the intensity from
+// 0 to 1. The last step is therefore exactly the scenario in which the
+// concept is a driver (the ▲ run for an increase, the ▼ run for a decrease)
+// and the curve covers every level in between. This measures a
 // sustained intervention intensity, not a one-off nudge that could drift
 // after t=0. One simulate() call per intensity step (not per outcome, and
 // not a simplified approximation): every selected outcome's equilibrium
@@ -7324,7 +7328,8 @@ function runTransitionSweep(concepts, edges, baseScenario, settings, interventio
   outcomeIds.forEach((id) => (perOutcome[id] = { y: [] }));
 
   steps.forEach((x) => {
-    const driverValue = direction === "decrease" ? 1 - x : x;
+    // 0 - x rather than -x, so the first step is +0 and not -0.
+    const driverValue = direction === "decrease" ? 0 - x : x;
     const sc = {
       ...baseScenario,
       initialOverrides: { ...overrides, [interventionId]: driverValue },
@@ -7360,6 +7365,11 @@ function runTransitionSweep(concepts, edges, baseScenario, settings, interventio
   });
 
   return { steps, perOutcome };
+}
+
+// The range the lever travels in a sweep, for headings and exports.
+function transitionRangeLabel(direction) {
+  return direction === "decrease" ? "0→-1" : "0→1";
 }
 
 // "Flat" is checked first (no meaningful response regardless of where the
@@ -7454,6 +7464,12 @@ function readPathwayConfig() {
     return DEFAULT_PATHWAY_CONFIG;
   }
 }
+// The activation a lever is held at for an intensity u between 0 and 1: an
+// increase holds it at +u, a decrease at -u, so intensity 0 is the neutral
+// lever in both directions and full intensity is the ▲ or ▼ driver of
+// Scenarios & Simulation, as on the Transition Point tab. (0 - u, not -u, so
+// that u = 0 gives +0 rather than -0.)
+const pathwayLeverValue = (decrease, u) => (decrease ? 0 - u : u);
 const PATHWAY_EXHAUSTIVE_LIMIT = 20000;
 const PATHWAY_TOP_N = 5;
 const PATHWAY_ARCHETYPE_KEYS = ["lhf", "hi", "ef", "di"];
@@ -7597,7 +7613,7 @@ function* pathwayEnumeration(concepts, edges, settings, config, phase = "") {
   const bau = eng.equilibrate(eng.initial, [], []);
   const B = bau.state;
   const gain = (st) => { let g = 0; for (const o of outcomes) g += o.w * o.d * (st[o.idx] - B[o.idx]); return g; };
-  const act = (lever, u) => (lever.decrease ? 1 - u : u);
+  const act = (lever, u) => pathwayLeverValue(lever.decrease, u);
 
   // Sweep one lever over the grid from index s0 to N, starting every run
   // from state A with the locks (li, lv) already in place.
@@ -7950,7 +7966,7 @@ function* pathwayInvarianceTest(base, summary, maxSets = 12) {
       perm.forEach((id) => {
         const l = leverById.get(id);
         li.push(l.idx);
-        lv.push(l.decrease ? 1 - set.final[id] : set.final[id]);
+        lv.push(pathwayLeverValue(l.decrease, set.final[id]));
         const r = eng.equilibrate(state, li, lv);
         state = r.state;
         allConverged = allConverged && r.converged;
@@ -8893,7 +8909,7 @@ async function buildAnalysisWorkbook({
       { header: "In Pathways", key: "inc" }, { header: "Reason", key: "reason" },
       ...pr.outcomes.flatMap((o) => [{ header: `${pn(o.id)} Effect at Full Intensity`, key: `e_${o.id}` }, { header: `${pn(o.id)} TP`, key: `t_${o.id}` }]),
     ], pr.iso.map((l) => ({
-      lever: pn(l.id), dir: l.decrease ? "Decrease (1 to 0)" : "Increase (0 to 1)", effort: l.effort, tau: num(l.tau), type: l.responseType,
+      lever: pn(l.id), dir: l.decrease ? "Decrease (0 to -1)" : "Increase (0 to 1)", effort: l.effort, tau: num(l.tau), type: l.responseType,
       mr: num(l.maxReturn), full: num(l.gainAtFull), syn: l.synergy.type, inc: l.included ? "Yes" : "No", reason: l.reason,
       ...Object.fromEntries(l.outcomeRows.flatMap((r) => [[`e_${r.id}`, num(r.effect)], [`t_${r.id}`, num(r.tp)]])),
     })), usedNames);
@@ -9276,7 +9292,7 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
   const exportTableCSV = () => {
     if (!result) return;
     const header = ["Intervention", "Outcome", "Direction", "TP", "Max Change", "Response Type", "Efficiency Score"];
-    const rows = result.rows.map((r) => [result.interventionName, r.outcomeName, result.direction, round2(r.tp), round2(r.effect), r.responseType, round2(r.efficiency)]);
+    const rows = result.rows.map((r) => [result.interventionName, r.outcomeName, result.direction === "decrease" ? "Decrease (0 to -1)" : "Increase (0 to 1)", round2(r.tp), round2(r.effect), r.responseType, round2(r.efficiency)]);
     downloadCSV([header, ...rows], "transition-point-table.csv");
   };
   const exportRankingsCSV = () => {
@@ -9297,11 +9313,11 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
         storageKey="se.fold.transitionWhat"
         icon={TrendingUp}
         title="What is a Transition Point?"
-        summary="Finds the intervention intensity at which extra effort produces the largest extra change in an outcome, by sweeping one intervention from 0 to 1 and following each outcome's response."
+        summary="Finds the intervention intensity at which extra effort produces the largest extra change in an outcome, by sweeping one intervention from 0 up to +1 (or down to -1) and following each outcome's response."
       >
         <div className="text-xs text-slate-500 space-y-1.5 leading-relaxed">
         <p>Transition Point Analysis identifies the intervention intensity at which additional effort produces the greatest additional change in an outcome, whether that change is an improvement or a worsening.</p>
-        <p>It works by sweeping one intervention concept from 0 to 1 (or 1 to 0) in small steps, re-running the simulation at each step, and recording how each chosen outcome concept responds along the way. The <strong>transition point</strong> for an outcome is the step where its rate of change (marginal return) is largest in magnitude, i.e. where the response curve is steepest, in whichever direction it happens to be moving. This app has no notion of which direction is "good" for a given concept, so always check the sign of the effect (shown in the table below) before treating a transition point as a leverage point worth pursuing.</p>
+        <p>It works by sweeping one intervention concept away from its neutral value of 0 in small steps, either up to +1 (increase) or down to -1 (decrease), re-running the simulation at each step, and recording how each chosen outcome concept responds along the way. The intensity on the horizontal axis always runs from 0 to 1 and means how far the intervention is pushed: for a decrease, an intensity of 0.4 means the intervention is held at -0.4. The last step is therefore the same run as setting the concept as a driver in Scenarios &amp; Simulation (▲ for an increase, ▼ for a decrease), and the curve shows what happens on the way there. The <strong>transition point</strong> for an outcome is the step where its rate of change (marginal return) is largest in magnitude, i.e. where the response curve is steepest, in whichever direction it happens to be moving. This app has no notion of which direction is "good" for a given concept, so always check the sign of the effect (shown in the table below) before treating a transition point as a leverage point worth pursuing.</p>
         <p>Many interventions produce non-linear responses. An intervention may produce its effect immediately, require substantial effort before that effect emerges, or remain ineffective across all intensities. Transition Point Analysis identifies where the rate of change is greatest.</p>
         <p>This helps decision makers identify:</p>
         <ul className="list-disc pl-5 space-y-0.5">
@@ -9315,7 +9331,7 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
         <p className="font-medium text-slate-700 mt-2 mb-1">Steps</p>
         <ol className="list-decimal pl-5 space-y-0.5">
           <li>Choose the intervention variable to sweep (Step 1).</li>
-          <li>Choose its direction: increase from 0 to 1, or decrease from 1 to 0 (Step 2).</li>
+          <li>Choose its direction: increase from 0 to +1, or decrease from 0 to -1 (Step 2). These are the two ways a scenario can drive a concept (▲ at +1, ▼ at -1).</li>
           <li>Choose one or more outcome variables to observe (Step 3), or use "All variables" to select every other concept at once.</li>
           <li>Choose the intensity resolution, i.e. how many steps to sample across the sweep (Step 4), and, optionally, adjust the flat-response threshold used to classify an outcome with little to no response.</li>
           <li>Click Run analysis (Step 5) to generate the response curves, marginal-return curves, transition point table, and rankings.</li>
@@ -9341,7 +9357,7 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
             <label className="text-xs text-slate-500 font-medium">Step 2: Direction</label>
             <div className="flex mt-1 border border-slate-200 rounded overflow-hidden">
               <button onClick={() => setTpDirection("increase")} className={`flex-1 text-xs py-1.5 ${tpDirection === "increase" ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}>Increase (0→1)</button>
-              <button onClick={() => setTpDirection("decrease")} className={`flex-1 text-xs py-1.5 ${tpDirection === "decrease" ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}>Decrease (1→0)</button>
+              <button onClick={() => setTpDirection("decrease")} className={`flex-1 text-xs py-1.5 ${tpDirection === "decrease" ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}>Decrease (0→-1)</button>
             </div>
           </div>
           <div>
@@ -9408,12 +9424,12 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
             <p><strong>The transition point is the steepest sampled step, not a solved inflection.</strong> The sweep evaluates {result.resolution + 1} equally spaced intervention levels, takes the difference between each neighbouring pair, and reports whichever step moved most. It can only ever land on one of those sampled levels, so its precision is bounded at &plusmn;{round2(1 / result.resolution)}. Before quoting a specific threshold value, re-run at a higher resolution and check it does not move.</p>
             <p><strong>On a near-linear response the transition point is close to meaningless.</strong> If an outcome climbs at a near-constant rate, one step is "steepest" only by a rounding margin, and the dashed line lands essentially arbitrarily. The Range column and the Response type classification are the guard here: where Range is at or below the flat threshold ({result.flatThreshold}), treat the transition point as an artefact rather than a finding.</p>
             <p><strong>"Steepest" is by magnitude, in whichever direction the outcome is moving.</strong> The tool has no notion of which direction is desirable for any concept, so a transition point marks the fastest change, not an improvement. Check the sign of the effect before describing one as a leverage point.</p>
-            <p><strong>One intervention, held fixed, at equilibrium.</strong> The intervention concept is locked at each level for the whole run and every other concept evolves freely; nothing here sweeps two interventions together, and the x-axis is intensity rather than time, so the curves say nothing about how long a transition takes or what happens en route.</p>
+            <p><strong>One intervention, held fixed, at equilibrium.</strong> The intervention concept is locked at each level for the whole run and every other concept evolves freely; nothing here sweeps two interventions together, and the x-axis is intensity rather than time, so the curves say nothing about how long a transition takes or what happens en route. Effects are measured from the intervention held at 0, not from the baseline in which it is free to move, and for a decrease a positive slope means the outcome rises as the intervention is pushed further down.</p>
           </MethodPanel>
 
           <div className="bg-white rounded-lg border border-slate-200 p-4">
             <div className="flex items-center justify-between mb-1">
-              <h4 className="text-sm font-semibold">Response curves: {result.interventionName} ({result.direction === "increase" ? "0→1" : "1→0"})</h4>
+              <h4 className="text-sm font-semibold">Response curves: {result.interventionName} ({transitionRangeLabel(result.direction)})</h4>
               <Btn variant="outline" onClick={() => setFigResponseOpen((v) => !v)}><SlidersHorizontal size={13} />{figResponseOpen ? "Hide figure options" : "Customize & export"}</Btn>
             </div>
             <p className="text-[11px] text-slate-400 mb-2">Dashed vertical lines mark each outcome's transition point (greatest marginal return). Drag the strip below the chart to zoom into an intensity range.</p>
@@ -9453,7 +9469,7 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
                 onExport={async () => {
                   setFigResponseBusy(true);
                   await exportFigure(responseChartRef.current, "transition-response-curves.png", figResponse, {
-                    title: figResponse.title || `Response curves: ${result.interventionName} (${result.direction === "increase" ? "0→1" : "1→0"})`,
+                    title: figResponse.title || `Response curves: ${result.interventionName} (${transitionRangeLabel(result.direction)})`,
                     subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}`,
                   });
                   setFigResponseBusy(false);
@@ -9625,7 +9641,7 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
               <Btn variant="outline" onClick={exportSlopeCSV}><Download size={13} />Marginal return curves (CSV)</Btn>
               <Btn variant="outline" onClick={exportTableCSV}><Download size={13} />TP table (CSV)</Btn>
               <Btn variant="outline" onClick={exportRankingsCSV} disabled={!kpis}><Download size={13} />Rankings (CSV)</Btn>
-              <Btn variant="outline" onClick={() => exportFigure(responseChartRef.current, "transition-response-curves.png", figResponse, { title: figResponse.title || `Response curves: ${result.interventionName} (${result.direction === "increase" ? "0→1" : "1→0"})`, subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}` })}><Download size={13} />Response chart ({figResponse.format.toUpperCase()})</Btn>
+              <Btn variant="outline" onClick={() => exportFigure(responseChartRef.current, "transition-response-curves.png", figResponse, { title: figResponse.title || `Response curves: ${result.interventionName} (${transitionRangeLabel(result.direction)})`, subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}` })}><Download size={13} />Response chart ({figResponse.format.toUpperCase()})</Btn>
               <Btn variant="outline" onClick={() => exportFigure(slopeChartRef.current, "transition-marginal-returns.png", figSlope, { title: figSlope.title || `Marginal return: ${result.interventionName}`, subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}` })}><Download size={13} />Marginal chart ({figSlope.format.toUpperCase()})</Btn>
             </div>
             <p className="text-[10px] text-slate-400 mt-2 italic">PDF export is not yet implemented (see the roadmap note at the bottom of the page). Use PNG for images and CSV for data in the meantime.</p>
@@ -9996,7 +10012,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
     if (!result) return;
     const header = ["Lever", "Direction", "Effort Weight", "Isolated TP", "Response Type", "Max Marginal Return", "Outcome Gain at Full Intensity", "Synergy", "Included", "Reason",
       ...result.outcomes.flatMap((o) => [`${nameOf(o.id)} effect at full intensity`, `${nameOf(o.id)} TP`])];
-    const rows = result.iso.map((l) => [nameOf(l.id), l.decrease ? "Decrease (1 to 0)" : "Increase (0 to 1)", l.effort, l.tau === null ? "" : round3(l.tau), l.responseType,
+    const rows = result.iso.map((l) => [nameOf(l.id), l.decrease ? "Decrease (0 to -1)" : "Increase (0 to 1)", l.effort, l.tau === null ? "" : round3(l.tau), l.responseType,
       l.maxReturn === null ? "" : round3(l.maxReturn), round3(l.gainAtFull), l.synergy.type, l.included ? "Yes" : "No", l.reason,
       ...l.outcomeRows.flatMap((r) => [round3(r.effect), r.tp === null ? "" : round3(r.tp)])]);
     downloadCSV([header, ...rows], "transition-pathway-lever-profiles.csv");
@@ -10089,7 +10105,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
               <thead>
                 <tr className="text-left text-slate-400 border-b border-slate-100">
                   <th className="py-1 font-medium pr-3">Lever</th>
-                  <th className="py-1 font-medium pr-3" title="Increase: intensity 0 to 1 raises the lever's activation from 0 to 1. Decrease: intensity 0 to 1 lowers it from 1 to 0 (as on the Transition Point tab).">Intensity means <HelpCircle size={10} className="inline text-slate-300" /></th>
+                  <th className="py-1 font-medium pr-3" title="Increase: intensity 0 to 1 raises the lever's activation from 0 to +1, the same as setting it as a ▲ driver in Scenarios & Simulation. Decrease: intensity 0 to 1 lowers it from 0 to -1, the same as a ▼ driver. This is the same convention as on the Transition Point tab.">Intensity means <HelpCircle size={10} className="inline text-slate-300" /></th>
                   <th className="py-1 font-medium pr-3" title="Optional. How demanding one unit of this lever is compared with the others (1 = the same). Enters the cumulative intervention intensity; no cost data needed, a ranking is enough.">Effort weight <HelpCircle size={10} className="inline text-slate-300" /></th>
                   <th />
                 </tr>
@@ -10101,7 +10117,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
                     <td className="py-1 pr-3">
                       <div className="inline-flex border border-slate-200 rounded overflow-hidden">
                         <button onClick={() => updateLever(l.id, { direction: "increase" })} className={`text-[11px] px-2 py-0.5 ${l.direction !== "decrease" ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}>Increase (0 to 1)</button>
-                        <button onClick={() => updateLever(l.id, { direction: "decrease" })} className={`text-[11px] px-2 py-0.5 ${l.direction === "decrease" ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}>Decrease (1 to 0)</button>
+                        <button onClick={() => updateLever(l.id, { direction: "decrease" })} className={`text-[11px] px-2 py-0.5 ${l.direction === "decrease" ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}>Decrease (0 to -1)</button>
                       </div>
                     </td>
                     <td className="py-1 pr-3"><input type="number" min={0.1} step={0.5} value={l.effort} onChange={(e) => updateLever(l.id, { effort: e.target.value })} className="w-16 border border-slate-200 rounded px-1.5 py-0.5 font-mono" /></td>
