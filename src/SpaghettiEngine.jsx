@@ -7364,9 +7364,9 @@ function runTransitionSweep(concepts, edges, baseScenario, settings, interventio
     for (let i = 1; i < slope.length; i++) if (Math.abs(slope[i]) > Math.abs(slope[tpIndex])) tpIndex = i;
     perOutcome[id] = {
       y, slope, tpIndex, tp: steps[tpIndex],
-      // How far the outcome has moved by the time the intervention reaches its
-      // transition point (Y(TP) - Y(0)), next to the full effect below.
-      effectAtTp: y[tpIndex] - y[0],
+      // How far the outcome has moved once the steepest step, which begins at the
+      // transition point, is complete (Y(TP + Δx) - Y(0)), next to the full effect below.
+      effectAtTp: y[tpIndex + 1] - y[0],
       effect: y[y.length - 1] - y[0],
       range: Math.max(...y) - Math.min(...y),
     };
@@ -9140,7 +9140,7 @@ const TRANSITION_TABLE_COLUMNS = [
   { key: "interventionName", label: "Intervention", type: "text" },
   { key: "outcomeName", label: "Outcome", type: "text" },
   { key: "tp", label: "TP", type: "num", help: "Transition point: the intensity at which this outcome's response is steepest." },
-  { key: "effectAtTp", label: "Change at TP", type: "num", help: "Change in the outcome from intensity 0 up to the transition point, Y(TP) - Y(0). The steepest step starts at the TP, so its change is not yet included; compare with Max Change to see how much of the full effect has been reached." },
+  { key: "effectAtTp", label: "Change at TP", type: "num", help: "Change in the outcome from intensity 0 to the end of the steepest step, which begins at the TP: Y(TP + Δx) - Y(0). Compare with Max Change to see how much of the full effect has been reached." },
   { key: "effect", label: "Max Change", type: "num", help: "Effect size (change from start to end of the sweep)." },
   { key: "range", label: "Range", type: "num", help: "Total movement of this outcome across the whole sweep; below the flat-response threshold counts as no meaningful response." },
   { key: "efficiency", label: "Efficiency", type: "num", help: "Total effect divided by the transition point: how much change was achieved relative to how far the intervention had to be pushed." },
