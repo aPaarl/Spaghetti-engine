@@ -6,7 +6,7 @@ The Spaghetti Engine is a visual system modelling workspace for Fuzzy Cognitive 
 
 Developer and contact: Alfred Paarlberg, Wageningen University & Research, alfred.paarlberg@wur.nl.
 
-Version 0.4.1. The tool opens on an About & documentation page, which offers the user manual, the methodological annex, and the development log as PDF downloads.
+Version 0.4.2. The tool opens on an About & documentation page, which offers the user manual, the methodological annex, and the development log as PDF downloads.
 
 ## Running it
 

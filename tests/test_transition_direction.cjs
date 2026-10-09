@@ -82,5 +82,21 @@ for (const kind of ["nexus", "peat"]) {
   ok(dec.res.levers[0].decrease === true && inc.res.levers[0].decrease === false, `${kind}: the result still records which lever is a decrease`);
 }
 
+// ---- Change at TP: the outcome at the transition-point intensity minus its value at intensity 0 -------------------------
+for (const kind of ["peat", "nexus"]) {
+  const { concepts, edges } = api.makeTemplate(kind);
+  const settings = { ...api.DEFAULT_SETTINGS };
+  const base = { ...api.BASELINE_SCENARIO };
+  const out = {}; edges.forEach((e) => (out[e.from] = (out[e.from] || 0) + 1));
+  const iv = concepts.map((c) => c.id).sort((p, q) => (out[q] || 0) - (out[p] || 0))[0];
+  const outcomes = concepts.map((c) => c.id).filter((id) => id !== iv).slice(0, 6);
+  for (const dir of ["increase", "decrease"]) {
+    const sw = api.runTransitionSweep(concepts, edges, base, settings, iv, dir, outcomes, 50);
+    ok(outcomes.every((id) => { const o = sw.perOutcome[id]; return near(o.effectAtTp, o.y[o.tpIndex] - o.y[0]); }), `${kind}, ${dir}: Change at TP is Y(TP) - Y(0)`);
+    const at = (id, x) => api.simulate(concepts, edges, driverScenario(base, iv, dir === "decrease" ? 0 - x : x), settings).final[id];
+    ok(outcomes.every((id) => { const o = sw.perOutcome[id]; return near(o.effectAtTp, at(id, o.tp) - at(id, 0)); }), `${kind}, ${dir}: Change at TP equals the run with the lever held at the TP minus the run at 0`);
+  }
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -27,6 +27,12 @@
   --color-cloud: #f6f8fc;
   --color-poppy-500: #e5484d;
   --font-sans: 'Inter', system-ui, sans-serif;
+  /* Readability: the two small text sizes the interface uses most are one step
+     larger than Tailwind's defaults (12 and 14 px). */
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1.25rem;
+  --text-sm: 0.9375rem;
+  --text-sm--line-height: 1.375rem;
 }
 
 html, body, #root {
@@ -35,4 +41,13 @@ html, body, #root {
 }
 body {
   font-family: 'Inter', system-ui, sans-serif;
+}
+
+/* Chart axis labels and ticks in near-black instead of the charting library's
+   light grey (series colours in legends are left as they are). */
+.recharts-cartesian-axis-tick-value,
+.recharts-polar-angle-axis-tick-value,
+.recharts-polar-radius-axis-tick-value,
+.recharts-label {
+  fill: #262626;
 }

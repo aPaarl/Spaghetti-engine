@@ -1537,8 +1537,8 @@ function Btn({ children, onClick, variant = "default", disabled, title, classNam
   const base = "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
   const styles = {
     default: "bg-slate-900 text-white hover:bg-slate-700",
-    ghost: "bg-transparent text-slate-600 hover:bg-slate-100",
-    outline: "border border-slate-300 text-slate-700 hover:bg-slate-50",
+    ghost: "bg-transparent text-neutral-900 hover:bg-slate-100",
+    outline: "border border-slate-300 text-neutral-900 hover:bg-slate-50",
     danger: "bg-transparent text-red-600 hover:bg-red-50",
     accent: "bg-cobalt-700 text-white hover:bg-cobalt-600",
   };
@@ -1572,7 +1572,7 @@ function WeightSlider({ value, onChange }) {
             key={p.label}
             title={p.label}
             onClick={() => onChange(p.value)}
-            className={`text-[10px] px-1.5 py-0.5 rounded border ${value === p.value ? "border-cobalt-700 bg-cobalt-50 text-cobalt-800" : "border-slate-200 text-slate-500 hover:border-slate-400"}`}
+            className={`text-[11.5px] px-1.5 py-0.5 rounded border ${value === p.value ? "border-cobalt-700 bg-cobalt-50 text-cobalt-800" : "border-slate-200 text-neutral-700 hover:border-slate-400"}`}
           >
             {p.value > 0 ? "+" : ""}{p.value}
           </button>
@@ -1621,8 +1621,8 @@ function MethodPanel({ title = "Method & diagnostics", stats = [], children }) {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {stats.map((s) => (
             <div key={s.label} title={s.hint || undefined}>
-              <div className="text-xs text-slate-400 mb-1 flex items-center gap-1">
-                {s.label}{s.hint ? <HelpCircle size={10} className="text-slate-300" /> : null}
+              <div className="text-xs text-neutral-600 mb-1 flex items-center gap-1">
+                {s.label}{s.hint ? <HelpCircle size={10} className="text-neutral-500" /> : null}
               </div>
               <div className={`text-sm font-mono ${s.tone === "warn" ? "text-amber-700" : s.tone === "good" ? "text-cobalt-700" : ""}`}>{s.value}</div>
             </div>
@@ -1633,12 +1633,12 @@ function MethodPanel({ title = "Method & diagnostics", stats = [], children }) {
         <>
           <button
             onClick={() => setOpen((o) => !o)}
-            className={`flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 ${stats.length ? "mt-4 pt-3 border-t border-slate-100 w-full" : ""}`}
+            className={`flex items-center gap-1.5 text-xs font-medium text-neutral-900 hover:text-black ${stats.length ? "mt-4 pt-3 border-t border-slate-100 w-full" : ""}`}
           >
             {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
             How this is calculated, and what it does not tell you
           </button>
-          {open && <div className="mt-2 space-y-2 text-xs text-slate-600 leading-relaxed">{children}</div>}
+          {open && <div className="mt-2 space-y-2 text-xs text-neutral-900 leading-relaxed">{children}</div>}
         </>
       ) : null}
     </div>
@@ -1671,14 +1671,14 @@ function AnalysisScopeBar({ viewInfo, modules, networkView, setNetworkView }) {
     }
   };
   return (
-    <div className={`px-5 py-1.5 text-xs border-b ${v.isFiltered ? "bg-amber-50 border-amber-200 text-amber-900" : "bg-white border-slate-200 text-slate-600"}`}>
+    <div className={`px-5 py-1.5 text-xs border-b ${v.isFiltered ? "bg-amber-50 border-amber-200 text-amber-900" : "bg-white border-slate-200 text-neutral-900"}`}>
       <div className="flex items-center gap-x-3 gap-y-1.5 flex-wrap">
         <span className="flex items-center gap-1.5">
-          <span className="text-slate-400">Viewing:</span>
+          <span className="text-neutral-600">Viewing:</span>
           <span className={`w-2 h-2 rounded-full ${v.isFiltered ? "bg-amber-500" : "bg-cobalt-600"}`} />
           <span className="font-semibold">{v.label}</span>
         </span>
-        <span className={v.isFiltered ? "text-amber-800/80" : "text-slate-400"}>
+        <span className={v.isFiltered ? "text-amber-800/80" : "text-neutral-600"}>
           {v.visibleConcepts} of {v.totalConcepts} concepts &middot; {v.visibleEdges} of {v.totalEdges} relationships
           {!v.showIsolated ? " · isolated concepts hidden" : ""}
         </span>
@@ -1686,11 +1686,11 @@ function AnalysisScopeBar({ viewInfo, modules, networkView, setNetworkView }) {
           <>
             <span className="hidden md:inline h-4 w-px bg-slate-300" />
             <label className="flex items-center gap-1.5">
-              <span className="text-slate-400">Analysis scope</span>
+              <span className="text-neutral-600">Analysis scope</span>
               <select
                 value={presetValue}
                 onChange={(e) => choose(e.target.value)}
-                className="border border-slate-300 rounded-md px-1.5 py-0.5 bg-white text-slate-800 text-xs"
+                className="border border-slate-300 rounded-md px-1.5 py-0.5 bg-white text-neutral-900 text-xs"
               >
                 <option value="full">Full Nexus</option>
                 {modules.map((m) => <option key={m.key} value={`m:${m.key}`}>{m.label} Module</option>)}
@@ -1793,20 +1793,20 @@ function NetworkViewControls({ modules, networkView, setNetworkView, className =
       <div className="flex items-center border border-slate-300 rounded-md overflow-hidden" role="group" aria-label="View mode">
         <button
           onClick={() => setMode("modules")}
-          className={`px-2.5 py-1 ${!isNexus ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+          className={`px-2.5 py-1 ${!isNexus ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}
           title="Show the selected modules with every relationship between their concepts"
         >Modules</button>
         <button
           onClick={() => setMode("nexus")}
           disabled={!canNexus}
-          className={`px-2.5 py-1 border-l border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed ${isNexus ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+          className={`px-2.5 py-1 border-l border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed ${isNexus ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}
           title={canNexus ? "Show only relationships that cross from one module to another" : "Needs concepts in at least two categories"}
         >Nexus Interface</button>
       </div>
 
       <button
         onClick={() => setSelectedKeys(modules.map((m) => m.key))}
-        className={`px-2 py-1 rounded-md border ${allSelected ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"}`}
+        className={`px-2 py-1 rounded-md border ${allSelected ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-white text-neutral-900 hover:bg-slate-50"}`}
       >All</button>
 
       {modules.map((m) => {
@@ -1819,25 +1819,25 @@ function NetworkViewControls({ modules, networkView, setNetworkView, className =
               onClick={() => toggle(m.key)}
               aria-pressed={on}
               title={locked ? `At least ${minSelected} module${minSelected > 1 ? "s" : ""} must stay in view` : on ? `Hide ${m.label}` : `Show ${m.label}`}
-              className={`inline-flex items-center gap-1.5 pl-2 pr-2 py-1 border ${!isNexus ? "rounded-l-md" : "rounded-md"} ${on ? "text-slate-800" : "text-slate-400 bg-white border-dashed"}`}
+              className={`inline-flex items-center gap-1.5 pl-2 pr-2 py-1 border ${!isNexus ? "rounded-l-md" : "rounded-md"} ${on ? "text-neutral-900" : "text-neutral-600 bg-white border-dashed"}`}
               style={on ? { background: st.bg, borderColor: st.border } : { borderColor: "#cbd5e1" }}
             >
               <span className="w-2.5 h-2.5 rounded-sm border" style={{ background: on ? st.border : "transparent", borderColor: st.border }} />
               {m.label}
-              <span className={on ? "text-slate-500" : "text-slate-300"}>{m.count}</span>
+              <span className={on ? "text-neutral-700" : "text-neutral-500"}>{m.count}</span>
             </button>
             {!isNexus && (
               <button
                 onClick={() => setSelectedKeys([m.key])}
                 title={`View ${m.label} on its own`}
-                className="px-1.5 py-1 border border-l-0 rounded-r-md border-slate-300 bg-white text-[10px] text-slate-400 hover:text-slate-700 hover:bg-slate-50"
+                className="px-1.5 py-1 border border-l-0 rounded-r-md border-slate-300 bg-white text-[11.5px] text-neutral-600 hover:text-black hover:bg-slate-50"
               >only</button>
             )}
           </span>
         );
       })}
 
-      <label className="inline-flex items-center gap-1.5 ml-1 text-slate-600 cursor-pointer select-none" title="Concepts with no relationship inside the current view">
+      <label className="inline-flex items-center gap-1.5 ml-1 text-neutral-900 cursor-pointer select-none" title="Concepts with no relationship inside the current view">
         <input
           type="checkbox"
           checked={networkView.showIsolated}
@@ -1914,29 +1914,29 @@ function FigurePanel({
     <div className="border border-slate-200 rounded-lg bg-slate-50 p-3 mt-2 space-y-3 text-xs">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div>
-          <div className="text-[10px] text-slate-500 mb-0.5">Figure size</div>
+          <div className="text-[11.5px] text-neutral-700 mb-0.5">Figure size</div>
           <select value={settings.preset} onChange={(e) => setPreset(e.target.value)} className="w-full border border-slate-200 rounded px-2 py-1 bg-white">
             {FIGURE_SIZE_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}{p.widthMm ? ` (${p.widthMm}×${p.heightMm} mm)` : ""}</option>)}
           </select>
         </div>
         <div>
-          <div className="text-[10px] text-slate-500 mb-0.5">Width × height (mm)</div>
+          <div className="text-[11.5px] text-neutral-700 mb-0.5">Width × height (mm)</div>
           <div className="flex items-center gap-1">
             <input type="number" min={20} value={settings.widthMm} onChange={(e) => setWidth(e.target.value)} className="w-14 border border-slate-200 rounded px-1.5 py-1 font-mono" />
-            <button onClick={() => patch({ lockAspect: !settings.lockAspect })} title={settings.lockAspect ? "Aspect ratio locked: click to unlock" : "Aspect ratio unlocked: click to lock"} className={`px-1 ${settings.lockAspect ? "text-cobalt-700" : "text-slate-300"}`}>
+            <button onClick={() => patch({ lockAspect: !settings.lockAspect })} title={settings.lockAspect ? "Aspect ratio locked: click to unlock" : "Aspect ratio unlocked: click to lock"} className={`px-1 ${settings.lockAspect ? "text-cobalt-700" : "text-neutral-500"}`}>
               {settings.lockAspect ? <Lock size={12} /> : <Unlock size={12} />}
             </button>
             <input type="number" min={20} value={settings.heightMm} onChange={(e) => setHeight(e.target.value)} className="w-14 border border-slate-200 rounded px-1.5 py-1 font-mono" />
           </div>
         </div>
         <div>
-          <div className="text-[10px] text-slate-500 mb-0.5">Resolution</div>
+          <div className="text-[11.5px] text-neutral-700 mb-0.5">Resolution</div>
           <select value={settings.dpi} onChange={(e) => patch({ dpi: Number(e.target.value) })} className="w-full border border-slate-200 rounded px-2 py-1 bg-white" disabled={settings.format === "svg"}>
             {FIGURE_DPI_OPTIONS.map((d) => <option key={d} value={d}>{d} dpi</option>)}
           </select>
         </div>
         <div>
-          <div className="text-[10px] text-slate-500 mb-0.5">Export as</div>
+          <div className="text-[11.5px] text-neutral-700 mb-0.5">Export as</div>
           <select value={settings.format} onChange={(e) => patch({ format: e.target.value })} className="w-full border border-slate-200 rounded px-2 py-1 bg-white">
             <option value="png">PNG (raster, high-resolution)</option>
             <option value="svg">SVG (vector)</option>
@@ -1944,45 +1944,45 @@ function FigurePanel({
           </select>
         </div>
       </div>
-      <p className="text-[10px] text-slate-400">Preview below is shown at the export size: {settings.widthMm} × {settings.heightMm} mm{settings.format !== "svg" && ` → ${pxW} × ${pxH} px at ${settings.dpi} dpi`}.</p>
+      <p className="text-[11.5px] text-neutral-600">Preview below is shown at the export size: {settings.widthMm} × {settings.heightMm} mm{settings.format !== "svg" && ` → ${pxW} × ${pxH} px at ${settings.dpi} dpi`}.</p>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <div>
-          <div className="text-[10px] text-slate-500 mb-0.5">Plot title</div>
+          <div className="text-[11.5px] text-neutral-700 mb-0.5">Plot title</div>
           <input type="text" value={settings.title} onChange={(e) => patch({ title: e.target.value })} placeholder="(none)" className="w-full border border-slate-200 rounded px-2 py-1" />
         </div>
         <div>
-          <div className="text-[10px] text-slate-500 mb-0.5">X-axis title</div>
+          <div className="text-[11.5px] text-neutral-700 mb-0.5">X-axis title</div>
           <input type="text" value={settings.xLabel} onChange={(e) => patch({ xLabel: e.target.value })} placeholder="(default)" className="w-full border border-slate-200 rounded px-2 py-1" />
         </div>
         <div>
-          <div className="text-[10px] text-slate-500 mb-0.5">Y-axis title</div>
+          <div className="text-[11.5px] text-neutral-700 mb-0.5">Y-axis title</div>
           <input type="text" value={settings.yLabel} onChange={(e) => patch({ yLabel: e.target.value })} placeholder="(default)" className="w-full border border-slate-200 rounded px-2 py-1" />
         </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div>
-          <div className="text-[10px] text-slate-500 mb-0.5">Title font size</div>
+          <div className="text-[11.5px] text-neutral-700 mb-0.5">Title font size</div>
           <input type="number" min={8} max={28} value={settings.titleFontSize} onChange={(e) => patch({ titleFontSize: Number(e.target.value) || settings.titleFontSize })} className="w-full border border-slate-200 rounded px-2 py-1 font-mono" />
         </div>
         <div>
-          <div className="text-[10px] text-slate-500 mb-0.5">Axis title font size</div>
+          <div className="text-[11.5px] text-neutral-700 mb-0.5">Axis title font size</div>
           <input type="number" min={6} max={24} value={settings.axisFontSize} onChange={(e) => patch({ axisFontSize: Number(e.target.value) || settings.axisFontSize })} className="w-full border border-slate-200 rounded px-2 py-1 font-mono" />
         </div>
         <div>
-          <div className="text-[10px] text-slate-500 mb-0.5">Tick label font size</div>
+          <div className="text-[11.5px] text-neutral-700 mb-0.5">Tick label font size</div>
           <input type="number" min={6} max={20} value={settings.tickFontSize} onChange={(e) => patch({ tickFontSize: Number(e.target.value) || settings.tickFontSize })} className="w-full border border-slate-200 rounded px-2 py-1 font-mono" />
         </div>
         <div>
-          <div className="text-[10px] text-slate-500 mb-0.5">Legend font size</div>
+          <div className="text-[11.5px] text-neutral-700 mb-0.5">Legend font size</div>
           <input type="number" min={6} max={20} value={settings.legendFontSize} onChange={(e) => patch({ legendFontSize: Number(e.target.value) || settings.legendFontSize })} className="w-full border border-slate-200 rounded px-2 py-1 font-mono" />
         </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div>
-          <div className="text-[10px] text-slate-500 mb-0.5">Legend position</div>
+          <div className="text-[11.5px] text-neutral-700 mb-0.5">Legend position</div>
           <select value={settings.legendPosition} onChange={(e) => patch({ legendPosition: e.target.value })} className="w-full border border-slate-200 rounded px-2 py-1 bg-white">
             <option value="top">Top</option>
             <option value="bottom">Bottom</option>
@@ -1992,7 +1992,7 @@ function FigurePanel({
           </select>
         </div>
         <div>
-          <div className="text-[10px] text-slate-500 mb-0.5">Color palette</div>
+          <div className="text-[11.5px] text-neutral-700 mb-0.5">Color palette</div>
           <select value={settings.palette} onChange={(e) => patch({ palette: e.target.value })} className="w-full border border-slate-200 rounded px-2 py-1 bg-white">
             {Object.entries(FIGURE_PALETTES).map(([key, p]) => <option key={key} value={key}>{p.label}</option>)}
           </select>
@@ -2001,11 +2001,11 @@ function FigurePanel({
           </div>
         </div>
         <div>
-          <div className="text-[10px] text-slate-500 mb-0.5">Decimal places</div>
+          <div className="text-[11.5px] text-neutral-700 mb-0.5">Decimal places</div>
           <input type="number" min={0} max={4} value={settings.decimals} onChange={(e) => patch({ decimals: Math.max(0, Math.min(4, Number(e.target.value))) || 0 })} className="w-full border border-slate-200 rounded px-2 py-1 font-mono" />
         </div>
         <div className="flex items-end pb-1">
-          <label className="flex items-center gap-1.5 text-slate-600">
+          <label className="flex items-center gap-1.5 text-neutral-900">
             <input type="checkbox" checked={settings.showGridlines} onChange={(e) => patch({ showGridlines: e.target.checked })} />
             Gridlines
           </label>
@@ -2014,15 +2014,15 @@ function FigurePanel({
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <div>
-          <div className="text-[10px] text-slate-500 mb-0.5">Line thickness ({settings.lineWidth}px)</div>
+          <div className="text-[11.5px] text-neutral-700 mb-0.5">Line thickness ({settings.lineWidth}px)</div>
           <input type="range" min={1} max={5} step={0.5} value={settings.lineWidth} onChange={(e) => patch({ lineWidth: Number(e.target.value) })} className="w-full accent-cobalt-700" />
         </div>
         <div>
-          <div className="text-[10px] text-slate-500 mb-0.5">Marker size ({settings.markerSize}px)</div>
+          <div className="text-[11.5px] text-neutral-700 mb-0.5">Marker size ({settings.markerSize}px)</div>
           <input type="range" min={0} max={10} step={0.5} value={settings.markerSize} onChange={(e) => patch({ markerSize: Number(e.target.value) })} className="w-full accent-cobalt-700" />
         </div>
         <div>
-          <div className="text-[10px] text-slate-500 mb-0.5">Opacity ({Math.round(settings.opacity * 100)}%)</div>
+          <div className="text-[11.5px] text-neutral-700 mb-0.5">Opacity ({Math.round(settings.opacity * 100)}%)</div>
           <input type="range" min={0.2} max={1} step={0.05} value={settings.opacity} onChange={(e) => patch({ opacity: Number(e.target.value) })} className="w-full accent-cobalt-700" />
         </div>
       </div>
@@ -2031,10 +2031,10 @@ function FigurePanel({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 border-t border-slate-200">
           {seriesOptions && (
             <div>
-              <div className="text-[10px] text-slate-500 mb-1">Series shown</div>
+              <div className="text-[11.5px] text-neutral-700 mb-1">Series shown</div>
               <div className="flex flex-wrap gap-x-3 gap-y-1">
                 {seriesOptions.map((o) => (
-                  <label key={o.key} className="flex items-center gap-1 text-slate-600">
+                  <label key={o.key} className="flex items-center gap-1 text-neutral-900">
                     <input type="checkbox" checked={!hiddenKeys.has(o.key)} onChange={() => onToggleSeries(o.key)} />
                     {o.label}
                   </label>
@@ -2044,7 +2044,7 @@ function FigurePanel({
           )}
           {sortOptions && (
             <div>
-              <div className="text-[10px] text-slate-500 mb-0.5">Order</div>
+              <div className="text-[11.5px] text-neutral-700 mb-0.5">Order</div>
               <select value={sortValue} onChange={(e) => onSortChange(e.target.value)} className="w-full border border-slate-200 rounded px-2 py-1 bg-white">
                 {sortOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
@@ -2052,10 +2052,10 @@ function FigurePanel({
           )}
           {maxPoints !== undefined && (
             <div>
-              <div className="text-[10px] text-slate-500 mb-0.5">{maxPointsLabel || "Show only the top N"}</div>
+              <div className="text-[11.5px] text-neutral-700 mb-0.5">{maxPointsLabel || "Show only the top N"}</div>
               <div className="flex items-center gap-1.5">
                 <input type="number" min={1} max={maxPointsCap} value={maxPoints} onChange={(e) => onMaxPointsChange(Math.max(1, Math.min(maxPointsCap, Number(e.target.value) || maxPointsCap)))} className="w-20 border border-slate-200 rounded px-2 py-1 font-mono" />
-                <span className="text-slate-400">of {maxPointsCap}</span>
+                <span className="text-neutral-600">of {maxPointsCap}</span>
               </div>
             </div>
           )}
@@ -2063,7 +2063,7 @@ function FigurePanel({
       )}
 
       <div className="flex items-center justify-between pt-2 border-t border-slate-200">
-        <button onClick={resetAppearance} className="text-slate-400 hover:text-slate-600 underline">Reset appearance</button>
+        <button onClick={resetAppearance} className="text-neutral-600 hover:text-neutral-900 underline">Reset appearance</button>
         <Btn variant="accent" onClick={onExport} disabled={exporting}>{exporting ? "Exporting…" : <><Download size={13} />Export figure</>}</Btn>
       </div>
     </div>
@@ -2135,12 +2135,12 @@ class ErrorBoundary extends React.Component {
         // Within the automatic-recovery window: a quiet, non-alarming
         // placeholder, since this resolves itself a moment later without
         // the user needing to do anything.
-        return <div className="bg-white rounded-lg border border-slate-200 p-8 text-center text-xs text-slate-400">Refreshing {this.props.label || "this view"}…</div>;
+        return <div className="bg-white rounded-lg border border-slate-200 p-8 text-center text-xs text-neutral-600">Refreshing {this.props.label || "this view"}…</div>;
       }
       return (
         <div className="bg-white rounded-lg border border-rose-200 p-8 text-center space-y-3">
           <p className="text-sm font-semibold text-rose-700">Something went wrong displaying {this.props.label || "this view"}.</p>
-          <p className="text-xs text-slate-500">Your model data is unaffected: this is a display error, not data loss. {this.props.showDetail !== false && this.state.error?.message ? `(${this.state.error.message})` : ""}</p>
+          <p className="text-xs text-neutral-700">Your model data is unaffected: this is a display error, not data loss. {this.props.showDetail !== false && this.state.error?.message ? `(${this.state.error.message})` : ""}</p>
           <Btn variant="outline" onClick={() => this.setState((s) => ({ error: null, resetKey: s.resetKey + 1, autoRetried: false }))}><RotateCcw size={14} />Try again</Btn>
         </div>
       );
@@ -2485,7 +2485,7 @@ function ConceptNode({ data, selected }) {
         );
       })}
       <div className="text-sm font-semibold leading-snug break-words" style={{ wordBreak: "break-word" }}>{c.name}</div>
-      <div className="text-[10.5px] mt-1 leading-tight whitespace-nowrap overflow-hidden text-ellipsis">
+      <div className="text-[11.5px] mt-1 leading-tight whitespace-nowrap overflow-hidden text-ellipsis">
         <span className="opacity-60">{data.hasRun ? "Current activation" : "Initial activation"}:</span>{" "}
         <span className="font-mono font-semibold" style={{ color: valueColor }}>
           {displayValue >= 0 ? "+" : ""}{round2(displayValue).toFixed(2)}
@@ -2819,7 +2819,7 @@ function InfluenceEdge({
             onMouseDown={canBend ? beginBend : undefined}
             onDoubleClick={canBend && manualBend ? (ev) => { ev.stopPropagation(); data.onBendReset?.(id); } : undefined}
             style={{ transform: `scale(${1 / Math.max(zoom, 0.05)})`, pointerEvents: isBeingDraggedByUser ? "none" : "all", cursor: canBend ? "grab" : undefined }}
-            className={`px-2 py-1 rounded text-[11px] font-mono font-semibold border shadow-sm ring-2 ring-white select-none ${
+            className={`px-2 py-1 rounded text-[12.5px] font-mono font-semibold border shadow-sm ring-2 ring-white select-none ${
               agg
                 ? (agg.negative === 0 ? "bg-green-50 border-green-300 text-green-800" : agg.positive === 0 ? "bg-orange-50 border-orange-300 text-orange-800" : "bg-violet-50 border-violet-300 text-violet-800")
                 : w >= 0 ? "bg-green-50 border-green-300 text-green-800" : "bg-orange-50 border-orange-300 text-orange-800"
@@ -2994,14 +2994,14 @@ function ModuleNode({ data, selected }) {
       >
         <Handle type="target" position={Position.Left} id={DEFAULT_TARGET_ANCHOR} isConnectable={false} style={hidden} />
         <Handle type="source" position={Position.Right} id="r-c" isConnectable={false} style={hidden} />
-        <div className="text-[10px] uppercase tracking-wide text-slate-500 flex items-center gap-1"><Layers size={11} />Module</div>
-        <div className="text-sm font-semibold text-slate-800 leading-snug break-words">{data.label}</div>
-        <div className="text-[11px] text-slate-600 mt-0.5">
+        <div className="text-[11.5px] uppercase tracking-wide text-neutral-700 flex items-center gap-1"><Layers size={11} />Module</div>
+        <div className="text-sm font-semibold text-neutral-900 leading-snug break-words">{data.label}</div>
+        <div className="text-[12.5px] text-neutral-900 mt-0.5">
           {data.count} concept{data.count === 1 ? "" : "s"} &middot; {data.internal} inside &middot; {data.out + data.in} to/from other modules
         </div>
         <div className="flex items-center gap-2 mt-1.5">
-          <button onClick={(e) => { e.stopPropagation(); data.onExpand(); }} className="nodrag px-1.5 py-0.5 rounded bg-white/80 border border-slate-300 text-[11px] text-slate-700 hover:bg-white">Unfold</button>
-          <button onClick={(e) => { e.stopPropagation(); data.onOpen(); }} className="nodrag px-1.5 py-0.5 rounded bg-white/80 border border-slate-300 text-[11px] text-slate-700 hover:bg-white" title="Analyse this module on its own (sets the analysis scope)">Own model</button>
+          <button onClick={(e) => { e.stopPropagation(); data.onExpand(); }} className="nodrag px-1.5 py-0.5 rounded bg-white/80 border border-slate-300 text-[12.5px] text-neutral-900 hover:bg-white">Unfold</button>
+          <button onClick={(e) => { e.stopPropagation(); data.onOpen(); }} className="nodrag px-1.5 py-0.5 rounded bg-white/80 border border-slate-300 text-[12.5px] text-neutral-900 hover:bg-white" title="Analyse this module on its own (sets the analysis scope)">Own model</button>
         </div>
       </div>
     </div>
@@ -3019,9 +3019,9 @@ function ModuleFrameNode({ data }) {
       style={{ width: data.w, height: data.h, borderColor: st.border, background: `${st.bg}59`, opacity: data.faded ? 0.3 : 1 }}
     >
       <div className="absolute left-2 top-1.5 flex items-center gap-1.5" style={{ pointerEvents: "auto" }}>
-        <span className="px-1.5 py-0.5 rounded text-[11px] font-semibold text-slate-700 border" style={{ background: st.bg, borderColor: st.border }}>{data.label}</span>
-        <button onClick={(e) => { e.stopPropagation(); data.onCollapse(); }} className="nodrag px-1.5 py-0.5 rounded bg-white/90 border border-slate-300 text-[10px] text-slate-600 hover:bg-white">Fold</button>
-        <button onClick={(e) => { e.stopPropagation(); data.onOpen(); }} className="nodrag px-1.5 py-0.5 rounded bg-white/90 border border-slate-300 text-[10px] text-slate-600 hover:bg-white" title="Analyse this module on its own (sets the analysis scope)">Own model</button>
+        <span className="px-1.5 py-0.5 rounded text-[12.5px] font-semibold text-neutral-900 border" style={{ background: st.bg, borderColor: st.border }}>{data.label}</span>
+        <button onClick={(e) => { e.stopPropagation(); data.onCollapse(); }} className="nodrag px-1.5 py-0.5 rounded bg-white/90 border border-slate-300 text-[11.5px] text-neutral-900 hover:bg-white">Fold</button>
+        <button onClick={(e) => { e.stopPropagation(); data.onOpen(); }} className="nodrag px-1.5 py-0.5 rounded bg-white/90 border border-slate-300 text-[11.5px] text-neutral-900 hover:bg-white" title="Analyse this module on its own (sets the analysis scope)">Own model</button>
       </div>
     </div>
   );
@@ -3170,7 +3170,7 @@ function ModelCheck({ concepts, edges, onSelectConcept, onSelectEdge, storageKey
   const levelStyle = {
     step: { box: "border-cobalt-200 bg-cobalt-50/60", icon: <ChevronRight size={13} className="text-cobalt-700 shrink-0 mt-0.5" /> },
     warn: { box: "border-amber-200 bg-amber-50/70", icon: <Info size={13} className="text-amber-700 shrink-0 mt-0.5" /> },
-    tip: { box: "border-slate-200 bg-slate-50", icon: <HelpCircle size={13} className="text-slate-500 shrink-0 mt-0.5" /> },
+    tip: { box: "border-slate-200 bg-slate-50", icon: <HelpCircle size={13} className="text-neutral-700 shrink-0 mt-0.5" /> },
   };
   return (
     <FoldableBox
@@ -3182,7 +3182,7 @@ function ModelCheck({ concepts, edges, onSelectConcept, onSelectEdge, storageKey
       defaultOpen
     >
       {!issues.length ? (
-        <p className="text-xs text-slate-500">{summary} This check runs automatically while you build.</p>
+        <p className="text-xs text-neutral-700">{summary} This check runs automatically while you build.</p>
       ) : (
         <div className="space-y-2">
           {issues.map((it) => (
@@ -3190,25 +3190,25 @@ function ModelCheck({ concepts, edges, onSelectConcept, onSelectEdge, storageKey
               <div className="flex items-start gap-1.5">
                 {levelStyle[it.level].icon}
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-slate-800">{it.title}</p>
-                  <p className="text-slate-600 mt-0.5">{it.text}</p>
+                  <p className="font-semibold text-neutral-900">{it.title}</p>
+                  <p className="text-neutral-900 mt-0.5">{it.text}</p>
                   {(it.concepts?.length || it.edges?.length) ? (
                     <div className="flex flex-wrap gap-1 mt-1.5">
                       {(it.concepts || []).slice(0, 12).map((id) => (
-                        <button key={id} onClick={() => onSelectConcept(id)} className="px-1.5 py-0.5 rounded border border-slate-300 bg-white text-[11px] text-slate-700 hover:border-cobalt-500 hover:text-cobalt-800" title="Show this concept on the map">
+                        <button key={id} onClick={() => onSelectConcept(id)} className="px-1.5 py-0.5 rounded border border-slate-300 bg-white text-[12.5px] text-neutral-900 hover:border-cobalt-500 hover:text-cobalt-800" title="Show this concept on the map">
                           {nameOf.get(id)}
                         </button>
                       ))}
                       {(it.edges || []).slice(0, 12).map((id) => {
                         const e = edgeById.get(id);
                         return e ? (
-                          <button key={id} onClick={() => onSelectEdge(id)} className="px-1.5 py-0.5 rounded border border-slate-300 bg-white text-[11px] text-slate-700 hover:border-cobalt-500 hover:text-cobalt-800" title="Show this relationship on the map">
+                          <button key={id} onClick={() => onSelectEdge(id)} className="px-1.5 py-0.5 rounded border border-slate-300 bg-white text-[12.5px] text-neutral-900 hover:border-cobalt-500 hover:text-cobalt-800" title="Show this relationship on the map">
                             {nameOf.get(e.source)} &rarr; {nameOf.get(e.target)}
                           </button>
                         ) : null;
                       })}
                       {((it.concepts?.length || 0) + (it.edges?.length || 0)) > 12 && (
-                        <span className="text-[11px] text-slate-400 self-center">+{(it.concepts?.length || 0) + (it.edges?.length || 0) - 12} more</span>
+                        <span className="text-[12.5px] text-neutral-600 self-center">+{(it.concepts?.length || 0) + (it.edges?.length || 0) - 12} more</span>
                       )}
                     </div>
                   ) : null}
@@ -3216,7 +3216,7 @@ function ModelCheck({ concepts, edges, onSelectConcept, onSelectEdge, storageKey
               </div>
             </div>
           ))}
-          <p className="text-[11px] text-slate-400">Click a name to jump to it on the map. This check runs automatically while you build.</p>
+          <p className="text-[12.5px] text-neutral-600">Click a name to jump to it on the map. This check runs automatically while you build.</p>
         </div>
       )}
     </FoldableBox>
@@ -4184,13 +4184,13 @@ function NetworkTabInner({
             )}
           </div>
           <div className="flex items-center border border-slate-300 rounded-md overflow-hidden text-xs">
-            <button onClick={() => setEdgeStyle("curved")} className={`px-2.5 py-1.5 ${edgeStyle === "curved" ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}>Curved</button>
-            <button onClick={() => setEdgeStyle("orthogonal")} className={`px-2.5 py-1.5 border-l border-slate-300 ${edgeStyle === "orthogonal" ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}>Orthogonal</button>
+            <button onClick={() => setEdgeStyle("curved")} className={`px-2.5 py-1.5 ${edgeStyle === "curved" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}>Curved</button>
+            <button onClick={() => setEdgeStyle("orthogonal")} className={`px-2.5 py-1.5 border-l border-slate-300 ${edgeStyle === "orthogonal" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}>Orthogonal</button>
           </div>
           <button
             onClick={() => setHideEdgeLabels((v) => !v)}
             title={hideEdgeLabels ? "Show each relationship's numeric weight as a label again" : "Hide the numeric weight labels, so each relationship is shown only by its arrow's color (increase/decrease) and width (strength)"}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border text-xs ${hideEdgeLabels ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"}`}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border text-xs ${hideEdgeLabels ? "bg-slate-900 text-white border-slate-900" : "bg-white text-neutral-900 border-slate-300 hover:bg-slate-50"}`}
           >
             {hideEdgeLabels ? <EyeOff size={13} /> : <Eye size={13} />}Labels
           </button>
@@ -4200,18 +4200,18 @@ function NetworkTabInner({
               <button
                 onClick={() => showStructure("full")}
                 title="Full model: every module unfolded, every concept shown"
-                className={`px-2.5 py-1.5 ${structure === "full" ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+                className={`px-2.5 py-1.5 ${structure === "full" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}
               >Full model</button>
               <button
                 onClick={() => showStructure("overview")}
                 title="Module overview: every module folded into one block, showing how the modules are linked"
-                className={`px-2.5 py-1.5 border-l border-slate-300 flex items-center gap-1 ${structure === "overview" ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+                className={`px-2.5 py-1.5 border-l border-slate-300 flex items-center gap-1 ${structure === "overview" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}
               ><Layers size={12} />Module overview</button>
               <select
                 value={structure.startsWith("m:") ? structure : ""}
                 onChange={(e) => e.target.value && showStructure(e.target.value)}
                 title="Module view: open one module as its own sub-model, with the other modules folded around it"
-                className={`px-1.5 py-1.5 border-l border-slate-300 text-xs ${structure.startsWith("m:") ? "bg-slate-900 text-white" : "bg-white text-slate-600"}`}
+                className={`px-1.5 py-1.5 border-l border-slate-300 text-xs ${structure.startsWith("m:") ? "bg-slate-900 text-white" : "bg-white text-neutral-900"}`}
               >
                 <option value="">{structure === "custom" ? "Custom folding" : "Module view\u2026"}</option>
                 {folded.modules.map((m) => <option key={m.key} value={`m:${m.key}`}>{m.label}</option>)}
@@ -4223,12 +4223,12 @@ function NetworkTabInner({
               <button
                 onClick={() => setDisplayMode("hide")}
                 title="Hide mode: concepts and relationships outside the analysis scope are removed from the canvas"
-                className={`px-2.5 py-1.5 flex items-center gap-1 ${displayMode === "hide" ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+                className={`px-2.5 py-1.5 flex items-center gap-1 ${displayMode === "hide" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}
               ><EyeOff size={12} />Hide</button>
               <button
                 onClick={() => setDisplayMode("focus")}
                 title="Focus mode: everything stays on the canvas; concepts and relationships outside the analysis scope are faded for context"
-                className={`px-2.5 py-1.5 border-l border-slate-300 flex items-center gap-1 ${displayMode === "focus" ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+                className={`px-2.5 py-1.5 border-l border-slate-300 flex items-center gap-1 ${displayMode === "focus" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}
               ><Eye size={12} />Focus</button>
             </div>
           )}
@@ -4238,7 +4238,7 @@ function NetworkTabInner({
           <div className="w-px h-5 bg-slate-200 mx-0.5" />
           <div className="relative">
             <div className="flex items-center gap-1 border border-slate-300 rounded-md px-2 py-1 bg-white">
-              <Search size={13} className="text-slate-400 shrink-0" />
+              <Search size={13} className="text-neutral-600 shrink-0" />
               <input
                 value={searchQuery}
                 onChange={(e) => { setSearchQuery(e.target.value); setSearchOpen(true); }}
@@ -4249,10 +4249,10 @@ function NetworkTabInner({
                   if (e.key === "Escape") { setSearchOpen(false); e.currentTarget.blur(); }
                 }}
                 placeholder="Find a concept..."
-                className="text-xs outline-none w-36 placeholder:text-slate-400"
+                className="text-xs outline-none w-36 placeholder:text-neutral-500"
               />
               {searchQuery && (
-                <button onClick={() => setSearchQuery("")} className="text-slate-300 hover:text-slate-500" title="Clear search">
+                <button onClick={() => setSearchQuery("")} className="text-neutral-500 hover:text-neutral-900" title="Clear search">
                   <X size={12} />
                 </button>
               )}
@@ -4260,7 +4260,7 @@ function NetworkTabInner({
             {searchOpen && searchQuery.trim() && (
               <div className="absolute z-30 mt-1 w-64 bg-white border border-slate-200 rounded-md shadow-lg py-1 max-h-64 overflow-auto">
                 {searchMatches.length === 0 ? (
-                  <p className="px-3 py-1.5 text-xs text-slate-400">No concepts match &ldquo;{searchQuery}&rdquo;</p>
+                  <p className="px-3 py-1.5 text-xs text-neutral-600">No concepts match &ldquo;{searchQuery}&rdquo;</p>
                 ) : (
                   searchMatches.map((c) => (
                     <button
@@ -4270,7 +4270,7 @@ function NetworkTabInner({
                       className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center justify-between gap-2"
                     >
                       <span className="truncate">{c.name}</span>
-                      <span className="text-[10px] text-slate-400 shrink-0 ml-2">{c.category}</span>
+                      <span className="text-[11.5px] text-neutral-600 shrink-0 ml-2">{c.category}</span>
                     </button>
                   ))
                 )}
@@ -4278,8 +4278,8 @@ function NetworkTabInner({
             )}
           </div>
           <span className="ml-auto flex items-center gap-2">
-            {spaceHeld && <span className="text-[11px] text-cobalt-700 font-medium">Pan mode (space held)</span>}
-            <Info size={13} className="text-slate-300 shrink-0" title="Drag any side of a node to connect it (top, right, bottom, or left); double-click empty space to add a concept. Hover a node to trace only its own connections." />
+            {spaceHeld && <span className="text-[12.5px] text-cobalt-700 font-medium">Pan mode (space held)</span>}
+            <Info size={13} className="text-neutral-500 shrink-0" title="Drag any side of a node to connect it (top, right, bottom, or left); double-click empty space to add a concept. Hover a node to trace only its own connections." />
             {/* "Collapse"/"Expand", not "Hide"/"Show" — this toolbar already
                 has a "Hide" for out-of-scope display mode and a "Hide X"
                 per module chip above; a third, unrelated "Hide" button
@@ -4294,22 +4294,22 @@ function NetworkTabInner({
         </div>
 
         {networkView.mode === "nexus" && (
-          <p className="mb-2 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+          <p className="mb-2 text-[12.5px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1">
             {displayMode === "focus"
               ? "Nexus Interface: relationships between different modules are drawn normally; relationships inside a module are faded and left out of every analysis."
               : "Nexus Interface: only relationships between different modules are drawn. A new relationship between two concepts of the same module is still saved to the model, but it won't appear until you switch back to Modules."}
           </p>
         )}
         {displayMode === "focus" && viewInfo?.isFiltered && networkView.mode !== "nexus" && (
-          <p className="mb-2 text-[11px] text-slate-500">
+          <p className="mb-2 text-[12.5px] text-neutral-700">
             Focus mode: faded concepts and relationships are outside the analysis scope. They are shown for context only and excluded from every analysis.
           </p>
         )}
         {viewInfo?.isFiltered && concepts.length === 0 && (
-          <p className="mb-2 text-[11px] text-slate-500">Nothing to show in this view. Try including isolated concepts or more modules.</p>
+          <p className="mb-2 text-[12.5px] text-neutral-700">Nothing to show in this view. Try including isolated concepts or more modules.</p>
         )}
         {collapsedSet.size > 0 && (
-          <p className="mb-2 text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded px-2 py-1">
+          <p className="mb-2 text-[12.5px] text-neutral-900 bg-slate-50 border border-slate-200 rounded px-2 py-1">
             {structure === "overview"
               ? "Module overview: every module is folded into one block; the links between blocks bundle all relationships between those modules (count and net weight). Double-click a block to unfold it."
               : "Folded modules are shown as blocks; links to them bundle their relationships. Use Fold on a module's outline to fold it again, or Full model to unfold everything."}
@@ -4330,8 +4330,8 @@ function NetworkTabInner({
           {concepts.length === 0 && !viewInfo?.isFiltered && (
             <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
               <div className="max-w-sm text-center bg-white/90 border border-slate-200 rounded-lg shadow-sm px-5 py-4">
-                <p className="text-sm font-semibold text-slate-700">Your map is empty</p>
-                <p className="text-xs text-slate-500 mt-1">
+                <p className="text-sm font-semibold text-neutral-900">Your map is empty</p>
+                <p className="text-xs text-neutral-700 mt-1">
                   Double-click anywhere here to add your first concept, or use <strong>Add concept</strong> above.
                   To start from an example instead, pick one from <strong>New / example model</strong> at the top right.
                 </p>
@@ -4374,7 +4374,7 @@ function NetworkTabInner({
           </ErrorBoundary>
         </div>
 
-        <div className="flex items-center gap-4 text-[11px] text-slate-500 mt-2 px-1 flex-wrap">
+        <div className="flex items-center gap-4 text-[12.5px] text-neutral-700 mt-2 px-1 flex-wrap">
           {categoriesPresent.length > 0 ? (
             categoriesPresent.map((cat) => {
               const s = categoryStyle(cat);
@@ -4386,7 +4386,7 @@ function NetworkTabInner({
               );
             })
           ) : (
-            <span className="italic text-slate-400">Give a concept a module (select it, then pick or type one in the Inspector) to colour-code the map by module.</span>
+            <span className="italic text-neutral-600">Give a concept a module (select it, then pick or type one in the Inspector) to colour-code the map by module.</span>
           )}
           <span className="flex items-center gap-1 ml-2"><span className="w-4 h-0.5 inline-block bg-green-600" /> positive influence</span>
           <span className="flex items-center gap-1"><span className="w-4 h-0.5 inline-block bg-orange-600" /> negative influence</span>
@@ -4406,10 +4406,10 @@ function NetworkTabInner({
           const RelRow = ({ e, otherId, arrow }) => (
             <button
               onClick={() => setSelected({ kind: "edge", id: e.id })}
-              className="w-full flex items-center gap-1.5 text-left text-[11px] px-1.5 py-1 rounded hover:bg-slate-100"
+              className="w-full flex items-center gap-1.5 text-left text-[12.5px] px-1.5 py-1 rounded hover:bg-slate-100"
               title={relationshipSentence(conceptById.get(e.source)?.name, conceptById.get(e.target)?.name, e.weight)}
             >
-              <span className="text-slate-400 shrink-0">{arrow}</span>
+              <span className="text-neutral-600 shrink-0">{arrow}</span>
               <span className="flex-1 truncate">{conceptById.get(otherId)?.name}</span>
               <span className={`font-mono shrink-0 ${e.weight >= 0 ? "text-green-700" : "text-orange-700"}`}>{e.weight > 0 ? "+" : ""}{round2(e.weight)}</span>
             </button>
@@ -4417,7 +4417,7 @@ function NetworkTabInner({
           return (
             <div className="space-y-2.5">
               <div>
-                <label className="text-xs text-slate-500">Concept name</label>
+                <label className="text-xs text-neutral-700">Concept name</label>
                 <input
                   ref={nameInputRef}
                   value={c.name}
@@ -4429,7 +4429,7 @@ function NetworkTabInner({
               </div>
 
               <div>
-                <label className="text-xs text-slate-500" title="The subsystem of the nexus this concept belongs to (its category).">Module</label>
+                <label className="text-xs text-neutral-700" title="The subsystem of the nexus this concept belongs to (its category).">Module</label>
                 {moduleList.length > 0 && (
                   <div className="flex flex-wrap gap-1 mb-1">
                     {moduleList.map((m) => {
@@ -4439,7 +4439,7 @@ function NetworkTabInner({
                         <button
                           key={m.key}
                           onClick={() => { if (!on) { commitHistory(); updateConcept(c.id, { category: m.categoryValue }); } }}
-                          className={`px-1.5 py-0.5 rounded border text-[11px] ${on ? "ring-2 ring-cobalt-500 text-slate-900 font-medium" : "text-slate-600 hover:ring-1 hover:ring-slate-400"}`}
+                          className={`px-1.5 py-0.5 rounded border text-[12.5px] ${on ? "ring-2 ring-cobalt-500 text-neutral-900 font-medium" : "text-neutral-900 hover:ring-1 hover:ring-slate-400"}`}
                           style={{ background: st.bg, borderColor: st.border }}
                         >
                           {m.label}
@@ -4456,12 +4456,12 @@ function NetworkTabInner({
                   className="w-full text-xs border border-slate-200 rounded px-1.5 py-1"
                 />
                 {viewInfo?.isFiltered && displayMode === "hide" && (
-                  <p className="text-[10px] text-amber-700 mt-0.5">Moving it to a module outside the current analysis scope hides it from this view.</p>
+                  <p className="text-[11.5px] text-amber-700 mt-0.5">Moving it to a module outside the current analysis scope hides it from this view.</p>
                 )}
               </div>
 
               <div>
-                <label className="text-xs text-slate-500">Definition</label>
+                <label className="text-xs text-neutral-700">Definition</label>
                 <textarea
                   value={c.description || ""}
                   onChange={(e) => updateConcept(c.id, { description: e.target.value })}
@@ -4471,7 +4471,7 @@ function NetworkTabInner({
               </div>
 
               <div>
-                <label className="text-xs text-slate-500" title="Initial activation, A(0): where this concept starts in a simulation.">Starting value</label>
+                <label className="text-xs text-neutral-700" title="Initial activation, A(0): where this concept starts in a simulation.">Starting value</label>
                 <div className="flex items-center gap-2">
                   <input
                     type="range" min={-1} max={1} step={0.05} value={c.initialValue ?? 0}
@@ -4484,30 +4484,30 @@ function NetworkTabInner({
                     className="w-14 text-xs font-mono text-right border border-slate-200 rounded px-1 py-0.5"
                   />
                 </div>
-                <div className="flex justify-between text-[10px] text-slate-400"><span>&minus;1 very low</span><span>0 neutral</span><span>+1 very high</span></div>
-                <div className="text-[11px] text-slate-500 mt-1">
+                <div className="flex justify-between text-[11.5px] text-neutral-600"><span>&minus;1 very low</span><span>0 neutral</span><span>+1 very high</span></div>
+                <div className="text-[12.5px] text-neutral-700 mt-1">
                   {hasRun ? "Simulated activation" : "Not simulated yet"}: <span className="font-mono font-semibold">{round2(hasRun ? c.currentValue : c.initialValue)}</span>
                 </div>
               </div>
 
               <div className="pt-2 border-t border-slate-100">
-                <div className="text-xs font-semibold text-slate-600 mb-1">Relationships</div>
-                <div className="text-[11px] text-slate-400">Affects ({outgoing.length})</div>
-                {outgoing.length ? outgoing.map((e) => <RelRow key={e.id} e={e} otherId={e.target} arrow="&rarr;" />) : <p className="text-[11px] text-slate-300 italic px-1.5">nothing yet</p>}
-                <div className="text-[11px] text-slate-400 mt-1">Affected by ({incoming.length})</div>
-                {incoming.length ? incoming.map((e) => <RelRow key={e.id} e={e} otherId={e.source} arrow="&larr;" />) : <p className="text-[11px] text-slate-300 italic px-1.5">nothing yet</p>}
+                <div className="text-xs font-semibold text-neutral-900 mb-1">Relationships</div>
+                <div className="text-[12.5px] text-neutral-600">Affects ({outgoing.length})</div>
+                {outgoing.length ? outgoing.map((e) => <RelRow key={e.id} e={e} otherId={e.target} arrow="&rarr;" />) : <p className="text-[12.5px] text-neutral-500 italic px-1.5">nothing yet</p>}
+                <div className="text-[12.5px] text-neutral-600 mt-1">Affected by ({incoming.length})</div>
+                {incoming.length ? incoming.map((e) => <RelRow key={e.id} e={e} otherId={e.source} arrow="&larr;" />) : <p className="text-[12.5px] text-neutral-500 italic px-1.5">nothing yet</p>}
                 {linkOptions.length > 0 && (
                   <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 p-2 space-y-1.5">
-                    <div className="text-[11px] font-medium text-slate-600">Add a relationship</div>
-                    <div className="flex items-center gap-1 text-[11px]">
-                      <span className="text-slate-500 shrink-0">This concept</span>
-                      <select value={linkDir} onChange={(e) => setLinkDir(e.target.value)} className="border border-slate-300 rounded px-1 py-0.5 bg-white text-[11px]">
+                    <div className="text-[12.5px] font-medium text-neutral-900">Add a relationship</div>
+                    <div className="flex items-center gap-1 text-[12.5px]">
+                      <span className="text-neutral-700 shrink-0">This concept</span>
+                      <select value={linkDir} onChange={(e) => setLinkDir(e.target.value)} className="border border-slate-300 rounded px-1 py-0.5 bg-white text-[12.5px]">
                         <option value="out">affects</option>
                         <option value="in">is affected by</option>
                       </select>
                     </div>
                     <div className="flex items-center gap-1">
-                      <select value={linkTarget} onChange={(e) => setLinkTarget(e.target.value)} className="flex-1 min-w-0 border border-slate-300 rounded px-1 py-0.5 bg-white text-[11px]">
+                      <select value={linkTarget} onChange={(e) => setLinkTarget(e.target.value)} className="flex-1 min-w-0 border border-slate-300 rounded px-1 py-0.5 bg-white text-[12.5px]">
                         <option value="">choose a concept</option>
                         {linkOptions.map((o) => <option key={o.id} value={o.id}>{o.name}{linked.has(o.id) ? " (already linked)" : ""}</option>)}
                       </select>
@@ -4520,16 +4520,16 @@ function NetworkTabInner({
                           if (linkDir === "out") createEdge(c.id, linkTarget); else createEdge(linkTarget, c.id);
                           setLinkTarget("");
                         }}
-                        className="px-2 py-0.5 rounded bg-cobalt-700 text-white text-[11px] disabled:opacity-40"
+                        className="px-2 py-0.5 rounded bg-cobalt-700 text-white text-[12.5px] disabled:opacity-40"
                       >Add</button>
                     </div>
-                    <p className="text-[10px] text-slate-400">You can then set whether it increases or decreases, and how strongly. Or drag from a dot on the concept's edge to another concept.</p>
+                    <p className="text-[11.5px] text-neutral-600">You can then set whether it increases or decreases, and how strongly. Or drag from a dot on the concept's edge to another concept.</p>
                   </div>
                 )}
               </div>
 
               <div className="flex items-center gap-3 pt-1">
-                <button onClick={() => copyConcept(c)} className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700"><Copy size={13} /> Copy (Ctrl+C)</button>
+                <button onClick={() => copyConcept(c)} className="inline-flex items-center gap-1 text-xs text-neutral-700 hover:text-black"><Copy size={13} /> Copy (Ctrl+C)</button>
                 <button onClick={() => { commitHistory(); removeConcept(c.id); }} className="inline-flex items-center gap-1 text-xs text-red-500 hover:text-red-700"><Trash2 size={13} /> Delete</button>
               </div>
             </div>
@@ -4544,42 +4544,42 @@ function NetworkTabInner({
           const magnitude = Math.abs(w) || 0.5;
           return (
             <div className="space-y-3">
-              <div className="rounded-md border border-slate-200 bg-slate-50 p-2.5 text-xs text-slate-700 leading-snug">
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-2.5 text-xs text-neutral-900 leading-snug">
                 {relationshipSentence(src?.name, tgt?.name, w)}
               </div>
               <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 items-baseline text-xs">
-                <span className="text-slate-500">From</span>
+                <span className="text-neutral-700">From</span>
                 <button onClick={() => setSelected({ kind: "concept", id: e.source })} className="text-left font-medium truncate hover:text-cobalt-700" title="Select this concept">{src?.name}</button>
-                <span className="text-slate-500">To</span>
+                <span className="text-neutral-700">To</span>
                 <button onClick={() => setSelected({ kind: "concept", id: e.target })} className="text-left font-medium truncate hover:text-cobalt-700" title="Select this concept">{tgt?.name}</button>
               </div>
               <div>
-                <div className="text-xs text-slate-500 mb-1">Effect</div>
+                <div className="text-xs text-neutral-700 mb-1">Effect</div>
                 <div className="grid grid-cols-2 border border-slate-300 rounded-md overflow-hidden text-xs">
-                  <button onClick={() => setWeight(magnitude)} className={`py-1.5 ${w > 0 ? "bg-green-600 text-white" : "bg-white text-slate-600 hover:bg-green-50"}`}>Increases (+)</button>
-                  <button onClick={() => setWeight(-magnitude)} className={`py-1.5 border-l border-slate-300 ${w < 0 ? "bg-orange-600 text-white" : "bg-white text-slate-600 hover:bg-orange-50"}`}>Decreases (&minus;)</button>
+                  <button onClick={() => setWeight(magnitude)} className={`py-1.5 ${w > 0 ? "bg-green-600 text-white" : "bg-white text-neutral-900 hover:bg-green-50"}`}>Increases (+)</button>
+                  <button onClick={() => setWeight(-magnitude)} className={`py-1.5 border-l border-slate-300 ${w < 0 ? "bg-orange-600 text-white" : "bg-white text-neutral-900 hover:bg-orange-50"}`}>Decreases (&minus;)</button>
                 </div>
-                <p className="text-[10px] text-slate-400 mt-1">Increases: more {src?.name} leads to more {tgt?.name}. Decreases: more {src?.name} leads to less {tgt?.name}.</p>
+                <p className="text-[11.5px] text-neutral-600 mt-1">Increases: more {src?.name} leads to more {tgt?.name}. Decreases: more {src?.name} leads to less {tgt?.name}.</p>
               </div>
               <div>
-                <div className="text-xs text-slate-500 mb-1">Strength</div>
+                <div className="text-xs text-neutral-700 mb-1">Strength</div>
                 <div className="grid grid-cols-4 gap-1">
                   {STRENGTH_PRESETS.map((p) => (
                     <button
                       key={p.label}
                       onClick={() => setWeight((w < 0 ? -1 : 1) * p.value)}
-                      className={`py-1 rounded border text-[11px] leading-tight ${Math.abs(Math.abs(w) - p.value) < 1e-9 ? "bg-slate-900 border-slate-900 text-white" : "bg-white border-slate-300 text-slate-600 hover:bg-slate-50"}`}
+                      className={`py-1 rounded border text-[12.5px] leading-tight ${Math.abs(Math.abs(w) - p.value) < 1e-9 ? "bg-slate-900 border-slate-900 text-white" : "bg-white border-slate-300 text-neutral-900 hover:bg-slate-50"}`}
                       title={`Weight ${w < 0 ? "−" : "+"}${p.value}`}
                     >{p.label}</button>
                   ))}
                 </div>
               </div>
               <div>
-                <label className="text-xs text-slate-500 block">Fine-tune the weight</label>
+                <label className="text-xs text-neutral-700 block">Fine-tune the weight</label>
                 <WeightSlider value={w} onChange={(v) => updateEdge(e.id, { weight: v })} />
               </div>
               <div>
-                <label className="text-xs text-slate-500">Description</label>
+                <label className="text-xs text-neutral-700">Description</label>
                 <textarea
                   value={e.description || ""}
                   onChange={(ev) => updateEdge(e.id, { description: ev.target.value })}
@@ -4591,7 +4591,7 @@ function NetworkTabInner({
                 <button
                   disabled={reverseExists}
                   onClick={() => { commitHistory(); updateEdge(e.id, { source: e.target, target: e.source, sourceHandle: undefined, targetHandle: undefined }); }}
-                  className="inline-flex items-center gap-1 text-xs text-slate-600 hover:text-slate-900 disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="inline-flex items-center gap-1 text-xs text-neutral-900 hover:text-black disabled:opacity-40 disabled:cursor-not-allowed"
                   title={reverseExists ? "A relationship in the other direction already exists" : "Make it point the other way"}
                 >
                   <Shuffle size={13} /> Reverse direction
@@ -4615,11 +4615,11 @@ function NetworkTabInner({
               <div className="flex items-center gap-2">
                 <span className="w-4 h-4 rounded border" style={{ background: sty.bg, borderColor: sty.border }} />
                 <div>
-                  <div className="text-[10px] uppercase tracking-wide text-slate-400">Folded module</div>
-                  <div className="text-sm font-semibold text-slate-800">{m?.label}</div>
+                  <div className="text-[11.5px] uppercase tracking-wide text-neutral-600">Folded module</div>
+                  <div className="text-sm font-semibold text-neutral-900">{m?.label}</div>
                 </div>
               </div>
-              <p className="text-slate-600">
+              <p className="text-neutral-900">
                 {members.length} concept{members.length === 1 ? "" : "s"}, {st.internal} relationship{st.internal === 1 ? "" : "s"} inside, {st.out} to and {st.in} from other modules.
               </p>
               <div className="flex gap-2 flex-wrap">
@@ -4627,16 +4627,16 @@ function NetworkTabInner({
                 <button onClick={() => openModuleAsModel(key)} className="px-2 py-1 rounded border border-cobalt-300 bg-cobalt-50 text-cobalt-800 hover:bg-cobalt-100" title="Set the analysis scope to this module only">Open as own model</button>
               </div>
               <div>
-                <div className="font-semibold text-slate-600 mb-1">Concepts</div>
+                <div className="font-semibold text-neutral-900 mb-1">Concepts</div>
                 {members.map((c) => (
                   <button key={c.id} onClick={() => { expandModule(key); setSelected({ kind: "concept", id: c.id }); }} className="block w-full text-left px-1.5 py-0.5 rounded hover:bg-slate-100 truncate" title="Unfold the module and select this concept">{c.name}</button>
                 ))}
               </div>
               {st.partners.size > 0 && (
                 <div>
-                  <div className="font-semibold text-slate-600 mb-1">Links with other modules</div>
+                  <div className="font-semibold text-neutral-900 mb-1">Links with other modules</div>
                   {[...st.partners.entries()].map(([k, v]) => (
-                    <div key={k} className="flex justify-between px-1.5"><span className="truncate">{labelOf.get(k) || k}</span><span className="font-mono text-slate-500">{v.out} out &middot; {v.in} in</span></div>
+                    <div key={k} className="flex justify-between px-1.5"><span className="truncate">{labelOf.get(k) || k}</span><span className="font-mono text-neutral-700">{v.out} out &middot; {v.in} in</span></div>
                   ))}
                 </div>
               )}
@@ -4651,12 +4651,12 @@ function NetworkTabInner({
           const under = a.edgeIds.map((id) => edges.find((e) => e.id === id)).filter(Boolean);
           return (
             <div className="space-y-3 text-xs">
-              <div className="rounded-md border border-slate-200 bg-slate-50 p-2.5 text-slate-700 leading-snug">
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-2.5 text-neutral-900 leading-snug">
                 {a.count} relationship{a.count === 1 ? "" : "s"} from <strong>{endLabel(a.source)}</strong> to <strong>{endLabel(a.target)}</strong>:
                 {" "}{a.positive} increasing, {a.negative} decreasing; net weight {a.sum >= 0 ? "+" : ""}{a.sum}.
               </div>
               <div>
-                <div className="font-semibold text-slate-600 mb-1">The relationships in this link</div>
+                <div className="font-semibold text-neutral-900 mb-1">The relationships in this link</div>
                 {under.map((e) => (
                   <button
                     key={e.id}
@@ -4673,27 +4673,27 @@ function NetworkTabInner({
                   </button>
                 ))}
               </div>
-              <p className="text-[11px] text-slate-400">Bundled because at least one end is a folded module. Click a relationship to unfold its modules and edit it.</p>
+              <p className="text-[12.5px] text-neutral-600">Bundled because at least one end is a folded module. Click a relationship to unfold its modules and edit it.</p>
             </div>
           );
         })()}
         {!selectedConcept && !selectedEdge && selected?.kind !== "module" && selected?.kind !== "aggregate" && (
-          <div className="text-xs text-slate-500 space-y-2">
-            <p className="text-slate-400">Nothing selected. Click a concept or a relationship on the map to see and edit it here.</p>
-            <p className="font-medium text-slate-600">Building a map in four steps</p>
+          <div className="text-xs text-neutral-700 space-y-2">
+            <p className="text-neutral-600">Nothing selected. Click a concept or a relationship on the map to see and edit it here.</p>
+            <p className="font-medium text-neutral-900">Building a map in four steps</p>
             <ol className="list-decimal pl-4 space-y-1">
               <li><strong>Add a concept:</strong> double-click an empty spot on the map, or use Add concept.</li>
               <li><strong>Name it and choose its module</strong> here, in the Inspector.</li>
               <li><strong>Connect concepts:</strong> drag from a dot on a concept's edge onto another concept, or use "Add a relationship" here.</li>
               <li><strong>Click the relationship</strong> to say whether it increases or decreases the other concept, and how strongly.</li>
             </ol>
-            <p className="text-slate-400">Mistake? Undo with Ctrl+Z. Your model is saved in this browser automatically.</p>
+            <p className="text-neutral-600">Mistake? Undo with Ctrl+Z. Your model is saved in this browser automatically.</p>
           </div>
         )}
 
         <div className="mt-auto pt-4 border-t border-slate-100">
-          <h4 className="text-xs font-semibold text-slate-500 mb-1.5 flex items-center gap-1"><MousePointer2 size={12} />Keyboard shortcuts</h4>
-          <ul className="text-[11px] text-slate-400 space-y-0.5 font-mono">
+          <h4 className="text-xs font-semibold text-neutral-700 mb-1.5 flex items-center gap-1"><MousePointer2 size={12} />Keyboard shortcuts</h4>
+          <ul className="text-[12.5px] text-neutral-600 space-y-0.5 font-mono">
             <li>Scroll: zoom</li>
             <li>Shift+scroll: pan horizontally</li>
             <li>Right/middle-drag, or hold Space: pan canvas</li>
@@ -4755,7 +4755,7 @@ const ROLE_STYLE = {
   Driver: "bg-blue-50 text-blue-700",
   Receiver: "bg-orange-50 text-orange-700",
   Connector: "bg-cobalt-50 text-cobalt-700",
-  Isolated: "bg-slate-100 text-slate-500",
+  Isolated: "bg-slate-100 text-neutral-700",
 };
 
 // Columns of the Influence metrics table. Every one is sortable: clicking a
@@ -4852,7 +4852,7 @@ function InfluenceMetricsTab({ concepts, edges, settings, onHighlight, multiScal
   const cell = (m, key) => {
     if (key === "name") return m.name;
     if (key === "moduleLabel") return m.moduleLabel;
-    if (key === "role") return <span className={`px-1.5 py-0.5 rounded text-[10px] ${ROLE_STYLE[m.role] || "bg-slate-100 text-slate-600"}`}>{m.role}</span>;
+    if (key === "role") return <span className={`px-1.5 py-0.5 rounded text-[11.5px] ${ROLE_STYLE[m.role] || "bg-slate-100 text-neutral-900"}`}>{m.role}</span>;
     if (key === "netInfluence") return <span className={m.netInfluence > 0 ? "text-blue-700" : m.netInfluence < 0 ? "text-orange-700" : ""}>{m.netInfluence > 0 ? "+" : ""}{m.netInfluence}</span>;
     return m[key];
   };
@@ -4864,8 +4864,8 @@ function InfluenceMetricsTab({ concepts, edges, settings, onHighlight, multiScal
         title="How these metrics are computed"
         summary="These metrics describe the structure of your map: which concepts drive the system, which absorb change, and which sit at its centre. Sort the table below by any column to rank the concepts on that measure, and click a row to select that concept."
       >
-          <div className="space-y-3 text-xs text-slate-600">
-            <p className="text-slate-500">Sort the table below by any column to rank the concepts on that measure, and click a row to select that concept (open the Network tab to see it).</p>
+          <div className="space-y-3 text-xs text-neutral-900">
+            <p className="text-neutral-700">Sort the table below by any column to rank the concepts on that measure, and click a row to select that concept (open the Network tab to see it).</p>
             <div className="space-y-2">
               <p><strong>Indegree, Outdegree, Centrality, Net Influence, and Role are purely structural</strong>: computed directly from the relationship weights you've drawn, with no simulation involved. Indegree is the sum of the absolute weights of a concept's incoming relationships; outdegree is the same for outgoing relationships; centrality is indegree + outdegree; net influence is outdegree minus indegree. Role is assigned from those numbers: <strong>Isolated</strong> has zero centrality (no relationships at all); <strong>Hub</strong> is in the top quartile of centrality among all concepts and has at least one relationship in each direction; <strong>Driver</strong> (not already a Hub) has outdegree more than 1.2&times; its indegree; <strong>Receiver</strong> (not already a Hub) has indegree more than 1.2&times; its outdegree; everything else is a <strong>Connector</strong>.</p>
               <p><strong>Driver score and Receiver score</strong> are the shares of a concept's total connection weight that are outgoing and incoming: outdegree / centrality and indegree / centrality. They always add up to 1, so they show a concept's balance between sending and receiving influence independently of how strongly connected it is overall.</p>
@@ -4875,7 +4875,7 @@ function InfluenceMetricsTab({ concepts, edges, settings, onHighlight, multiScal
             <div className="pt-2 border-t border-slate-100 space-y-2">
               <p><strong>Influence and Sensitivity scores are perturbation-based</strong>: for each concept in turn, the model is set to all zeros, that one concept is locked at full activation (+1) for the whole run, and the simulation runs to equilibrium under the current squash function, &lambda;, update rule, and convergence settings (Scenarios &amp; Simulation's Advanced options). Every other concept always starts at exactly 0 here, regardless of what's set on the Model editor tab, so these scores measure the network's structure in isolation, not whatever initial values happen to be configured elsewhere.</p>
               <p><strong>Influence</strong> is the average absolute movement a concept <em>causes</em> in every other concept once its own driven run settles. <strong>Sensitivity</strong> is the average absolute movement a concept <em>undergoes</em>, across all of the other concepts' individual driven runs. A concept with high influence is one whose activation, if it changed, would ripple widely through the rest of the system; a concept with high sensitivity is one that tends to move regardless of which other concept is driving the change.</p>
-              <p className="text-slate-400">Computing these takes one full simulation run per concept ({concepts.length} run{concepts.length === 1 ? "" : "s"} for the current model). These are the same numbers used to compute the category metrics' "Mean influence"/"Mean sensitivity" below, and are recomputed automatically whenever a concept, relationship, or Advanced option changes.</p>
+              <p className="text-neutral-600">Computing these takes one full simulation run per concept ({concepts.length} run{concepts.length === 1 ? "" : "s"} for the current model). These are the same numbers used to compute the category metrics' "Mean influence"/"Mean sensitivity" below, and are recomputed automatically whenever a concept, relationship, or Advanced option changes.</p>
             </div>
             <div className="pt-2 border-t border-slate-100">
               <p><strong>Ranking.</strong> The # column is each concept's rank on the numeric column the table is sorted by, where #1 is the highest value; reversing the order flips the list but keeps the ranks. Concepts with exactly the same value share a rank, so two concepts tied for first are both #1 and the next one is #3. Sorting by a text column (concept, module, role) only orders the rows.</p>
@@ -4886,14 +4886,14 @@ function InfluenceMetricsTab({ concepts, edges, settings, onHighlight, multiScal
       <div className="bg-white rounded-lg border border-slate-200 p-4">
         <div className="flex items-baseline gap-3 flex-wrap mb-3">
           <h3 className="font-semibold text-sm">Influence metrics: full table</h3>
-          <span className="text-[11px] text-slate-400">
-            Ranked by <strong className="text-slate-600">{sortDescription}</strong>. Click any column heading to rank by it; click it again to reverse the order.
+          <span className="text-[12.5px] text-neutral-600">
+            Ranked by <strong className="text-neutral-900">{sortDescription}</strong>. Click any column heading to rank by it; click it again to reverse the order.
           </span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-xs min-w-[900px]">
             <thead>
-              <tr className="text-left text-slate-400 border-b border-slate-100">
+              <tr className="text-left text-neutral-600 border-b border-slate-100">
                 <th className="py-1.5 font-medium pr-2 w-8" title={`Rank by ${sortCol.label}`}>#</th>
                 {columns.map((col) => {
                   const active = col.key === sortCol.key;
@@ -4903,10 +4903,10 @@ function InfluenceMetricsTab({ concepts, edges, settings, onHighlight, multiScal
                       <button
                         onClick={() => onSort(col)}
                         title={`${METRIC_HELP[col.key] || col.help || ""}${METRIC_HELP[col.key] || col.help ? "\n\n" : ""}Click to rank by ${col.label}.`}
-                        className="inline-flex items-center gap-1 hover:text-slate-700 text-left"
+                        className="inline-flex items-center gap-1 hover:text-black text-left"
                       >
                         {col.label}
-                        <span className={active ? "text-cobalt-700" : "text-slate-300"}>{arrow}</span>
+                        <span className={active ? "text-cobalt-700" : "text-neutral-500"}>{arrow}</span>
                       </button>
                     </th>
                   );
@@ -4916,18 +4916,18 @@ function InfluenceMetricsTab({ concepts, edges, settings, onHighlight, multiScal
             <tbody>
               {sortedRows.map((m) => (
                 <tr key={m.id} className="border-b border-slate-50 cursor-pointer hover:bg-slate-50" onClick={() => onHighlight(m.id)}>
-                  <td className="py-1.5 pr-2 font-mono text-slate-400">{m._rank}</td>
+                  <td className="py-1.5 pr-2 font-mono text-neutral-600">{m._rank}</td>
                   {columns.map((col) => (
                     <td
                       key={col.key}
-                      className={`py-1.5 pr-3 ${col.type === "num" ? "font-mono" : ""} ${col.key === sortCol.key ? "bg-cobalt-50/60 font-semibold text-slate-900" : ""}`}
+                      className={`py-1.5 pr-3 ${col.type === "num" ? "font-mono" : ""} ${col.key === sortCol.key ? "bg-cobalt-50/60 font-semibold text-neutral-900" : ""}`}
                     >
                       {cell(m, col.key)}
                     </td>
                   ))}
                 </tr>
               ))}
-              {metrics.length === 0 && <tr><td colSpan={columns.length + 1} className="py-3 text-slate-400 italic">Add concepts and relationships to see metrics here.</td></tr>}
+              {metrics.length === 0 && <tr><td colSpan={columns.length + 1} className="py-3 text-neutral-600 italic">Add concepts and relationships to see metrics here.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -4958,63 +4958,63 @@ function InfluenceMetricsTab({ concepts, edges, settings, onHighlight, multiScal
         <h3 className="font-semibold text-sm mb-3">System overview</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
-            <div className="text-xs text-slate-400 mb-1">Network size</div>
+            <div className="text-xs text-neutral-600 mb-1">Network size</div>
             <div className="text-sm">{stats.concepts} concepts</div>
             <div className="text-sm">{stats.relationships} relationships</div>
           </div>
           <div title={SYSTEM_STAT_HELP.density}>
-            <div className="text-xs text-slate-400 mb-1 flex items-center gap-1">Density <HelpCircle size={10} className="text-slate-300" /></div>
+            <div className="text-xs text-neutral-600 mb-1 flex items-center gap-1">Density <HelpCircle size={10} className="text-neutral-500" /></div>
             <div className="text-sm font-mono">{stats.density}%</div>
-            <div className="text-[11px] text-slate-400">{stats.actualConnections} of {stats.possibleConnections} possible</div>
+            <div className="text-[12.5px] text-neutral-600">{stats.actualConnections} of {stats.possibleConnections} possible</div>
           </div>
           <div title={SYSTEM_STAT_HELP.avgDegree}>
-            <div className="text-xs text-slate-400 mb-1 flex items-center gap-1">Connectivity <HelpCircle size={10} className="text-slate-300" /></div>
+            <div className="text-xs text-neutral-600 mb-1 flex items-center gap-1">Connectivity <HelpCircle size={10} className="text-neutral-500" /></div>
             <div className="text-sm font-mono">avg {stats.avgDegree}</div>
-            <div className="text-[11px] text-slate-400">max {stats.maxDegree}, min {stats.minDegree}</div>
+            <div className="text-[12.5px] text-neutral-600">max {stats.maxDegree}, min {stats.minDegree}</div>
           </div>
           <div title={SYSTEM_STAT_HELP.loops}>
-            <div className="text-xs text-slate-400 mb-1 flex items-center gap-1">Feedback structure <HelpCircle size={10} className="text-slate-300" /></div>
+            <div className="text-xs text-neutral-600 mb-1 flex items-center gap-1">Feedback structure <HelpCircle size={10} className="text-neutral-500" /></div>
             <div className="text-sm font-mono">{stats.loops.total} loop{stats.loops.total === 1 ? "" : "s"}</div>
-            <div className="text-[11px] text-slate-400">{stats.loops.reinforcing} reinforcing, {stats.loops.balancing} balancing{stats.loops.capped ? " (showing first 300 found)" : ""}</div>
+            <div className="text-[12.5px] text-neutral-600">{stats.loops.reinforcing} reinforcing, {stats.loops.balancing} balancing{stats.loops.capped ? " (showing first 300 found)" : ""}</div>
           </div>
         </div>
         <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t border-slate-100">
           <div title={SYSTEM_STAT_HELP.complexity}>
-            <div className="text-xs text-slate-400 mb-1 flex items-center gap-1">Complexity score <HelpCircle size={10} className="text-slate-300" /></div>
+            <div className="text-xs text-neutral-600 mb-1 flex items-center gap-1">Complexity score <HelpCircle size={10} className="text-neutral-500" /></div>
             <div className="text-sm font-mono">{Number.isFinite(stats.complexity) ? stats.complexity : "N/A"}</div>
           </div>
           <div title={SYSTEM_STAT_HELP.connectivity}>
-            <div className="text-xs text-slate-400 mb-1 flex items-center gap-1">Connectivity score <HelpCircle size={10} className="text-slate-300" /></div>
+            <div className="text-xs text-neutral-600 mb-1 flex items-center gap-1">Connectivity score <HelpCircle size={10} className="text-neutral-500" /></div>
             <div className="text-sm font-mono">{stats.connectivity}</div>
           </div>
           <div title={SYSTEM_STAT_HELP.centralization}>
-            <div className="text-xs text-slate-400 mb-1 flex items-center gap-1">Centralization score <HelpCircle size={10} className="text-slate-300" /></div>
+            <div className="text-xs text-neutral-600 mb-1 flex items-center gap-1">Centralization score <HelpCircle size={10} className="text-neutral-500" /></div>
             <div className="text-sm font-mono">{stats.centralization}%</div>
           </div>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 pt-4 border-t border-slate-100">
           <div title={SYSTEM_STAT_HELP.clustering}>
-            <div className="text-xs text-slate-400 mb-1 flex items-center gap-1">Clustering coefficient <HelpCircle size={10} className="text-slate-300" /></div>
+            <div className="text-xs text-neutral-600 mb-1 flex items-center gap-1">Clustering coefficient <HelpCircle size={10} className="text-neutral-500" /></div>
             <div className="text-sm font-mono">{stats.clusteringEligible ? stats.clustering : "n/a"}</div>
-            <div className="text-[11px] text-slate-400">mean over {stats.clusteringEligible} concept{stats.clusteringEligible === 1 ? "" : "s"} with 2+ neighbours</div>
+            <div className="text-[12.5px] text-neutral-600">mean over {stats.clusteringEligible} concept{stats.clusteringEligible === 1 ? "" : "s"} with 2+ neighbours</div>
           </div>
           <div title={SYSTEM_STAT_HELP.modularity}>
-            <div className="text-xs text-slate-400 mb-1 flex items-center gap-1">Modularity (Q) <HelpCircle size={10} className="text-slate-300" /></div>
+            <div className="text-xs text-neutral-600 mb-1 flex items-center gap-1">Modularity (Q) <HelpCircle size={10} className="text-neutral-500" /></div>
             <div className="text-sm font-mono">{stats.modularity === null ? "n/a" : stats.modularity}</div>
-            <div className="text-[11px] text-slate-400">{stats.modularity === null ? (stats.moduleCount < 2 ? "needs 2+ modules in scope" : "no relationships") : `of the ${stats.moduleCount}-module partition`}</div>
+            <div className="text-[12.5px] text-neutral-600">{stats.modularity === null ? (stats.moduleCount < 2 ? "needs 2+ modules in scope" : "no relationships") : `of the ${stats.moduleCount}-module partition`}</div>
           </div>
           <div title={SYSTEM_STAT_HELP.interfaceEdges}>
-            <div className="text-xs text-slate-400 mb-1 flex items-center gap-1">Interface relationships <HelpCircle size={10} className="text-slate-300" /></div>
+            <div className="text-xs text-neutral-600 mb-1 flex items-center gap-1">Interface relationships <HelpCircle size={10} className="text-neutral-500" /></div>
             <div className="text-sm font-mono">{stats.interfaceEdges}</div>
-            <div className="text-[11px] text-slate-400">{stats.interfaceShare}% of relationships cross modules</div>
+            <div className="text-[12.5px] text-neutral-600">{stats.interfaceShare}% of relationships cross modules</div>
           </div>
           <div title={SYSTEM_STAT_HELP.betweenness}>
-            <div className="text-xs text-slate-400 mb-1 flex items-center gap-1">Top broker (betweenness) <HelpCircle size={10} className="text-slate-300" /></div>
+            <div className="text-xs text-neutral-600 mb-1 flex items-center gap-1">Top broker (betweenness) <HelpCircle size={10} className="text-neutral-500" /></div>
             {(() => {
               const top = [...metrics].sort((a, b) => b.betweenness - a.betweenness)[0];
               return top && top.betweenness > 0
-                ? <><div className="text-sm truncate" title={top.name}>{top.name}</div><div className="text-[11px] text-slate-400 font-mono">{top.betweenness}</div></>
-                : <div className="text-sm text-slate-400">none</div>;
+                ? <><div className="text-sm truncate" title={top.name}>{top.name}</div><div className="text-[12.5px] text-neutral-600 font-mono">{top.betweenness}</div></>
+                : <div className="text-sm text-neutral-600">none</div>;
             })()}
           </div>
         </div>
@@ -5022,17 +5022,17 @@ function InfluenceMetricsTab({ concepts, edges, settings, onHighlight, multiScal
 
       <div className="bg-white rounded-lg border border-slate-200 p-4">
         <h3 className="font-semibold text-sm mb-1">Network metrics by category</h3>
-        <p className="text-xs text-slate-400 mb-3">Compares how influence patterns differ between the categories defined on the Model editor tab. Uses whatever categories are actually present on this model; nothing is hard-coded.</p>
+        <p className="text-xs text-neutral-600 mb-3">Compares how influence patterns differ between the categories defined on the Model editor tab. Uses whatever categories are actually present on this model; nothing is hard-coded.</p>
 
         {!hasCategories ? (
-          <p className="text-xs text-slate-400 italic">No categories are set yet. Add a category to a concept on the Model editor tab (e.g. "water", "energy", "food", "governance") to enable this section.</p>
+          <p className="text-xs text-neutral-600 italic">No categories are set yet. Add a category to a concept on the Model editor tab (e.g. "water", "energy", "food", "governance") to enable this section.</p>
         ) : (
           <>
             <div className="overflow-x-auto">
-              <p className="text-[11px] text-slate-400 mb-1.5">Click any column heading to sort the categories by it; click again to reverse.</p>
+              <p className="text-[12.5px] text-neutral-600 mb-1.5">Click any column heading to sort the categories by it; click again to reverse.</p>
               <table className="w-full text-xs min-w-[820px]">
                 <thead>
-                  <tr className="text-left text-slate-400 border-b border-slate-100">
+                  <tr className="text-left text-neutral-600 border-b border-slate-100">
                     {categoryColumns.map((col) => (
                       <SortHeader key={col.key} col={col} sortKey={categorySort.sortKey} sortDir={categorySort.sortDir} onSort={categorySort.onSort} />
                     ))}
@@ -5042,11 +5042,11 @@ function InfluenceMetricsTab({ concepts, edges, settings, onHighlight, multiScal
                   {categorySort.sorted.map((c) => (
                     <tr key={c.category} className="border-b border-slate-50">
                       {categoryColumns.map((col) => (
-                        <td key={col.key} className={`py-1.5 pr-3 ${col.type === "num" ? "font-mono" : ""} ${col.key === categorySort.sortKey ? "bg-cobalt-50/60 font-semibold text-slate-900" : ""}`}>
+                        <td key={col.key} className={`py-1.5 pr-3 ${col.type === "num" ? "font-mono" : ""} ${col.key === categorySort.sortKey ? "bg-cobalt-50/60 font-semibold text-neutral-900" : ""}`}>
                           {col.key === "category" ? (
                             <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
                               <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: categoryColor.get(c.category) }} />
-                              <span className={c.isUncategorized ? "italic text-slate-400" : ""}>{c.category}</span>
+                              <span className={c.isUncategorized ? "italic text-neutral-600" : ""}>{c.category}</span>
                             </span>
                           ) : (c[col.key] ?? "n/a")}
                         </td>
@@ -5072,7 +5072,7 @@ function InfluenceMetricsTab({ concepts, edges, settings, onHighlight, multiScal
                       <ResponsiveContainer>
                         <BarChart data={data} layout="vertical" margin={{ left: 8, right: 16 }}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                          <XAxis type="number" tick={{ fontSize: 10 }} />
+                          <XAxis type="number" tick={{ fontSize: 12 }} />
                           {/* interval={0}: show every module's name, never thin them out. */}
                           <YAxis type="category" dataKey="category" width={categoryYAxisWidth} interval={0} tick={(p) => <SingleLineTick {...p} />} />
                           <RTooltip formatter={(v) => (v === null ? "n/a (fewer than 2 concepts)" : v)} />
@@ -5090,14 +5090,14 @@ function InfluenceMetricsTab({ concepts, edges, settings, onHighlight, multiScal
 
             <details className="mt-4 pt-4 border-t border-slate-100">
               <summary className="text-sm font-semibold cursor-pointer">Category interaction matrix (optional)</summary>
-              <p className="text-[11px] text-slate-400 mt-2 mb-2">Rows are the source category, columns the target. Darker cells have more connections; hover a cell for the exact count and total weight. The diagonal (A→A) is the same figure as "Internal" above.</p>
+              <p className="text-[12.5px] text-neutral-600 mt-2 mb-2">Rows are the source category, columns the target. Darker cells have more connections; hover a cell for the exact count and total weight. The diagonal (A→A) is the same figure as "Internal" above.</p>
               <div className="overflow-x-auto">
                 <table className="text-xs border-collapse">
                   <thead>
                     <tr>
-                      <th className="p-1.5 text-left text-slate-400 font-medium">From \ To</th>
+                      <th className="p-1.5 text-left text-neutral-600 font-medium">From \ To</th>
                       {categoryStats.map((c) => (
-                        <th key={c.category} className="p-1.5 text-left text-slate-400 font-medium whitespace-nowrap">{c.category}</th>
+                        <th key={c.category} className="p-1.5 text-left text-neutral-600 font-medium whitespace-nowrap">{c.category}</th>
                       ))}
                     </tr>
                   </thead>
@@ -5110,11 +5110,16 @@ function InfluenceMetricsTab({ concepts, edges, settings, onHighlight, multiScal
                           {categoryStats.map((colCat) => {
                             const cell = categoryMatrix[rowCat.category]?.[colCat.category] ?? { count: 0, totalWeight: 0 };
                             const alpha = cell.count > 0 ? 0.15 + 0.65 * (cell.count / maxCount) : 0;
+                            // White text on the darker cells, black on the lighter ones: luminance of the
+                            // module colour blended over white at this cell's opacity.
+                            const hex = categoryColor.get(rowCat.category) || "#ffffff";
+                            const shade = [1, 3, 5].map((k) => alpha * parseInt(hex.slice(k, k + 2), 16) + (1 - alpha) * 255);
+                            const lum = (0.2126 * shade[0] + 0.7152 * shade[1] + 0.0722 * shade[2]) / 255;
                             return (
                               <td
                                 key={colCat.category}
                                 className="p-1.5 text-center font-mono whitespace-nowrap border border-slate-100"
-                                style={{ background: cell.count > 0 ? `${categoryColor.get(rowCat.category)}${Math.round(alpha * 255).toString(16).padStart(2, "0")}` : "transparent" }}
+                                style={{ background: cell.count > 0 ? `${categoryColor.get(rowCat.category)}${Math.round(alpha * 255).toString(16).padStart(2, "0")}` : "transparent", color: cell.count > 0 && lum < 0.55 ? "#ffffff" : undefined }}
                                 title={`${rowCat.category} → ${colCat.category}: ${cell.count} connection${cell.count === 1 ? "" : "s"}, total weight ${cell.totalWeight >= 0 ? "+" : ""}${round2(cell.totalWeight)}`}
                               >
                                 {cell.count > 0 ? `${cell.count} / ${cell.totalWeight >= 0 ? "+" : ""}${round2(cell.totalWeight)}` : "0"}
@@ -5141,17 +5146,17 @@ function InfluenceMetricsTab({ concepts, edges, settings, onHighlight, multiScal
 function ModuleChip({ category, label }) {
   const st = categoryStyle(category);
   return (
-    <span className="inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] text-slate-700 whitespace-nowrap" style={{ background: st.bg, borderColor: st.border }}>
+    <span className="inline-flex items-center px-1.5 py-0.5 rounded border text-[11.5px] text-neutral-900 whitespace-nowrap" style={{ background: st.bg, borderColor: st.border }}>
       {label}
     </span>
   );
 }
 
 function RankCell({ cell }) {
-  if (!cell) return <span className="text-slate-300">n/a</span>;
+  if (!cell) return <span className="text-neutral-500">n/a</span>;
   return (
     <span className="font-mono whitespace-nowrap">
-      {cell.value} <span className="text-slate-400">(#{cell.rank}<span className="text-slate-300">/{cell.n}</span>)</span>
+      {cell.value} <span className="text-neutral-600">(#{cell.rank}<span className="text-neutral-500">/{cell.n}</span>)</span>
     </span>
   );
 }
@@ -5178,7 +5183,7 @@ function MultiScaleSection({ report, fresh = true, scopeMetrics, viewInfo, onHig
 
   if (!report) {
     return (
-      <div className="bg-white rounded-lg border border-slate-200 p-4 text-xs text-slate-500 flex items-center gap-2">
+      <div className="bg-white rounded-lg border border-slate-200 p-4 text-xs text-neutral-700 flex items-center gap-2">
         <Layers size={15} className="text-cobalt-700" />Computing multi-scale ranks (full nexus, each module, nexus interface)&hellip;
       </div>
     );
@@ -5187,7 +5192,7 @@ function MultiScaleSection({ report, fresh = true, scopeMetrics, viewInfo, onHig
     ? [...scopeMetrics].filter((m) => m.influence > 0).sort((a, b) => b.influence - a.influence || b.outdegree - a.outdegree).slice(0, 3)
     : null;
   const SortTh = ({ id, children, title }) => (
-    <th className="py-1.5 font-medium pr-3 cursor-pointer select-none hover:text-slate-600" title={title} onClick={() => setSortBy(id)}>
+    <th className="py-1.5 font-medium pr-3 cursor-pointer select-none hover:text-neutral-900" title={title} onClick={() => setSortBy(id)}>
       {children}{sortBy === id ? " ↓" : ""}
     </th>
   );
@@ -5197,9 +5202,9 @@ function MultiScaleSection({ report, fresh = true, scopeMetrics, viewInfo, onHig
       <div>
         <h3 className="font-semibold text-sm flex items-center gap-1.5">
           <Layers size={15} className="text-cobalt-700" />Multi-scale analysis
-          {!fresh && <span className="text-[11px] font-normal text-amber-700">updating for your latest edit&hellip;</span>}
+          {!fresh && <span className="text-[12.5px] font-normal text-amber-700">updating for your latest edit&hellip;</span>}
         </h3>
-        <p className="text-xs text-slate-500 mt-1">
+        <p className="text-xs text-neutral-700 mt-1">
           Every concept scored at three fixed scales, whatever the analysis scope above: the <strong>full nexus</strong>, <strong>its own module on its own</strong>,
           and the <strong>nexus interface</strong> (every module, only relationships between different modules). Each scale is ranked separately, so a concept can
           be #1 inside its module and far down globally; that difference is the point.
@@ -5207,25 +5212,25 @@ function MultiScaleSection({ report, fresh = true, scopeMetrics, viewInfo, onHig
       </div>
 
       <div>
-        <h4 className="text-xs font-semibold text-slate-600 mb-2">Leverage points by scale <span className="font-normal text-slate-400">(highest perturbation influence at each scale)</span></h4>
+        <h4 className="text-xs font-semibold text-neutral-900 mb-2">Leverage points by scale <span className="font-normal text-neutral-600">(highest perturbation influence at each scale)</span></h4>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {[...leverage, ...(scopeTop ? [{ key: "scope", label: `Current scope: ${viewInfo.label}`, n: scopeMetrics.length, top: scopeTop, current: true }] : [])].map((s) => (
             <div key={s.key} className={`rounded-md border p-2.5 text-xs ${s.current ? "border-amber-300 bg-amber-50" : "border-slate-200"}`}>
               <div className="flex items-center gap-1.5 mb-1.5">
-                {s.moduleKey ? <ModuleChip category={moduleCategory.get(s.moduleKey)} label={s.label} /> : <span className="font-semibold text-slate-700">{s.label}</span>}
-                <span className="text-slate-400 ml-auto">{s.n} concepts</span>
+                {s.moduleKey ? <ModuleChip category={moduleCategory.get(s.moduleKey)} label={s.label} /> : <span className="font-semibold text-neutral-900">{s.label}</span>}
+                <span className="text-neutral-600 ml-auto">{s.n} concepts</span>
               </div>
               {s.top.length ? (
                 <ol className="space-y-0.5">
                   {s.top.map((m, i) => (
                     <li key={m.id} className="flex gap-1.5 cursor-pointer hover:bg-slate-50 rounded px-0.5" onClick={() => onHighlight(m.id)}>
-                      <span className="text-slate-400 font-mono w-3">{i + 1}.</span>
+                      <span className="text-neutral-600 font-mono w-3">{i + 1}.</span>
                       <span className={`flex-1 truncate ${i === 0 ? "font-semibold" : ""}`} title={m.name}>{m.name}</span>
                       <span className="font-mono text-blue-700">{m.influence}</span>
                     </li>
                   ))}
                 </ol>
-              ) : <p className="text-slate-400 italic">No concept moves anything else at this scale.</p>}
+              ) : <p className="text-neutral-600 italic">No concept moves anything else at this scale.</p>}
             </div>
           ))}
         </div>
@@ -5233,19 +5238,19 @@ function MultiScaleSection({ report, fresh = true, scopeMetrics, viewInfo, onHig
 
       <div>
         <div className="flex items-center gap-3 flex-wrap mb-2">
-          <h4 className="text-xs font-semibold text-slate-600">Hierarchical ranking</h4>
-          <label className="text-xs text-slate-500 flex items-center gap-1.5">
+          <h4 className="text-xs font-semibold text-neutral-900">Hierarchical ranking</h4>
+          <label className="text-xs text-neutral-700 flex items-center gap-1.5">
             Metric
             <select value={field} onChange={(e) => setField(e.target.value)} className="border border-slate-300 rounded px-1.5 py-0.5 text-xs bg-white">
               {MULTISCALE_METRICS.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
             </select>
           </label>
-          <span className="text-[11px] text-slate-400">{metricDef?.help} Click a column heading to sort by that scale's rank.</span>
+          <span className="text-[12.5px] text-neutral-600">{metricDef?.help} Click a column heading to sort by that scale's rank.</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-xs min-w-[760px]">
             <thead>
-              <tr className="text-left text-slate-400 border-b border-slate-100">
+              <tr className="text-left text-neutral-600 border-b border-slate-100">
                 <th className="py-1.5 font-medium pr-3">Concept</th>
                 <th className="py-1.5 font-medium pr-3">Module</th>
                 <SortTh id="global" title="Value and rank within the full nexus">Global (#rank)</SortTh>
@@ -5265,8 +5270,8 @@ function MultiScaleSection({ report, fresh = true, scopeMetrics, viewInfo, onHig
                     <td className="py-1.5 pr-3"><RankCell cell={r.global} /></td>
                     <td className="py-1.5 pr-3"><RankCell cell={r.module} /></td>
                     <td className="py-1.5 pr-3"><RankCell cell={r.interface} /></td>
-                    {scopeRanks && <td className="py-1.5 pr-3">{sv ? <RankCell cell={{ value: sv[field] ?? 0, rank: scopeRanks[r.id], n: scopeMetrics.length }} /> : <span className="text-slate-300">out of scope</span>}</td>}
-                    <td className="py-1.5 text-slate-600">{r.profile}</td>
+                    {scopeRanks && <td className="py-1.5 pr-3">{sv ? <RankCell cell={{ value: sv[field] ?? 0, rank: scopeRanks[r.id], n: scopeMetrics.length }} /> : <span className="text-neutral-500">out of scope</span>}</td>}
+                    <td className="py-1.5 text-neutral-900">{r.profile}</td>
                   </tr>
                 );
               })}
@@ -5346,15 +5351,15 @@ function FoldableBox({ storageKey, title, icon: Icon = HelpCircle, summary, badg
         aria-expanded={open}
         className="w-full flex items-center gap-2 px-4 py-3 text-left rounded-lg hover:bg-slate-50 transition-colors"
       >
-        {open ? <ChevronDown size={15} className="text-slate-500 shrink-0" /> : <ChevronRight size={15} className="text-slate-500 shrink-0" />}
+        {open ? <ChevronDown size={15} className="text-neutral-700 shrink-0" /> : <ChevronRight size={15} className="text-neutral-700 shrink-0" />}
         <Icon size={15} className="text-cobalt-700 shrink-0" />
-        <span className="text-sm font-semibold text-slate-800">{title}</span>
-        {badge && <span className="text-xs font-normal text-slate-400">{badge}</span>}
-        <span className="ml-auto shrink-0 text-[11px] font-medium text-cobalt-700 border border-cobalt-200 bg-cobalt-50 rounded px-1.5 py-0.5">
+        <span className="text-sm font-semibold text-neutral-900">{title}</span>
+        {badge && <span className="text-xs font-normal text-neutral-600">{badge}</span>}
+        <span className="ml-auto shrink-0 text-[12.5px] font-medium text-cobalt-700 border border-cobalt-200 bg-cobalt-50 rounded px-1.5 py-0.5">
           {open ? "Hide" : "Show"}
         </span>
       </button>
-      {!open && summary && <p className="px-4 pb-3 -mt-1 pl-[3.1rem] text-xs text-slate-500">{summary}</p>}
+      {!open && summary && <p className="px-4 pb-3 -mt-1 pl-[3.1rem] text-xs text-neutral-700">{summary}</p>}
       {open && <div className="px-4 pb-4 pt-1">{children}</div>}
     </div>
   );
@@ -5374,7 +5379,7 @@ function labelAxisWidth(labels, { min = 80, max = 520, font = "10px Inter, syste
 // label is shown, whole, on a single line.
 function SingleLineTick({ x, y, payload }) {
   return (
-    <text x={x} y={y} dy={4} textAnchor="end" fontSize={10} fill="#475569">{payload.value}</text>
+    <text x={x} y={y} dy={4} textAnchor="end" fontSize={10} fill="#262626">{payload.value}</text>
   );
 }
 
@@ -5404,9 +5409,9 @@ function SortHeader({ col, sortKey, sortDir, onSort, className = "" }) {
   const active = col.key === sortKey;
   return (
     <th className={`py-1.5 font-medium pr-3 ${active ? "text-cobalt-800" : ""} ${className}`} aria-sort={active ? (sortDir === "desc" ? "descending" : "ascending") : "none"}>
-      <button onClick={() => onSort(col)} title={`${col.help ? col.help + "\n\n" : ""}Click to sort by ${col.label}.`} className="inline-flex items-center gap-1 hover:text-slate-700 text-left">
+      <button onClick={() => onSort(col)} title={`${col.help ? col.help + "\n\n" : ""}Click to sort by ${col.label}.`} className="inline-flex items-center gap-1 hover:text-black text-left">
         {col.label}
-        <span className={active ? "text-cobalt-700" : "text-slate-300"}>{active ? (sortDir === "desc" ? "↓" : "↑") : "↕"}</span>
+        <span className={active ? "text-cobalt-700" : "text-neutral-500"}>{active ? (sortDir === "desc" ? "↓" : "↑") : "↕"}</span>
       </button>
     </th>
   );
@@ -5424,7 +5429,7 @@ function InfluenceRoutesGuide() {
       title="What is the Influence Routes tab?"
       summary="Traces the chains of cause and effect through which one concept can influence another, finds the concepts those chains depend on, and counts the feedback loops in the system."
     >
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-3 text-xs text-slate-600 leading-relaxed">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-3 text-xs text-neutral-900 leading-relaxed">
           <div className="space-y-2">
             <p>
               <strong>An influence route is a chain of relationships</strong> along which a change in one concept can reach another: if A affects B and B
@@ -5496,9 +5501,9 @@ function ModuleGuide({ concepts, edges, networkView, setNetworkView, viewInfo, d
       summary="Modules are the subsystems of your nexus: groups of concepts that share a category. Open for what they are, how the analysis scope uses them, and how each module is connected to the others."
     >
         <div className="space-y-4">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 text-xs text-slate-600 leading-relaxed">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 text-xs text-neutral-900 leading-relaxed">
             <div className="space-y-1.5">
-              <p className="font-semibold text-slate-700">What a module is</p>
+              <p className="font-semibold text-neutral-900">What a module is</p>
               <p>
                 A module is a group of concepts that share the same <strong>Category</strong>. Modules stand for the subsystems of the nexus you are modelling:
                 sectors such as water, energy and food, environmental domains, or policy arenas. Nothing is predefined; every distinct category you type becomes a
@@ -5510,7 +5515,7 @@ function ModuleGuide({ concepts, edges, networkView, setNetworkView, viewInfo, d
               </p>
             </div>
             <div className="space-y-1.5">
-              <p className="font-semibold text-slate-700">Choosing what to analyse</p>
+              <p className="font-semibold text-neutral-900">Choosing what to analyse</p>
               <p>
                 The <strong>Analysis scope</strong> bar at the top of every tab chooses the modules in play. <strong>Modules</strong> keeps every relationship among
                 the selected modules; <strong>Nexus Interface</strong> keeps only relationships that cross from one module to another, and hides those inside a
@@ -5519,7 +5524,7 @@ function ModuleGuide({ concepts, edges, networkView, setNetworkView, viewInfo, d
               <p>The scope applies everywhere: metrics, simulations, scenarios, influence routes and exports all use only the network in scope.</p>
             </div>
             <div className="space-y-1.5">
-              <p className="font-semibold text-slate-700">Hide or Focus on this canvas</p>
+              <p className="font-semibold text-neutral-900">Hide or Focus on this canvas</p>
               <p>
                 <strong>Hide</strong> removes everything outside the scope from the map. <strong>Focus</strong> keeps it on the map but faded, so you can see a
                 subsystem in the context of the whole. Either way, faded or hidden concepts and relationships are left out of every analysis, and concept
@@ -5535,12 +5540,12 @@ function ModuleGuide({ concepts, edges, networkView, setNetworkView, viewInfo, d
           </div>
 
           {modules.length === 0 ? (
-            <p className="text-xs text-slate-400 italic">No concepts yet.</p>
+            <p className="text-xs text-neutral-600 italic">No concepts yet.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-xs min-w-[720px]">
                 <thead>
-                  <tr className="text-left text-slate-400 border-b border-slate-100">
+                  <tr className="text-left text-neutral-600 border-b border-slate-100">
                     <th className="py-1.5 font-medium pr-3">Module</th>
                     <th className="py-1.5 font-medium pr-3">Concepts</th>
                     <th className="py-1.5 font-medium pr-3" title="Relationships with both concepts in this module">Internal relationships</th>
@@ -5559,20 +5564,20 @@ function ModuleGuide({ concepts, edges, networkView, setNetworkView, viewInfo, d
                         <td className="py-1.5 pr-3">
                           <span className="inline-flex items-center gap-1.5">
                             <span className="w-3 h-3 rounded-sm border inline-block" style={{ background: st.bg, borderColor: st.border }} />
-                            <span className={r.key === UNCATEGORIZED_MODULE ? "italic text-slate-400" : ""}>{r.label}</span>
+                            <span className={r.key === UNCATEGORIZED_MODULE ? "italic text-neutral-600" : ""}>{r.label}</span>
                           </span>
                         </td>
                         <td className="py-1.5 pr-3 font-mono">{r.count}</td>
                         <td className="py-1.5 pr-3 font-mono">{r.internal}</td>
                         <td className="py-1.5 pr-3 font-mono">{r.out}</td>
                         <td className="py-1.5 pr-3 font-mono">{r.in}</td>
-                        <td className="py-1.5 pr-3 text-slate-500">{r.partners.size ? [...r.partners].map((k) => labelOf.get(k)).join(", ") : <span className="text-slate-300">none</span>}</td>
-                        <td className="py-1.5 pr-3">{inScope.has(r.key) ? <span className="text-cobalt-700">yes</span> : <span className="text-slate-400">no</span>}</td>
+                        <td className="py-1.5 pr-3 text-neutral-700">{r.partners.size ? [...r.partners].map((k) => labelOf.get(k)).join(", ") : <span className="text-neutral-500">none</span>}</td>
+                        <td className="py-1.5 pr-3">{inScope.has(r.key) ? <span className="text-cobalt-700">yes</span> : <span className="text-neutral-600">no</span>}</td>
                         <td className="py-1.5 text-right whitespace-nowrap">
                           {setCollapsedModules && (
                             <button
                               onClick={() => setCollapsedModules((prev) => (prev.includes(r.key) ? prev.filter((k) => k !== r.key) : [...prev, r.key]))}
-                              className="text-slate-600 hover:underline mr-3"
+                              className="text-neutral-900 hover:underline mr-3"
                               title={collapsedModules.includes(r.key) ? "Show this module's concepts on the map again" : "Fold this module into a single block on the map"}
                             >
                               {collapsedModules.includes(r.key) ? "Unfold on map" : "Fold on map"}
@@ -5587,7 +5592,7 @@ function ModuleGuide({ concepts, edges, networkView, setNetworkView, viewInfo, d
                   })}
                 </tbody>
               </table>
-              <p className="text-[11px] text-slate-400 mt-2">
+              <p className="text-[12.5px] text-neutral-600 mt-2">
                 Counts cover the whole model, whatever the current scope. Relationships between modules are the nexus interface: they are what Nexus Interface mode keeps
                 and what the Influence Routes tab traces across. The Influence Metrics tab compares every module in more detail.
               </p>
@@ -5628,15 +5633,15 @@ function FeedbackLoopsSection({ concepts, edges, onHighlight }) {
 
   const Tally = ({ t }) => (
     <span className="font-mono">
-      <span className="text-slate-800 font-semibold">{t.count}</span>
-      <span className="text-slate-400"> ({t.reinforcing} R / {t.balancing} B)</span>
+      <span className="text-neutral-900 font-semibold">{t.count}</span>
+      <span className="text-neutral-600"> ({t.reinforcing} R / {t.balancing} B)</span>
     </span>
   );
   const Chip = ({ id }) => {
     const c = conceptById.get(id);
     const st = categoryStyle(c?.category);
     return (
-      <button onClick={() => onHighlight(id)} className="inline-flex px-1.5 py-0.5 rounded border text-[11px] text-slate-800 hover:ring-1 hover:ring-cobalt-400 whitespace-nowrap" style={{ background: st.bg, borderColor: st.border }}>
+      <button onClick={() => onHighlight(id)} className="inline-flex px-1.5 py-0.5 rounded border text-[12.5px] text-neutral-900 hover:ring-1 hover:ring-cobalt-400 whitespace-nowrap" style={{ background: st.bg, borderColor: st.border }}>
         {c?.name}
       </button>
     );
@@ -5648,7 +5653,7 @@ function FeedbackLoopsSection({ concepts, edges, onHighlight }) {
     <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-4">
       <div>
         <h3 className="font-semibold text-sm flex items-center gap-1.5"><RotateCcw size={15} className="text-cobalt-700" />Feedback loops</h3>
-        <p className="text-xs text-slate-500 mt-1">
+        <p className="text-xs text-neutral-700 mt-1">
           A feedback loop is a route that returns to where it started (A &rarr; B &rarr; C &rarr; A), so a change can amplify or dampen itself.
           <strong> Reinforcing (R)</strong> loops amplify change; <strong>balancing (B)</strong> loops counteract it. Counted for the whole system in scope, inside each module, and between modules.
         </p>
@@ -5656,28 +5661,28 @@ function FeedbackLoopsSection({ concepts, edges, onHighlight }) {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
         <div className="rounded-md border border-slate-200 p-3">
-          <div className="text-slate-400 mb-1">Whole system (in scope)</div>
+          <div className="text-neutral-600 mb-1">Whole system (in scope)</div>
           <div className="text-lg"><Tally t={analysis.total} /></div>
-          <div className="text-slate-400 mt-1">{analysis.capped ? "Enumeration capped at 300 loops: this is a lower bound." : "Every simple loop up to 8 relationships long."}</div>
+          <div className="text-neutral-600 mt-1">{analysis.capped ? "Enumeration capped at 300 loops: this is a lower bound." : "Every simple loop up to 8 relationships long."}</div>
         </div>
         <div className="rounded-md border border-slate-200 p-3">
-          <div className="text-slate-400 mb-1">Within modules</div>
+          <div className="text-neutral-600 mb-1">Within modules</div>
           <div className="text-lg"><Tally t={analysis.within} /></div>
-          <div className="text-slate-400 mt-1">{pct(analysis.within.count, analysis.total.count)} of all loops stay inside a single module.</div>
+          <div className="text-neutral-600 mt-1">{pct(analysis.within.count, analysis.total.count)} of all loops stay inside a single module.</div>
         </div>
         <div className="rounded-md border border-slate-200 p-3">
-          <div className="text-slate-400 mb-1">Between modules</div>
+          <div className="text-neutral-600 mb-1">Between modules</div>
           <div className="text-lg"><Tally t={analysis.between} /></div>
-          <div className="text-slate-400 mt-1">{pct(analysis.between.count, analysis.total.count)} of all loops run through two or more modules.</div>
+          <div className="text-neutral-600 mt-1">{pct(analysis.between.count, analysis.total.count)} of all loops run through two or more modules.</div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
         <div>
-          <h4 className="text-xs font-semibold text-slate-600 mb-1.5">Per module</h4>
+          <h4 className="text-xs font-semibold text-neutral-900 mb-1.5">Per module</h4>
           <table className="w-full text-xs">
             <thead>
-              <tr className="text-left text-slate-400 border-b border-slate-100">
+              <tr className="text-left text-neutral-600 border-b border-slate-100">
                 <th className="py-1.5 font-medium pr-3">Module</th>
                 <th className="py-1.5 font-medium pr-3" title="Loops made up entirely of this module's concepts">Loops inside the module</th>
                 <th className="py-1.5 font-medium" title="Loops passing through at least one concept of this module, including loops that also pass through other modules">Loops passing through it</th>
@@ -5695,13 +5700,13 @@ function FeedbackLoopsSection({ concepts, edges, onHighlight }) {
           </table>
         </div>
         <div>
-          <h4 className="text-xs font-semibold text-slate-600 mb-1.5">Between modules, by the modules a loop connects</h4>
+          <h4 className="text-xs font-semibold text-neutral-900 mb-1.5">Between modules, by the modules a loop connects</h4>
           {analysis.combos.length === 0 ? (
-            <p className="text-xs text-slate-400 italic">No loop runs through more than one module in the current scope.</p>
+            <p className="text-xs text-neutral-600 italic">No loop runs through more than one module in the current scope.</p>
           ) : (
             <table className="w-full text-xs">
               <thead>
-                <tr className="text-left text-slate-400 border-b border-slate-100">
+                <tr className="text-left text-neutral-600 border-b border-slate-100">
                   <th className="py-1.5 font-medium pr-3">Modules connected</th>
                   <th className="py-1.5 font-medium">Loops</th>
                 </tr>
@@ -5713,7 +5718,7 @@ function FeedbackLoopsSection({ concepts, edges, onHighlight }) {
                       <span className="inline-flex items-center gap-1 flex-wrap">
                         {c.modules.map((k, i) => (
                           <React.Fragment key={k}>
-                            {i > 0 && <span className="text-slate-400">&harr;</span>}
+                            {i > 0 && <span className="text-neutral-600">&harr;</span>}
                             <ModuleTag k={k} />
                           </React.Fragment>
                         ))}
@@ -5730,29 +5735,29 @@ function FeedbackLoopsSection({ concepts, edges, onHighlight }) {
 
       <div>
         <div className="flex items-center gap-2 flex-wrap mb-2">
-          <h4 className="text-xs font-semibold text-slate-600 mr-1">Loops, strongest first</h4>
+          <h4 className="text-xs font-semibold text-neutral-900 mr-1">Loops, strongest first</h4>
           {[["all", "All"], ["within", "Within a module"], ["between", "Between modules"]].map(([k, label]) => (
             <button key={k} onClick={() => setFilter(k)}
-              className={`px-2 py-0.5 rounded-md border text-xs ${filter === k ? "bg-slate-900 border-slate-900 text-white" : "bg-white border-slate-300 text-slate-600 hover:bg-slate-50"}`}>
+              className={`px-2 py-0.5 rounded-md border text-xs ${filter === k ? "bg-slate-900 border-slate-900 text-white" : "bg-white border-slate-300 text-neutral-900 hover:bg-slate-50"}`}>
               {label}
             </button>
           ))}
-          <label className="text-xs text-slate-500 flex items-center gap-1.5 ml-1">
+          <label className="text-xs text-neutral-700 flex items-center gap-1.5 ml-1">
             involving
             <select value={moduleFilter} onChange={(e) => setModuleFilter(e.target.value)} className="border border-slate-300 rounded px-1.5 py-0.5 bg-white text-xs">
               <option value="">any module</option>
               {modules.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
             </select>
           </label>
-          <span className="text-[11px] text-slate-400 ml-auto">showing {Math.min(showCount, shown.length)} of {shown.length}</span>
+          <span className="text-[12.5px] text-neutral-600 ml-auto">showing {Math.min(showCount, shown.length)} of {shown.length}</span>
         </div>
         {shown.length === 0 ? (
-          <p className="text-xs text-slate-400 italic">No feedback loops match this selection.</p>
+          <p className="text-xs text-neutral-600 italic">No feedback loops match this selection.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs min-w-[640px]">
               <thead>
-                <tr className="text-left text-slate-400 border-b border-slate-100">
+                <tr className="text-left text-neutral-600 border-b border-slate-100">
                   <th className="py-1.5 font-medium pr-2">#</th>
                   <th className="py-1.5 font-medium pr-3">Loop</th>
                   <th className="py-1.5 font-medium pr-3">Modules</th>
@@ -5764,13 +5769,13 @@ function FeedbackLoopsSection({ concepts, edges, onHighlight }) {
               <tbody>
                 {shown.slice(0, showCount).map((l, i) => (
                   <tr key={i} className="border-b border-slate-50 align-top">
-                    <td className="py-1.5 pr-2 text-slate-400 font-mono">{i + 1}</td>
+                    <td className="py-1.5 pr-2 text-neutral-600 font-mono">{i + 1}</td>
                     <td className="py-1.5 pr-3">
                       <div className="flex items-center gap-1 flex-wrap">
                         {[...l.nodes, l.nodes[0]].map((id, j) => (
                           <React.Fragment key={j}>
                             {j > 0 && (
-                              <span className={`font-mono text-[10px] ${l.edges[j - 1].weight >= 0 ? "text-green-700" : "text-orange-700"}`} title={`weight ${l.edges[j - 1].weight}`}>
+                              <span className={`font-mono text-[11.5px] ${l.edges[j - 1].weight >= 0 ? "text-green-700" : "text-orange-700"}`} title={`weight ${l.edges[j - 1].weight}`}>
                                 {l.edges[j - 1].weight >= 0 ? "+" : "−"}&rarr;
                               </span>
                             )}
@@ -5784,7 +5789,7 @@ function FeedbackLoopsSection({ concepts, edges, onHighlight }) {
                     </td>
                     <td className="py-1.5 pr-3 font-mono">{l.length}</td>
                     <td className="py-1.5 pr-3">
-                      <span className={`px-1.5 py-0.5 rounded text-[10px] ${l.type === "reinforcing" ? "bg-rose-50 text-rose-700" : "bg-sky-50 text-sky-700"}`}>
+                      <span className={`px-1.5 py-0.5 rounded text-[11.5px] ${l.type === "reinforcing" ? "bg-rose-50 text-rose-700" : "bg-sky-50 text-sky-700"}`}>
                         {l.type === "reinforcing" ? "Reinforcing" : "Balancing"}
                       </span>
                     </td>
@@ -5845,7 +5850,7 @@ function InfluenceRoutesTab({ concepts, edges, config, setConfig, onHighlight })
     const c = conceptById.get(id);
     const st = categoryStyle(c?.category);
     return (
-      <button onClick={() => onHighlight(id)} className="inline-flex px-1.5 py-0.5 rounded border text-[11px] text-slate-800 hover:ring-1 hover:ring-cobalt-400 whitespace-nowrap" style={{ background: st.bg, borderColor: st.border }} title={`${c?.name} (${moduleLabel.get(moduleOf.get(id))})`}>
+      <button onClick={() => onHighlight(id)} className="inline-flex px-1.5 py-0.5 rounded border text-[12.5px] text-neutral-900 hover:ring-1 hover:ring-cobalt-400 whitespace-nowrap" style={{ background: st.bg, borderColor: st.border }} title={`${c?.name} (${moduleLabel.get(moduleOf.get(id))})`}>
         {c?.name}
       </button>
     );
@@ -5861,12 +5866,12 @@ function InfluenceRoutesTab({ concepts, edges, config, setConfig, onHighlight })
         <div className="flex items-center gap-2 flex-wrap">
           {ROUTE_KINDS.map((k) => (
             <button key={k.key} onClick={() => set({ kind: k.key })} title={k.help}
-              className={`px-2.5 py-1 rounded-md border text-xs ${effective.kind === k.key ? "bg-slate-900 border-slate-900 text-white" : "bg-white border-slate-300 text-slate-600 hover:bg-slate-50"}`}>
+              className={`px-2.5 py-1 rounded-md border text-xs ${effective.kind === k.key ? "bg-slate-900 border-slate-900 text-white" : "bg-white border-slate-300 text-neutral-900 hover:bg-slate-50"}`}>
               {k.label}
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-3 flex-wrap text-xs text-slate-600">
+        <div className="flex items-center gap-3 flex-wrap text-xs text-neutral-900">
           {(effective.kind === "within" || effective.kind === "between") && (
             <label className="flex items-center gap-1.5">{effective.kind === "within" ? "Module" : "Module A"}
               <select value={moduleA} onChange={(e) => set({ moduleA: e.target.value })} className="border border-slate-300 rounded px-1.5 py-0.5 bg-white">
@@ -5913,11 +5918,11 @@ function InfluenceRoutesTab({ concepts, edges, config, setConfig, onHighlight })
             relationships
           </label>
         </div>
-        <p className="text-[11px] text-slate-400">{kindDef?.help}</p>
+        <p className="text-[12.5px] text-neutral-600">{kindDef?.help}</p>
       </div>
 
       {unavailable ? (
-        <div className="rounded-md border border-slate-200 bg-white p-4 text-xs text-slate-500">{unavailable}</div>
+        <div className="rounded-md border border-slate-200 bg-white p-4 text-xs text-neutral-700">{unavailable}</div>
       ) : result && (
         <>
           <MethodPanel
@@ -5938,12 +5943,12 @@ function InfluenceRoutesTab({ concepts, edges, config, setConfig, onHighlight })
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
             <div className="bg-white rounded-lg border border-slate-200 p-4">
               <h3 className="font-semibold text-sm mb-1">Bridge concepts &amp; coupling points</h3>
-              <p className="text-[11px] text-slate-400 mb-2">Share of the selected routes' combined strength that passes through each concept.</p>
-              {result.bridges.length === 0 ? <p className="text-xs text-slate-400 italic">No intermediate concepts: every route found is a direct relationship.</p> : (
+              <p className="text-[12.5px] text-neutral-600 mb-2">Share of the selected routes' combined strength that passes through each concept.</p>
+              {result.bridges.length === 0 ? <p className="text-xs text-neutral-600 italic">No intermediate concepts: every route found is a direct relationship.</p> : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead>
-                      <tr className="text-left text-slate-400 border-b border-slate-100">
+                      <tr className="text-left text-neutral-600 border-b border-slate-100">
                         <th className="py-1.5 font-medium pr-3">Concept</th>
                         <th className="py-1.5 font-medium pr-3">Module</th>
                         <th className="py-1.5 font-medium pr-3">Share of strength</th>
@@ -5956,7 +5961,7 @@ function InfluenceRoutesTab({ concepts, edges, config, setConfig, onHighlight })
                         <tr key={b.id} className="border-b border-slate-50 cursor-pointer hover:bg-slate-50" onClick={() => onHighlight(b.id)}>
                           <td className="py-1.5 pr-3">
                             {b.name}
-                            {b.share >= 0.5 && <span className="ml-1.5 px-1 py-0.5 rounded bg-orange-100 text-orange-800 text-[10px]">bottleneck</span>}
+                            {b.share >= 0.5 && <span className="ml-1.5 px-1 py-0.5 rounded bg-orange-100 text-orange-800 text-[11.5px]">bottleneck</span>}
                           </td>
                           <td className="py-1.5 pr-3"><ModuleChip category={moduleCategory.get(b.moduleKey)} label={moduleLabel.get(b.moduleKey)} /></td>
                           <td className="py-1.5 pr-3">
@@ -5977,11 +5982,11 @@ function InfluenceRoutesTab({ concepts, edges, config, setConfig, onHighlight })
 
             <div className="bg-white rounded-lg border border-slate-200 p-4">
               <h3 className="font-semibold text-sm mb-1">Transmission routes between modules</h3>
-              <p className="text-[11px] text-slate-400 mb-2">Routes grouped by the module they start in and the module they end in.</p>
-              {result.flows.length === 0 ? <p className="text-xs text-slate-400 italic">No routes match this selection.</p> : (
+              <p className="text-[12.5px] text-neutral-600 mb-2">Routes grouped by the module they start in and the module they end in.</p>
+              {result.flows.length === 0 ? <p className="text-xs text-neutral-600 italic">No routes match this selection.</p> : (
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="text-left text-slate-400 border-b border-slate-100">
+                    <tr className="text-left text-neutral-600 border-b border-slate-100">
                       <th className="py-1.5 font-medium pr-3">From &rarr; to</th>
                       <th className="py-1.5 font-medium pr-3">Routes</th>
                       <th className="py-1.5 font-medium pr-3">Combined strength</th>
@@ -5992,7 +5997,7 @@ function InfluenceRoutesTab({ concepts, edges, config, setConfig, onHighlight })
                     {result.flows.map((f) => (
                       <tr key={`${f.from}|${f.to}`} className="border-b border-slate-50">
                         <td className="py-1.5 pr-3 whitespace-nowrap">
-                          <ModuleChip category={moduleCategory.get(f.from)} label={moduleLabel.get(f.from)} /> <span className="text-slate-400">&rarr;</span> <ModuleChip category={moduleCategory.get(f.to)} label={moduleLabel.get(f.to)} />
+                          <ModuleChip category={moduleCategory.get(f.from)} label={moduleLabel.get(f.from)} /> <span className="text-neutral-600">&rarr;</span> <ModuleChip category={moduleCategory.get(f.to)} label={moduleLabel.get(f.to)} />
                         </td>
                         <td className="py-1.5 pr-3 font-mono">{f.count}</td>
                         <td className="py-1.5 pr-3 font-mono">{f.strength}</td>
@@ -6008,16 +6013,16 @@ function InfluenceRoutesTab({ concepts, edges, config, setConfig, onHighlight })
           <div className="bg-white rounded-lg border border-slate-200 p-4">
             <div className="flex items-center gap-3 mb-2">
               <h3 className="font-semibold text-sm">Strongest routes</h3>
-              <span className="text-[11px] text-slate-400">showing {Math.min(showCount, result.paths.length)} of {result.paths.length}{result.truncated ? "+" : ""}</span>
+              <span className="text-[12.5px] text-neutral-600">showing {Math.min(showCount, result.paths.length)} of {result.paths.length}{result.truncated ? "+" : ""}</span>
               <Btn variant="outline" className="ml-auto" onClick={() => downloadCSV(routesToCsvRows(result, nameOf, moduleLabel, moduleOf), "influence-routes.csv")} disabled={!result.paths.length}>
                 <Download size={13} />CSV
               </Btn>
             </div>
-            {result.paths.length === 0 ? <p className="text-xs text-slate-400 italic">No routes match this selection in the current scope.</p> : (
+            {result.paths.length === 0 ? <p className="text-xs text-neutral-600 italic">No routes match this selection in the current scope.</p> : (
               <div className="overflow-x-auto">
                 <table className="w-full text-xs min-w-[640px]">
                   <thead>
-                    <tr className="text-left text-slate-400 border-b border-slate-100">
+                    <tr className="text-left text-neutral-600 border-b border-slate-100">
                       <th className="py-1.5 font-medium pr-2">#</th>
                       <th className="py-1.5 font-medium pr-3">Route</th>
                       <th className="py-1.5 font-medium pr-3" title="Relationships in the route">Length</th>
@@ -6029,13 +6034,13 @@ function InfluenceRoutesTab({ concepts, edges, config, setConfig, onHighlight })
                   <tbody>
                     {result.paths.slice(0, showCount).map((p, i) => (
                       <tr key={i} className="border-b border-slate-50 align-top">
-                        <td className="py-1.5 pr-2 text-slate-400 font-mono">{i + 1}</td>
+                        <td className="py-1.5 pr-2 text-neutral-600 font-mono">{i + 1}</td>
                         <td className="py-1.5 pr-3">
                           <div className="flex items-center gap-1 flex-wrap">
                             {p.nodes.map((id, j) => (
                               <React.Fragment key={id}>
                                 {j > 0 && (
-                                  <span className={`font-mono text-[10px] ${p.edges[j - 1].weight >= 0 ? "text-green-700" : "text-orange-700"}`} title={`weight ${p.edges[j - 1].weight}`}>
+                                  <span className={`font-mono text-[11.5px] ${p.edges[j - 1].weight >= 0 ? "text-green-700" : "text-orange-700"}`} title={`weight ${p.edges[j - 1].weight}`}>
                                     {p.edges[j - 1].weight >= 0 ? "+" : "−"}&rarr;
                                   </span>
                                 )}
@@ -6169,7 +6174,7 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
         title="What is sensitivity analysis?"
         summary="Holds one concept at a series of values across a range, re-runs the model each time, and shows how strongly other concepts respond."
       >
-        <div className="text-xs text-slate-500 space-y-3">
+        <div className="text-xs text-neutral-700 space-y-3">
           <div className="space-y-2">
             <p>Sensitivity analysis evaluates how changes in one concept (the input) affect one or more other concepts (the outputs) elsewhere in the system. It works by holding an input concept at a series of fixed values across a range, from a minimum to a maximum, re-running the simulation at each value, and recording where each output settles. It helps identify <strong>critical leverage points</strong>, <strong>robust variables</strong>, <strong>vulnerable variables</strong>, and <strong>high-impact interventions</strong>.</p>
             <p>A highly <strong>sensitive</strong> concept changes significantly when system inputs are modified. A highly <strong>influential</strong> concept produces large changes in other concepts. Use sensitivity analysis to identify potential policy levers and areas of uncertainty, and to see which relationships in the model matter most to the outcomes you care about.</p>
@@ -6177,7 +6182,7 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
           </div>
 
           <div className="pt-2 border-t border-slate-100">
-            <p className="font-medium text-slate-700 mb-1.5">Steps</p>
+            <p className="font-medium text-neutral-900 mb-1.5">Steps</p>
             <ol className="list-decimal list-inside space-y-1">
               <li>Choose the input concept to sweep (Step 1).</li>
               <li>Choose one or more output concepts to observe as the input changes (Step 2).</li>
@@ -6194,7 +6199,7 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
         <h3 className="font-semibold text-sm mb-3">Run an analysis</h3>
         <div className="grid grid-cols-4 gap-4">
           <div>
-            <label className="text-xs text-slate-500 font-medium">Step 1: Input concept</label>
+            <label className="text-xs text-neutral-700 font-medium">Step 1: Input concept</label>
             <select
               value={sensInput || ""}
               onChange={(e) => { setSensInput(e.target.value); setSensOutputs((os) => os.filter((o) => o !== e.target.value)); }}
@@ -6205,12 +6210,12 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
             </select>
           </div>
           <div className="col-span-2">
-            <label className="text-xs text-slate-500 font-medium">Step 2: Output concept(s)</label>
+            <label className="text-xs text-neutral-700 font-medium">Step 2: Output concept(s)</label>
             <div className="mt-1 flex flex-wrap gap-1 max-h-[70px] overflow-auto border border-slate-200 rounded p-1.5">
               {availableOutputConcepts.map((c) => (
                 <button
                   key={c.id} onClick={() => toggleOutput(c.id)}
-                  className={`text-[10px] px-1.5 py-0.5 rounded border ${sensOutputs.includes(c.id) ? "border-cobalt-700 bg-cobalt-50 text-cobalt-800" : "border-slate-200 text-slate-500 hover:border-slate-400"}`}
+                  className={`text-[11.5px] px-1.5 py-0.5 rounded border ${sensOutputs.includes(c.id) ? "border-cobalt-700 bg-cobalt-50 text-cobalt-800" : "border-slate-200 text-neutral-700 hover:border-slate-400"}`}
                 >
                   {c.name}
                 </button>
@@ -6218,7 +6223,7 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
             </div>
           </div>
           <div>
-            <label className="text-xs text-slate-500 font-medium">Step 4: Increments</label>
+            <label className="text-xs text-neutral-700 font-medium">Step 4: Increments</label>
             <select value={sensSteps} onChange={(e) => setSensSteps(parseInt(e.target.value))} className="w-full mt-1 text-xs border border-slate-200 rounded px-2 py-1.5">
               <option value={10}>10</option>
               <option value={20}>20</option>
@@ -6228,20 +6233,20 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
         </div>
         <div className="grid grid-cols-4 gap-4 mt-3">
           <div>
-            <label className="text-xs text-slate-500 font-medium">Step 3: Range min</label>
+            <label className="text-xs text-neutral-700 font-medium">Step 3: Range min</label>
             <input type="number" step={0.1} min={-1} max={1} value={sensMin} onChange={(e) => setSensMin(clamp(parseFloat(e.target.value) || 0))} className="w-full mt-1 text-xs border border-slate-200 rounded px-2 py-1.5" />
           </div>
           <div>
-            <label className="text-xs text-slate-500 font-medium">Range max</label>
+            <label className="text-xs text-neutral-700 font-medium">Range max</label>
             <input type="number" step={0.1} min={-1} max={1} value={sensMax} onChange={(e) => setSensMax(clamp(parseFloat(e.target.value) || 0))} className="w-full mt-1 text-xs border border-slate-200 rounded px-2 py-1.5" />
           </div>
           <div className="col-span-2">
-            <label className="text-xs text-slate-500 font-medium">Compare across scenarios (optional)</label>
+            <label className="text-xs text-neutral-700 font-medium">Compare across scenarios (optional)</label>
             <div className="mt-1 flex flex-wrap gap-1 max-h-[38px] overflow-auto">
               {scenarios.map((s) => (
                 <button
                   key={s.id} onClick={() => toggleCompareScenario(s.id)}
-                  className={`text-[10px] px-1.5 py-0.5 rounded border ${sensCompareIds.includes(s.id) ? "border-purple-600 bg-purple-50 text-purple-800" : "border-slate-200 text-slate-500 hover:border-slate-400"}`}
+                  className={`text-[11.5px] px-1.5 py-0.5 rounded border ${sensCompareIds.includes(s.id) ? "border-purple-600 bg-purple-50 text-purple-800" : "border-slate-200 text-neutral-700 hover:border-slate-400"}`}
                 >
                   {s.name}
                 </button>
@@ -6265,10 +6270,10 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
               <ResponsiveContainer>
                 <LineChart data={result.curveData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="input" tick={{ fontSize: 10 }} label={{ value: concepts.find((c) => c.id === sensInput)?.name, position: "insideBottom", offset: -5, fontSize: 11 }} />
-                  <YAxis domain={[(dMin) => Math.min(-0.1, dMin - 0.05), (dMax) => Math.max(0.1, dMax + 0.05)]} tick={{ fontSize: 10 }} />
+                  <XAxis dataKey="input" tick={{ fontSize: 12 }} label={{ value: concepts.find((c) => c.id === sensInput)?.name, position: "insideBottom", offset: -5, fontSize: 11 }} />
+                  <YAxis domain={[(dMin) => Math.min(-0.1, dMin - 0.05), (dMax) => Math.max(0.1, dMax + 0.05)]} tick={{ fontSize: 12 }} />
                   <RTooltip />
-                  <Legend wrapperStyle={{ fontSize: 10 }} />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
                   <ReferenceLine y={0} stroke="#cbd5e1" />
                   <ReferenceLine x={0} stroke="#cbd5e1" />
                   {lineKeys.map((lk, i) => (
@@ -6307,12 +6312,12 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
           <div className="grid grid-cols-1 gap-5">
             <div className="bg-white rounded-lg border border-slate-200 p-4" data-chart="sensitivity-scores">
               <h4 className="text-sm font-semibold mb-1">Tornado chart: impact on {concepts.find((c) => c.id === result.primaryOutput)?.name}</h4>
-              <p className="text-[11px] text-slate-400 mb-2">Every other concept swept from {sensMin} to {sensMax} one at a time; ranked by how much it moves the primary output.</p>
+              <p className="text-[12.5px] text-neutral-600 mb-2">Every other concept swept from {sensMin} to {sensMax} one at a time; ranked by how much it moves the primary output.</p>
               <div className="w-full" style={{ height: Math.max(200, result.tornado.length * 24 + 40) }}>
                 <ResponsiveContainer>
                   <BarChart data={result.tornado} layout="vertical" margin={{ left: 8, right: 16 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <XAxis type="number" tick={{ fontSize: 10 }} />
+                    <XAxis type="number" tick={{ fontSize: 12 }} />
                     <YAxis type="category" dataKey="name" width={labelAxisWidth(result.tornado.map((d) => d.name))} interval={0} tick={(p) => <SingleLineTick {...p} />} />
                     <RTooltip />
                     <ReferenceLine x={0} stroke="#94a3b8" />
@@ -6332,8 +6337,8 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
               <div className="overflow-x-auto">
                 <table className="w-full text-xs border-collapse">
                   <thead>
-                    <tr className="text-left text-slate-400 border-b border-slate-200">
-                      <th className="py-1.5 pr-3 font-medium" title="Average slope of the output across the full swept input range: (output at max input − output at min input) / (max input − min input).">Output <HelpCircle size={10} className="inline text-slate-300" /></th>
+                    <tr className="text-left text-neutral-600 border-b border-slate-200">
+                      <th className="py-1.5 pr-3 font-medium" title="Average slope of the output across the full swept input range: (output at max input − output at min input) / (max input − min input).">Output <HelpCircle size={10} className="inline text-neutral-500" /></th>
                       <th className="py-1.5 pr-3 font-medium text-right">Min</th>
                       <th className="py-1.5 pr-3 font-medium text-right">Max</th>
                       <th className="py-1.5 pr-0 font-medium text-right">Elasticity</th>
@@ -6359,7 +6364,7 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
               <div className="overflow-x-auto overflow-y-auto max-h-72 border border-slate-100 rounded">
                 <table className="w-full text-xs border-collapse">
                   <thead className="sticky top-0 bg-white">
-                    <tr className="text-left text-slate-400 border-b border-slate-200">
+                    <tr className="text-left text-neutral-600 border-b border-slate-200">
                       <th className="py-1.5 pl-2 pr-2 font-medium w-8 text-right">#</th>
                       <th className="py-1.5 pr-3 font-medium">Concept</th>
                       <th className="py-1.5 pr-3 font-medium text-right" title="Difference between the high-end and low-end runs for this concept, one at a time (see the tornado chart above).">Impact</th>
@@ -6368,7 +6373,7 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
                   <tbody>
                     {result.tornado.map((t, i) => (
                       <tr key={i} className="border-b border-slate-50 hover:bg-slate-50">
-                        <td className="py-1.5 pl-2 pr-2 text-right text-slate-400 font-mono tabular-nums">{i + 1}</td>
+                        <td className="py-1.5 pl-2 pr-2 text-right text-neutral-600 font-mono tabular-nums">{i + 1}</td>
                         <td className="py-1.5 pr-3">{t.name}</td>
                         <td className={`py-1.5 pr-3 font-mono text-right tabular-nums font-medium ${t.impact >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{t.impact >= 0 ? "+" : ""}{t.impact}</td>
                       </tr>
@@ -6384,7 +6389,7 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
             <div className="overflow-auto max-h-64">
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-white">
-                  <tr className="text-left text-slate-400 border-b border-slate-100">
+                  <tr className="text-left text-neutral-600 border-b border-slate-100">
                     <th className="py-1 font-medium pr-3">{concepts.find((c) => c.id === sensInput)?.name}</th>
                     {lineKeys.map((lk) => <th key={lk.key} className="py-1 font-medium pr-3">{lk.label}</th>)}
                   </tr>
@@ -6508,14 +6513,14 @@ function MonteCarloTab({ concepts, edges, scenarios, activeScenarioId, settings,
         title="What is Monte Carlo simulation?"
         summary="Re-runs the model hundreds of times with every weight nudged by random noise, to show how much the result actually depends on the uncertainty behind an expert-elicited weight."
       >
-        <div className="text-xs text-slate-500 space-y-3">
+        <div className="text-xs text-neutral-700 space-y-3">
           <div className="space-y-2">
             <p>Every relationship weight in this model is a judgment, elicited from a stakeholder, drawn from literature, or estimated, not a measured physical constant. <strong>Monte Carlo simulation</strong> asks how much that uncertainty matters: it re-runs the model many times, each time nudging every weight by a small random amount, and records where every concept settles each time. The spread of results across all those runs is the model's own answer to "how much does the exact number picked for each weight actually matter?"</p>
             <p>A concept whose result barely moves across runs is <strong>robust</strong> to weight uncertainty: the nominal (as-recorded) estimate can be trusted even if any one weight is a bit off. A concept whose result swings widely is <strong>sensitive</strong> to weight uncertainty: reporting the nominal estimate alone is misleading without also giving the range it could plausibly fall in.</p>
             <p>This asks a different question from the Sensitivity Analysis tab, which moves one concept or one weight deliberately, one at a time, to find leverage points. Monte Carlo moves every weight at once, at random, the way real uncertainty in an elicited weight actually behaves. It's a check on how much to trust a result, not a search for where to intervene.</p>
           </div>
           <div className="pt-2 border-t border-slate-100">
-            <p className="font-medium text-slate-700 mb-1.5">Steps</p>
+            <p className="font-medium text-neutral-900 mb-1.5">Steps</p>
             <ol className="list-decimal list-inside space-y-1">
               <li>Choose which scenario to test (Baseline by default).</li>
               <li>Set how many simulations to run and how much uncertainty (±) to assume in each weight.</li>
@@ -6531,13 +6536,13 @@ function MonteCarloTab({ concepts, edges, scenarios, activeScenarioId, settings,
         <h3 className="font-semibold text-sm mb-3">Run a simulation</h3>
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
           <div>
-            <label className="text-xs text-slate-500 font-medium">Scenario to test</label>
+            <label className="text-xs text-neutral-700 font-medium">Scenario to test</label>
             <select value={scenarioId} onChange={(e) => setScenarioId(e.target.value)} className="w-full mt-1 text-xs border border-slate-200 rounded px-2 py-1.5">
               {scenarios.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
           <div>
-            <label className="text-xs text-slate-500 font-medium">Number of runs</label>
+            <label className="text-xs text-neutral-700 font-medium">Number of runs</label>
             <select value={runs} onChange={(e) => setRuns(parseInt(e.target.value))} className="w-full mt-1 text-xs border border-slate-200 rounded px-2 py-1.5">
               <option value={100}>100</option>
               <option value={250}>250</option>
@@ -6547,18 +6552,18 @@ function MonteCarloTab({ concepts, edges, scenarios, activeScenarioId, settings,
             </select>
           </div>
           <div>
-            <label className="text-xs text-slate-500 font-medium" title="Each unlocked relationship weight is nudged by a random amount, uniformly drawn from -this to +this, on the same -1..1 scale as the weight itself.">Weight uncertainty (±)</label>
+            <label className="text-xs text-neutral-700 font-medium" title="Each unlocked relationship weight is nudged by a random amount, uniformly drawn from -this to +this, on the same -1..1 scale as the weight itself.">Weight uncertainty (±)</label>
             <input type="number" min={0} max={1} step={0.01} value={weightSpread} onChange={(e) => setWeightSpread(clamp(parseFloat(e.target.value) || 0, 0, 1))} className="w-full mt-1 text-xs border border-slate-200 rounded px-2 py-1.5" />
           </div>
           <div>
-            <label className="text-xs text-slate-500 font-medium" title="Optional: also nudge each concept's starting value by a random amount within this range. Leave at 0 to vary only the weights.">Starting-value uncertainty (±)</label>
+            <label className="text-xs text-neutral-700 font-medium" title="Optional: also nudge each concept's starting value by a random amount within this range. Leave at 0 to vary only the weights.">Starting-value uncertainty (±)</label>
             <input type="number" min={0} max={1} step={0.01} value={initialSpread} onChange={(e) => setInitialSpread(clamp(parseFloat(e.target.value) || 0, 0, 1))} className="w-full mt-1 text-xs border border-slate-200 rounded px-2 py-1.5" />
           </div>
           <div>
-            <label className="text-xs text-slate-500 font-medium" title="Runs with the same seed reproduce the exact same sequence of random weights, so a result can be exactly repeated.">Random seed</label>
+            <label className="text-xs text-neutral-700 font-medium" title="Runs with the same seed reproduce the exact same sequence of random weights, so a result can be exactly repeated.">Random seed</label>
             <div className="flex items-center gap-1 mt-1">
               <input type="number" value={seed} onChange={(e) => setSeed(parseInt(e.target.value) || 0)} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5" />
-              <button onClick={() => setSeed(Math.floor(Math.random() * 1e6))} title="Draw a new random seed" className="shrink-0 p-1.5 border border-slate-200 rounded text-slate-500 hover:bg-slate-50"><Dices size={13} /></button>
+              <button onClick={() => setSeed(Math.floor(Math.random() * 1e6))} title="Draw a new random seed" className="shrink-0 p-1.5 border border-slate-200 rounded text-neutral-700 hover:bg-slate-50"><Dices size={13} /></button>
             </div>
           </div>
         </div>
@@ -6571,7 +6576,7 @@ function MonteCarloTab({ concepts, edges, scenarios, activeScenarioId, settings,
               <div className="flex-1 max-w-xs h-1.5 bg-slate-100 rounded-full overflow-hidden">
                 <div className="h-full bg-cobalt-600 transition-[width]" style={{ width: `${progress ? Math.round((progress.done / progress.total) * 100) : 0}%` }} />
               </div>
-              <span className="text-xs text-slate-500">{progress ? `${progress.done} / ${progress.total}` : "Starting…"}</span>
+              <span className="text-xs text-neutral-700">{progress ? `${progress.done} / ${progress.total}` : "Starting…"}</span>
             </>
           )}
         </div>
@@ -6584,11 +6589,11 @@ function MonteCarloTab({ concepts, edges, scenarios, activeScenarioId, settings,
             <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
               <h3 className="font-semibold text-sm">
                 Results: {result.scenarioName}
-                <span className="ml-2 font-normal text-slate-400 text-xs">
+                <span className="ml-2 font-normal text-neutral-600 text-xs">
                   {result.runs} runs · {result.convergedCount} converged ({Math.round(result.convergenceRate * 100)}%) · {result.seconds?.toFixed(1)}s
                 </span>
                 {result.config && (
-                  <span className="block font-normal text-slate-400 text-xs mt-0.5">
+                  <span className="block font-normal text-neutral-600 text-xs mt-0.5">
                     Weights ±{result.config.weightSpread}{result.config.initialSpread > 0 ? `, starting values ±${result.config.initialSpread}` : ""} · seed {result.config.seed} · transfer function {transferFunctionLabel(result.settingsUsed || settings)}, {(result.settingsUsed || settings).mode || "synchronous"}
                   </span>
                 )}
@@ -6596,7 +6601,7 @@ function MonteCarloTab({ concepts, edges, scenarios, activeScenarioId, settings,
               <Btn variant="outline" onClick={exportCsv}><Download size={13} />Export CSV</Btn>
             </div>
             {result.convergedCount < result.runs && (
-              <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 mb-3">
+              <p className="text-[12.5px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 mb-3">
                 {result.runs - result.convergedCount} of {result.runs} runs did not settle to a stable equilibrium within the iteration limit. Their final values are still included below, but treat them with extra caution.
                 {result.divergedCount > 0 && ` ${result.divergedCount} of these ran away (passed ±${LINEAR_DIVERGENCE_LIMIT} with no squashing function) and were stopped there, so their values are the stopping point rather than a real end state, and the mean and spread are not meaningful for those concepts.`}
               </p>
@@ -6604,7 +6609,7 @@ function MonteCarloTab({ concepts, edges, scenarios, activeScenarioId, settings,
             <div className="overflow-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="border-b border-slate-200 text-left text-slate-500">
+                  <tr className="border-b border-slate-200 text-left text-neutral-700">
                     {columns.map((c) => <SortHeader key={c.key} col={c} sortKey={sortKey} sortDir={sortDir} onSort={onSort} />)}
                   </tr>
                 </thead>
@@ -6616,10 +6621,10 @@ function MonteCarloTab({ concepts, edges, scenarios, activeScenarioId, settings,
                       <td className="py-1 pr-3 font-mono tabular-nums">{p.mean}</td>
                       <td className="py-1 pr-3 font-mono tabular-nums">{p.median}</td>
                       <td className="py-1 pr-3 font-mono tabular-nums">{p.stdDev}</td>
-                      <td className="py-1 pr-3 font-mono tabular-nums text-slate-500">{p.p5}</td>
-                      <td className="py-1 pr-3 font-mono tabular-nums text-slate-500">{p.p95}</td>
-                      <td className="py-1 pr-3 font-mono tabular-nums text-slate-400">{p.min}</td>
-                      <td className="py-1 pr-3 font-mono tabular-nums text-slate-400">{p.max}</td>
+                      <td className="py-1 pr-3 font-mono tabular-nums text-neutral-700">{p.p5}</td>
+                      <td className="py-1 pr-3 font-mono tabular-nums text-neutral-700">{p.p95}</td>
+                      <td className="py-1 pr-3 font-mono tabular-nums text-neutral-600">{p.min}</td>
+                      <td className="py-1 pr-3 font-mono tabular-nums text-neutral-600">{p.max}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -6629,17 +6634,17 @@ function MonteCarloTab({ concepts, edges, scenarios, activeScenarioId, settings,
 
           <div className="bg-white rounded-lg border border-slate-200 p-4">
             <h3 className="font-semibold text-sm mb-2">Distributions</h3>
-            <p className="text-xs text-slate-500 mb-3">Tick a concept to see how its {result.runs} sampled outcomes are actually distributed, not just summarized.</p>
+            <p className="text-xs text-neutral-700 mb-3">Tick a concept to see how its {result.runs} sampled outcomes are actually distributed, not just summarized.</p>
             <div className="flex flex-wrap gap-1 mb-4">
               {result.perConcept.map((p) => (
                 <button
                   key={p.id} onClick={() => toggleChart(p.id)}
-                  className={`text-[10px] px-1.5 py-0.5 rounded border ${chartIds.includes(p.id) ? "border-cobalt-700 bg-cobalt-50 text-cobalt-800" : "border-slate-200 text-slate-500 hover:border-slate-400"}`}
+                  className={`text-[11.5px] px-1.5 py-0.5 rounded border ${chartIds.includes(p.id) ? "border-cobalt-700 bg-cobalt-50 text-cobalt-800" : "border-slate-200 text-neutral-700 hover:border-slate-400"}`}
                 >{p.name}</button>
               ))}
             </div>
             {chartIds.length === 0 ? (
-              <p className="text-xs text-slate-400 italic">No concepts selected.</p>
+              <p className="text-xs text-neutral-600 italic">No concepts selected.</p>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {chartIds.map((id) => {
@@ -6679,13 +6684,13 @@ function MonteCarloHistogram({ concept, bins = 16 }) {
   }, [values, bins]);
   return (
     <div>
-      <p className="text-xs font-medium text-slate-700 mb-1">{name} <span className="font-normal text-slate-400">(nominal {nominal})</span></p>
+      <p className="text-xs font-medium text-neutral-900 mb-1">{name} <span className="font-normal text-neutral-600">(nominal {nominal})</span></p>
       <ResponsiveContainer width="100%" height={140}>
         <BarChart data={data} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
           <XAxis dataKey="x" tick={{ fontSize: 9 }} />
           <YAxis tick={{ fontSize: 9 }} allowDecimals={false} />
-          <RTooltip contentStyle={{ fontSize: 11 }} formatter={(v) => [v, "runs"]} labelFormatter={(v) => `≈ ${v}`} />
+          <RTooltip contentStyle={{ fontSize: 12 }} formatter={(v) => [v, "runs"]} labelFormatter={(v) => `≈ ${v}`} />
           <Bar dataKey="count" fill="#3b6ef0" radius={[2, 2, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
@@ -6925,7 +6930,7 @@ function BaselineEquilibriumTab({
         title="Purpose of this tab"
         summary="See how the model behaves on its own, with no scenario applied, before testing interventions. This is the reference every scenario is compared against."
       >
-        <div className="text-xs text-slate-600 space-y-2 leading-relaxed">
+        <div className="text-xs text-neutral-900 space-y-2 leading-relaxed">
         <p>See how the model behaves on its own, with no scenario applied, before testing interventions. This is the reference every scenario on the Scenarios & Simulation tab gets compared against.</p>
         <p>The run starts from A(0), the initial activation vector defined on the Model editor / Network tab (0 for any concept you haven't set), and follows the model's current update rule, A(t+1) = {effectiveSquash === "sigmoid" ? "sigmoid" : "tanh"}(A(t) + W x A(t)) applied element-wise. It stops once the largest change across all concepts drops below the convergence threshold or the iteration cap is reached (currently {settings.maxIterations} iterations, threshold {settings.convergenceThreshold}, both editable in Scenarios &amp; Simulation to Advanced options).</p>
         <p><strong>Steepness (&lambda;) is doing more work here than the choice of curve.</strong> Both options are bipolar logistic curves through the origin, and they are the same curve at different gains: this app's sigmoid, 2/(1+e<sup>-&lambda;x</sup>) &minus; 1, is exactly tanh(&lambda;x/2), so selecting it is equivalent to running tanh at <em>half</em> the steepness. &lambda; is the slope at 0, which is the loop gain of the whole system: when it is too low for the given weight matrix, the all-zero state is attracting and every run decays back to 0 regardless of how the model is wired, and when it is high enough activation sustains itself and the run settles away from 0. So if a run collapses to 0 under sigmoid but not under tanh at the same &lambda;, that is the factor-of-two gain difference, not a difference in the shape of the function: raising &lambda; to about double reproduces the tanh result exactly. Sweep &lambda; before concluding that a model has no non-trivial equilibrium.</p>
@@ -6940,7 +6945,7 @@ function BaselineEquilibriumTab({
       )}
 
       {!result && allInitialZero && !sharedHasOverrides && (
-        <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+        <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-neutral-900">
           <strong>Every concept is currently at 0.</strong> That's a valid, deliberate setup for checking the model's structure in isolation, and it has one unavoidable mathematical consequence worth knowing before you run it: with tanh(0) = sigmoid(0) = 0 and no concept locked or forced, activation cannot appear from nothing, so the run below will converge back to exactly 0 in a single step, for either squash function. That's not a bug; it's the same reason a system sitting still at rest doesn't spontaneously start moving. To see the causal structure actually produce something, either give one or more concepts a real starting value in the initial state vector below (or on the <button onClick={() => setTab("editor")} className="underline font-medium">Model editor tab</button>) reflecting an observed/elicited current condition, or hold a concept active for a full run via a driver on the <button onClick={() => setTab("scenarios")} className="underline font-medium">Scenarios &amp; Simulation tab</button>.
         </div>
       )}
@@ -6951,24 +6956,24 @@ function BaselineEquilibriumTab({
           <div className="flex items-center border border-slate-300 rounded-md overflow-hidden text-xs" role="group" aria-label="Initial state source">
             <button
               onClick={() => setInitState((st) => ({ ...st, mode: "model" }))}
-              className={`px-2.5 py-1 ${!customInit ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+              className={`px-2.5 py-1 ${!customInit ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}
               title="Start from each concept's initial value as set on the Model editor tab or in the Inspector"
             >Model's initial values</button>
             <button
               onClick={switchToCustom}
-              className={`px-2.5 py-1 border-l border-slate-300 ${customInit ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+              className={`px-2.5 py-1 border-l border-slate-300 ${customInit ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}
               title="Set a starting value for each concept here, for this tab's run only"
             >Custom for this run</button>
           </div>
         </div>
-        <p className="text-xs text-slate-500 mb-3">
+        <p className="text-xs text-neutral-700 mb-3">
           {customInit
             ? "These starting values are used by this tab only; Scenarios & Simulation and the other tabs keep using the model's initial values. Running the baseline from several different starting vectors is the standard check of whether the model has one equilibrium (the same end state from every start) or several (the end state depends on where it starts)."
             : "The run starts from each concept's initial value as set on the Model editor tab or in the Inspector. Switch to \"Custom for this run\" to try other starting values here without changing the model."}
         </p>
         {customInit && (
           <div className="flex items-center gap-2 flex-wrap mb-3 text-xs">
-            <span className="text-slate-500">Set all:</span>
+            <span className="text-neutral-700">Set all:</span>
             {[
               ["Model values", (c) => c.initialValue ?? 0],
               ["0", () => 0],
@@ -6977,7 +6982,7 @@ function BaselineEquilibriumTab({
               ["+1", () => 1],
               ["Random", () => Math.random() * 2 - 1],
             ].map(([label, fn]) => (
-              <button key={label} onClick={() => setAllCustom(fn)} className="px-2 py-0.5 rounded border border-slate-300 bg-white text-slate-600 hover:bg-slate-50" title={label === "Random" ? "A random value between \u22121 and +1 for every concept" : undefined}>
+              <button key={label} onClick={() => setAllCustom(fn)} className="px-2 py-0.5 rounded border border-slate-300 bg-white text-neutral-900 hover:bg-slate-50" title={label === "Random" ? "A random value between \u22121 and +1 for every concept" : undefined}>
                 {label}
               </button>
             ))}
@@ -6991,7 +6996,7 @@ function BaselineEquilibriumTab({
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
-              <tr className="text-left text-slate-400 border-b border-slate-100">
+              <tr className="text-left text-neutral-600 border-b border-slate-100">
                 <th className="py-1 font-medium pr-3">Concept</th>
                 <th className="py-1 font-medium pr-3" title="The concept's initial value on the Model editor tab">Model's initial value</th>
                 <th className="py-1 font-medium">Used for this run</th>
@@ -7001,7 +7006,7 @@ function BaselineEquilibriumTab({
               {concepts.map((c) => (
                 <tr key={c.id} className="border-b border-slate-50">
                   <td className="py-1 pr-3">{c.name}</td>
-                  <td className="py-1 pr-3 font-mono text-slate-400">{round2(c.initialValue ?? 0)}</td>
+                  <td className="py-1 pr-3 font-mono text-neutral-600">{round2(c.initialValue ?? 0)}</td>
                   <td className="py-1">
                     {customInit ? (
                       <div className="flex items-center gap-2">
@@ -7015,7 +7020,7 @@ function BaselineEquilibriumTab({
                           onChange={(e) => setCustomValue(c.id, parseFloat(e.target.value) || 0)}
                           className="w-16 text-xs font-mono text-right border border-slate-200 rounded px-1 py-0.5"
                         />
-                        {Math.abs(initVector[c.id] - (c.initialValue ?? 0)) > 1e-9 && <span className="text-[10px] text-amber-700">changed</span>}
+                        {Math.abs(initVector[c.id] - (c.initialValue ?? 0)) > 1e-9 && <span className="text-[11.5px] text-amber-700">changed</span>}
                       </div>
                     ) : (
                       <span className="font-mono">{round2(initVector[c.id])}</span>
@@ -7023,7 +7028,7 @@ function BaselineEquilibriumTab({
                   </td>
                 </tr>
               ))}
-              {concepts.length === 0 && <tr><td colSpan={3} className="py-2 text-slate-400 italic">No concepts yet.</td></tr>}
+              {concepts.length === 0 && <tr><td colSpan={3} className="py-2 text-neutral-600 italic">No concepts yet.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -7033,12 +7038,12 @@ function BaselineEquilibriumTab({
         <h3 className="font-semibold text-sm">Run baseline equilibrium</h3>
         <div className="flex items-center gap-3">
           <div className="flex items-center border border-slate-300 rounded-md overflow-hidden text-xs" title="Overrides the shared squash function for this tab only; Scenarios & Simulation, Sensitivity Analysis, and Transition Point Analysis keep using whatever's set in Scenarios & Simulation's Advanced options.">
-            <button onClick={() => setSquashOverride("tanh")} className={`px-2.5 py-1.5 ${effectiveSquash === "tanh" ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}>Hyperbolic tangent</button>
-            <button onClick={() => setSquashOverride("sigmoid")} className={`px-2.5 py-1.5 border-l border-slate-300 ${effectiveSquash === "sigmoid" ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}>Sigmoid</button>
+            <button onClick={() => setSquashOverride("tanh")} className={`px-2.5 py-1.5 ${effectiveSquash === "tanh" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}>Hyperbolic tangent</button>
+            <button onClick={() => setSquashOverride("sigmoid")} className={`px-2.5 py-1.5 border-l border-slate-300 ${effectiveSquash === "sigmoid" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}>Sigmoid</button>
             <button
               onClick={() => setSquashOverride("linear")}
               title="No squashing function: the model runs on its raw linear dynamics, A(t+1) = A(t) + W·A(t), with nothing keeping activation inside -1 to +1. A model whose feedback amplifies itself will run away, and the run is stopped and marked as diverged when it does."
-              className={`px-2.5 py-1.5 border-l border-slate-300 ${effectiveSquash === "linear" ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+              className={`px-2.5 py-1.5 border-l border-slate-300 ${effectiveSquash === "linear" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}
             >No squashing (linear)</button>
           </div>
           {effectiveSquash !== "linear" && (
@@ -7046,7 +7051,7 @@ function BaselineEquilibriumTab({
             className="flex items-center gap-2"
             title="Steepness (lambda) of the squash function for this tab only. It is the slope of the curve at 0, so it sets the loop gain of the whole model: too low and every run decays back to 0 whatever the weights say, high enough and activation sustains itself and the run settles elsewhere."
           >
-            <label className="text-xs text-slate-500 whitespace-nowrap">Steepness &lambda;</label>
+            <label className="text-xs text-neutral-700 whitespace-nowrap">Steepness &lambda;</label>
             <input
               type="range" min={0.1} max={5} step={0.1} value={effectiveLambda}
               onChange={(e) => setLambdaOverride(parseFloat(e.target.value))}
@@ -7060,7 +7065,7 @@ function BaselineEquilibriumTab({
             {lambdaOverride !== null && (
               <button
                 onClick={() => setLambdaOverride(null)}
-                className="text-[11px] text-slate-400 underline hover:text-slate-600 whitespace-nowrap"
+                className="text-[12.5px] text-neutral-600 underline hover:text-neutral-900 whitespace-nowrap"
                 title={`Go back to the shared setting (${settings.lambda ?? 1}) from Scenarios & Simulation's Advanced options`}
               >
                 reset
@@ -7071,14 +7076,14 @@ function BaselineEquilibriumTab({
           <Btn variant="accent" onClick={run}><Play size={14} />Run</Btn>
         </div>
         {effectiveSquash === "linear" && (
-          <p className="basis-full text-[11px] text-slate-500 bg-slate-50 border border-slate-100 rounded px-2.5 py-1.5">
+          <p className="basis-full text-[12.5px] text-neutral-700 bg-slate-50 border border-slate-100 rounded px-2.5 py-1.5">
             No squashing function: this run shows the raw linear dynamics of the weights, <span className="font-mono">A(t+1) = {settings.updateRule === "absolute" ? "W·A(t)" : "A(t) + W·A(t)"}</span>, with nothing holding activation inside -1 to +1 (the chart axis rescales to fit). A model whose feedback amplifies itself will grow without limit; the run is then stopped once a concept passes &plusmn;{LINEAR_DIVERGENCE_LIMIT} and marked as diverged. Steepness (&lambda;) does not apply.
           </p>
         )}
       </div>
 
       {!result ? (
-        <div className="bg-white rounded-lg border border-slate-200 p-8 text-center text-sm text-slate-400 italic">
+        <div className="bg-white rounded-lg border border-slate-200 p-8 text-center text-sm text-neutral-600 italic">
           Click "Run" above to compute the baseline equilibrium.
         </div>
       ) : (
@@ -7104,34 +7109,34 @@ function BaselineEquilibriumTab({
             <h4 className="text-sm font-semibold mb-3">Equilibrium diagnostics</h4>
             <div className="grid grid-cols-4 gap-4">
               <div>
-                <div className="text-xs text-slate-400 mb-1">Initial state type</div>
+                <div className="text-xs text-neutral-600 mb-1">Initial state type</div>
                 <div className="text-sm font-mono">{initialStateType}</div>
               </div>
               <div>
-                <div className="text-xs text-slate-400 mb-1">Converged</div>
+                <div className="text-xs text-neutral-600 mb-1">Converged</div>
                 <div className={`text-sm font-mono ${result.converged ? "text-cobalt-700" : "text-amber-700"}`}>{result.converged ? "Yes" : "No"}</div>
               </div>
               <div>
-                <div className="text-xs text-slate-400 mb-1">Iterations to convergence</div>
+                <div className="text-xs text-neutral-600 mb-1">Iterations to convergence</div>
                 <div className="text-sm font-mono">{result.converged ? result.iterationsRun : result.diverged ? `stopped at ${result.iterationsRun} (runaway)` : `capped at ${result.iterationsRun}`}</div>
               </div>
               <div>
-                <div className="text-xs text-slate-400 mb-1">Maximum residual change</div>
+                <div className="text-xs text-neutral-600 mb-1">Maximum residual change</div>
                 <div className="text-sm font-mono">{finalMaxDelta}</div>
               </div>
             </div>
             <div className="grid grid-cols-4 gap-4 mt-4 pt-4 border-t border-slate-100">
               <div title="A converged run is, by this engine's definition, a detected fixed point; the two are the same condition here.">
-                <div className="text-xs text-slate-400 mb-1 flex items-center gap-1">Fixed point detected <HelpCircle size={10} className="text-slate-300" /></div>
+                <div className="text-xs text-neutral-600 mb-1 flex items-center gap-1">Fixed point detected <HelpCircle size={10} className="text-neutral-500" /></div>
                 <div className={`text-sm font-mono ${fixedPointDetected ? "text-cobalt-700" : "text-amber-700"}`}>{fixedPointDetected ? "Yes" : "No"}</div>
               </div>
               <div className="col-span-3">
-                <div className="text-xs text-slate-400 mb-1">Stability</div>
+                <div className="text-xs text-neutral-600 mb-1">Stability</div>
                 <div className={`text-sm font-semibold ${stabilityColor}`}>{stability.status}</div>
               </div>
             </div>
-            <p className="text-xs text-slate-500 mt-3">{stability.detail}</p>
-            <p className="text-xs text-slate-600 mt-2 bg-slate-50 border border-slate-100 rounded p-2">{equilibriumExplanation}</p>
+            <p className="text-xs text-neutral-700 mt-3">{stability.detail}</p>
+            <p className="text-xs text-neutral-900 mt-2 bg-slate-50 border border-slate-100 rounded p-2">{equilibriumExplanation}</p>
           </div>
 
           <div className="bg-white rounded-lg border border-slate-200 p-4" data-chart="baseline-convergence">
@@ -7139,7 +7144,7 @@ function BaselineEquilibriumTab({
               <h4 className="text-sm font-semibold">Convergence plot</h4>
               <Btn variant="outline" onClick={() => setFigConvergenceOpen((v) => !v)}><SlidersHorizontal size={13} />{figConvergenceOpen ? "Hide figure options" : "Customize & export"}</Btn>
             </div>
-            <p className="text-xs text-slate-400 mb-2">Every concept's activation at each iteration, from its initial value through to convergence (or the iteration cap). Use this to check whether the model settles into a stable equilibrium, oscillates, or diverges.</p>
+            <p className="text-xs text-neutral-600 mb-2">Every concept's activation at each iteration, from its initial value through to convergence (or the iteration cap). Use this to check whether the model settles into a stable equilibrium, oscillates, or diverges.</p>
             <div ref={convergenceRef} className="w-full h-72" style={figConvergenceOpen ? { width: mmToPx(figConvergence.widthMm, 96), height: mmToPx(figConvergence.heightMm, 96), maxWidth: "100%" } : undefined}>
               <ResponsiveContainer>
                 <LineChart data={result.series.map((pt) => ({ iteration: pt.iteration, ...pt.values }))}>
@@ -7186,7 +7191,7 @@ function BaselineEquilibriumTab({
               <h4 className="text-sm font-semibold mb-2">Final steady state</h4>
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="text-left text-slate-400 border-b border-slate-100">
+                  <tr className="text-left text-neutral-600 border-b border-slate-100">
                     <th className="py-1 font-medium">Concept</th>
                     <th className="py-1 font-medium">Steady state</th>
                   </tr>
@@ -7210,7 +7215,7 @@ function BaselineEquilibriumTab({
               <div className="overflow-auto max-h-64">
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-white">
-                    <tr className="text-left text-slate-400 border-b border-slate-100">
+                    <tr className="text-left text-neutral-600 border-b border-slate-100">
                       <th className="py-1 pr-2 font-medium">Iteration</th>
                       {concepts.map((c) => <th key={c.id} className="py-1 pr-2 font-medium">{c.name}</th>)}
                     </tr>
@@ -7232,29 +7237,29 @@ function BaselineEquilibriumTab({
             <details>
               <summary className="text-sm font-semibold cursor-pointer flex items-center gap-1.5"><FlaskConical size={14} className="text-cobalt-700" />Advanced Diagnostics</summary>
               <div className="mt-3 space-y-4">
-                <p className="text-xs text-slate-500">Raw mathematical objects behind this run, for verifying the engine matches FCM theory directly: the initial vector A(0), the weight matrix W (row = target, column = source, so W[row][col] is the weight of the relationship column to row), the first few iteration vectors, the final equilibrium A*, and the convergence delta.</p>
+                <p className="text-xs text-neutral-700">Raw mathematical objects behind this run, for verifying the engine matches FCM theory directly: the initial vector A(0), the weight matrix W (row = target, column = source, so W[row][col] is the weight of the relationship column to row), the first few iteration vectors, the final equilibrium A*, and the convergence delta.</p>
 
                 <div>
-                  <div className="text-xs font-semibold text-slate-600 mb-1">A(0) (initial activation vector)</div>
+                  <div className="text-xs font-semibold text-neutral-900 mb-1">A(0) (initial activation vector)</div>
                   <div className="text-xs font-mono bg-slate-50 border border-slate-200 rounded p-2 overflow-x-auto whitespace-nowrap">
                     [{concepts.map((c) => round2(c.initialValue)).join(", ")}]
                   </div>
                 </div>
 
                 <div>
-                  <div className="text-xs font-semibold text-slate-600 mb-1">W (weight matrix)</div>
+                  <div className="text-xs font-semibold text-neutral-900 mb-1">W (weight matrix)</div>
                   <div className="overflow-auto max-h-64 border border-slate-200 rounded">
-                    <table className="text-[11px] font-mono">
+                    <table className="text-[12.5px] font-mono">
                       <thead className="sticky top-0 bg-slate-50">
                         <tr>
-                          <th className="px-2 py-1 border-b border-r border-slate-200 text-slate-400">to \ from</th>
-                          {concepts.map((c) => <th key={c.id} className="px-2 py-1 border-b border-slate-200 text-slate-400 font-medium">{c.id}</th>)}
+                          <th className="px-2 py-1 border-b border-r border-slate-200 text-neutral-600">to \ from</th>
+                          {concepts.map((c) => <th key={c.id} className="px-2 py-1 border-b border-slate-200 text-neutral-600 font-medium">{c.id}</th>)}
                         </tr>
                       </thead>
                       <tbody>
                         {concepts.map((rowC) => (
                           <tr key={rowC.id}>
-                            <td className="px-2 py-1 border-r border-b border-slate-100 text-slate-400 font-medium bg-slate-50">{rowC.id}</td>
+                            <td className="px-2 py-1 border-r border-b border-slate-100 text-neutral-600 font-medium bg-slate-50">{rowC.id}</td>
                             {concepts.map((colC) => {
                               const e = edges.find((e) => e.source === colC.id && e.target === rowC.id);
                               return <td key={colC.id} className="px-2 py-1 border-b border-slate-50 text-right">{e ? round2(e.weight) : 0}</td>;
@@ -7267,26 +7272,26 @@ function BaselineEquilibriumTab({
                 </div>
 
                 <div>
-                  <div className="text-xs font-semibold text-slate-600 mb-1">First iteration vectors</div>
+                  <div className="text-xs font-semibold text-neutral-900 mb-1">First iteration vectors</div>
                   <div className="text-xs font-mono bg-slate-50 border border-slate-200 rounded p-2 space-y-1 overflow-x-auto">
                     {result.series.slice(0, 6).map((pt) => (
                       <div key={pt.iteration} className="whitespace-nowrap">
                         A({pt.iteration}) = [{concepts.map((c) => round2(pt.values[c.id] ?? 0)).join(", ")}]
                       </div>
                     ))}
-                    {result.series.length > 6 && <div className="text-slate-400">... {result.series.length - 6} more (see Convergence table above)</div>}
+                    {result.series.length > 6 && <div className="text-neutral-600">... {result.series.length - 6} more (see Convergence table above)</div>}
                   </div>
                 </div>
 
                 <div>
-                  <div className="text-xs font-semibold text-slate-600 mb-1">A* (final equilibrium)</div>
+                  <div className="text-xs font-semibold text-neutral-900 mb-1">A* (final equilibrium)</div>
                   <div className="text-xs font-mono bg-slate-50 border border-slate-200 rounded p-2 overflow-x-auto whitespace-nowrap">
                     [{concepts.map((c) => round2(result.final[c.id] ?? 0)).join(", ")}]
                   </div>
                 </div>
 
                 <div>
-                  <div className="text-xs font-semibold text-slate-600 mb-1">Convergence delta: max(|A(t+1) - A(t)|)</div>
+                  <div className="text-xs font-semibold text-neutral-900 mb-1">Convergence delta: max(|A(t+1) - A(t)|)</div>
                   <div className="text-xs font-mono bg-slate-50 border border-slate-200 rounded p-2">{finalMaxDelta}</div>
                 </div>
               </div>
@@ -7359,6 +7364,9 @@ function runTransitionSweep(concepts, edges, baseScenario, settings, interventio
     for (let i = 1; i < slope.length; i++) if (Math.abs(slope[i]) > Math.abs(slope[tpIndex])) tpIndex = i;
     perOutcome[id] = {
       y, slope, tpIndex, tp: steps[tpIndex],
+      // How far the outcome has moved by the time the intervention reaches its
+      // transition point (Y(TP) - Y(0)), next to the full effect below.
+      effectAtTp: y[tpIndex] - y[0],
       effect: y[y.length - 1] - y[0],
       range: Math.max(...y) - Math.min(...y),
     };
@@ -8822,10 +8830,11 @@ async function buildAnalysisWorkbook({
   if (transitionResult) {
     const tSheet = addDataSheet(workbook, "Transition Point Analysis", [
       { header: "Outcome Concept", key: "outcomeName" }, { header: "Transition Point", key: "tp" },
+      { header: "Change at Transition Point", key: "effectAtTp" },
       { header: "Range", key: "range" }, { header: "Effect", key: "effect" },
       { header: "Response Type", key: "responseType" }, { header: "Efficiency", key: "efficiency" },
     ], transitionResult.rows.map((r) => ({
-      outcomeName: r.outcomeName, tp: round2(r.tp), range: round2(r.range), effect: round2(r.effect),
+      outcomeName: r.outcomeName, tp: round2(r.tp), effectAtTp: round2(r.effectAtTp), range: round2(r.range), effect: round2(r.effect),
       responseType: r.responseType, efficiency: round2(r.efficiency),
     })), usedNames);
     if (isStale(transitionResult)) {
@@ -9115,7 +9124,7 @@ async function buildAnalysisWorkbook({
 }
 
 const RESPONSE_TYPE_STYLE = {
-  "Flat": "bg-slate-100 text-slate-500 border-slate-200",
+  "Flat": "bg-slate-100 text-neutral-700 border-slate-200",
   "Front-Loaded": "bg-cobalt-50 text-cobalt-800 border-cobalt-200",
   "Threshold-Type": "bg-amber-50 text-amber-800 border-amber-200",
   "Back-Loaded": "bg-rose-50 text-rose-800 border-rose-200",
@@ -9131,6 +9140,7 @@ const TRANSITION_TABLE_COLUMNS = [
   { key: "interventionName", label: "Intervention", type: "text" },
   { key: "outcomeName", label: "Outcome", type: "text" },
   { key: "tp", label: "TP", type: "num", help: "Transition point: the intensity at which this outcome's response is steepest." },
+  { key: "effectAtTp", label: "Change at TP", type: "num", help: "Change in the outcome from intensity 0 up to the transition point, Y(TP) - Y(0). The steepest step starts at the TP, so its change is not yet included; compare with Max Change to see how much of the full effect has been reached." },
   { key: "effect", label: "Max Change", type: "num", help: "Effect size (change from start to end of the sweep)." },
   { key: "range", label: "Range", type: "num", help: "Total movement of this outcome across the whole sweep; below the flat-response threshold counts as no meaningful response." },
   { key: "efficiency", label: "Efficiency", type: "num", help: "Total effect divided by the transition point: how much change was achieved relative to how far the intervention had to be pushed." },
@@ -9145,7 +9155,7 @@ const SYNERGY_STYLE = {
   "Full Negative Synergy": "bg-rose-50 text-rose-800 border-rose-200",
   "Partial Negative Synergy": "bg-orange-50 text-orange-800 border-orange-200",
   "Narrow Negative Synergy": "bg-orange-50 text-orange-800 border-orange-200",
-  "No Synergy": "bg-slate-100 text-slate-500 border-slate-200",
+  "No Synergy": "bg-slate-100 text-neutral-700 border-slate-200",
 };
 
 function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenarioId, settings, result, setResult, setChartCache, modelVersion }) {
@@ -9291,8 +9301,8 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
   };
   const exportTableCSV = () => {
     if (!result) return;
-    const header = ["Intervention", "Outcome", "Direction", "TP", "Max Change", "Response Type", "Efficiency Score"];
-    const rows = result.rows.map((r) => [result.interventionName, r.outcomeName, result.direction === "decrease" ? "Decrease (0 to -1)" : "Increase (0 to 1)", round2(r.tp), round2(r.effect), r.responseType, round2(r.efficiency)]);
+    const header = ["Intervention", "Outcome", "Direction", "TP", "Change at TP", "Max Change", "Response Type", "Efficiency Score"];
+    const rows = result.rows.map((r) => [result.interventionName, r.outcomeName, result.direction === "decrease" ? "Decrease (0 to -1)" : "Increase (0 to 1)", round2(r.tp), round2(r.effectAtTp), round2(r.effect), r.responseType, round2(r.efficiency)]);
     downloadCSV([header, ...rows], "transition-point-table.csv");
   };
   const exportRankingsCSV = () => {
@@ -9315,7 +9325,7 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
         title="What is a Transition Point?"
         summary="Finds the intervention intensity at which extra effort produces the largest extra change in an outcome, by sweeping one intervention from 0 up to +1 (or down to -1) and following each outcome's response."
       >
-        <div className="text-xs text-slate-500 space-y-1.5 leading-relaxed">
+        <div className="text-xs text-neutral-700 space-y-1.5 leading-relaxed">
         <p>Transition Point Analysis identifies the intervention intensity at which additional effort produces the greatest additional change in an outcome, whether that change is an improvement or a worsening.</p>
         <p>It works by sweeping one intervention concept away from its neutral value of 0 in small steps, either up to +1 (increase) or down to -1 (decrease), re-running the simulation at each step, and recording how each chosen outcome concept responds along the way. The intensity on the horizontal axis always runs from 0 to 1 and means how far the intervention is pushed: for a decrease, an intensity of 0.4 means the intervention is held at -0.4. The last step is therefore the same run as setting the concept as a driver in Scenarios &amp; Simulation (▲ for an increase, ▼ for a decrease), and the curve shows what happens on the way there. The <strong>transition point</strong> for an outcome is the step where its rate of change (marginal return) is largest in magnitude, i.e. where the response curve is steepest, in whichever direction it happens to be moving. This app has no notion of which direction is "good" for a given concept, so always check the sign of the effect (shown in the table below) before treating a transition point as a leverage point worth pursuing.</p>
         <p>Many interventions produce non-linear responses. An intervention may produce its effect immediately, require substantial effort before that effect emerges, or remain ineffective across all intensities. Transition Point Analysis identifies where the rate of change is greatest.</p>
@@ -9328,7 +9338,7 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
           <li>Potential implementation challenges</li>
         </ul>
 
-        <p className="font-medium text-slate-700 mt-2 mb-1">Steps</p>
+        <p className="font-medium text-neutral-900 mt-2 mb-1">Steps</p>
         <ol className="list-decimal pl-5 space-y-0.5">
           <li>Choose the intervention variable to sweep (Step 1).</li>
           <li>Choose its direction: increase from 0 to +1, or decrease from 0 to -1 (Step 2). These are the two ways a scenario can drive a concept (▲ at +1, ▼ at -1).</li>
@@ -9343,7 +9353,7 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
         <h3 className="font-semibold text-sm mb-3">Run an analysis</h3>
         <div className="grid grid-cols-4 gap-4">
           <div>
-            <label className="text-xs text-slate-500 font-medium">Step 1: Intervention variable</label>
+            <label className="text-xs text-neutral-700 font-medium">Step 1: Intervention variable</label>
             <select
               value={tpIntervention}
               onChange={(e) => { setTpIntervention(e.target.value); setTpOutcomes((os) => os.filter((o) => o !== e.target.value)); }}
@@ -9354,14 +9364,14 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
             </select>
           </div>
           <div>
-            <label className="text-xs text-slate-500 font-medium">Step 2: Direction</label>
+            <label className="text-xs text-neutral-700 font-medium">Step 2: Direction</label>
             <div className="flex mt-1 border border-slate-200 rounded overflow-hidden">
-              <button onClick={() => setTpDirection("increase")} className={`flex-1 text-xs py-1.5 ${tpDirection === "increase" ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}>Increase (0→1)</button>
-              <button onClick={() => setTpDirection("decrease")} className={`flex-1 text-xs py-1.5 ${tpDirection === "decrease" ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}>Decrease (0→-1)</button>
+              <button onClick={() => setTpDirection("increase")} className={`flex-1 text-xs py-1.5 ${tpDirection === "increase" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}>Increase (0→1)</button>
+              <button onClick={() => setTpDirection("decrease")} className={`flex-1 text-xs py-1.5 ${tpDirection === "decrease" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}>Decrease (0→-1)</button>
             </div>
           </div>
           <div>
-            <label className="text-xs text-slate-500 font-medium">Step 4: Intensity resolution</label>
+            <label className="text-xs text-neutral-700 font-medium">Step 4: Intensity resolution</label>
             <select value={tpResolution} onChange={(e) => setTpResolution(parseInt(e.target.value))} className="w-full mt-1 text-xs border border-slate-200 rounded px-2 py-1.5">
               <option value={50}>50 increments</option>
               <option value={100}>100 increments</option>
@@ -9370,21 +9380,21 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
             </select>
           </div>
           <div>
-            <label className="text-xs text-slate-500 font-medium" title="Below this, an outcome's total range across the whole sweep is classified as a 'Flat' (no meaningful) response.">Flat-response threshold <HelpCircle size={10} className="inline text-slate-300" /></label>
+            <label className="text-xs text-neutral-700 font-medium" title="Below this, an outcome's total range across the whole sweep is classified as a 'Flat' (no meaningful) response.">Flat-response threshold <HelpCircle size={10} className="inline text-neutral-500" /></label>
             <input type="number" step={0.005} min={0} max={1} value={tpFlatThreshold} onChange={(e) => setTpFlatThreshold(Math.max(0, parseFloat(e.target.value) || 0))} className="w-full mt-1 text-xs border border-slate-200 rounded px-2 py-1.5" />
           </div>
         </div>
         <div className="mt-3">
-          <label className="text-xs text-slate-500 font-medium">Step 3: Outcome variable(s)</label>
+          <label className="text-xs text-neutral-700 font-medium">Step 3: Outcome variable(s)</label>
           <div className="mt-1 flex items-center gap-2 mb-1.5">
-            <button onClick={selectAllOutcomes} className="text-[10px] px-1.5 py-0.5 rounded border border-slate-200 text-slate-500 hover:border-slate-400">All variables</button>
-            <button onClick={clearOutcomes} className="text-[10px] px-1.5 py-0.5 rounded border border-slate-200 text-slate-500 hover:border-slate-400">Clear</button>
+            <button onClick={selectAllOutcomes} className="text-[11.5px] px-1.5 py-0.5 rounded border border-slate-200 text-neutral-700 hover:border-slate-400">All variables</button>
+            <button onClick={clearOutcomes} className="text-[11.5px] px-1.5 py-0.5 rounded border border-slate-200 text-neutral-700 hover:border-slate-400">Clear</button>
           </div>
           <div className="flex flex-wrap gap-1 max-h-[70px] overflow-auto border border-slate-200 rounded p-1.5">
             {availableOutcomeConcepts.map((c) => (
               <button
                 key={c.id} onClick={() => toggleOutcome(c.id)}
-                className={`text-[10px] px-1.5 py-0.5 rounded border ${tpOutcomes.includes(c.id) ? "border-cobalt-700 bg-cobalt-50 text-cobalt-800" : "border-slate-200 text-slate-500 hover:border-slate-400"}`}
+                className={`text-[11.5px] px-1.5 py-0.5 rounded border ${tpOutcomes.includes(c.id) ? "border-cobalt-700 bg-cobalt-50 text-cobalt-800" : "border-slate-200 text-neutral-700 hover:border-slate-400"}`}
               >
                 {c.name}
               </button>
@@ -9395,7 +9405,7 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
           <Btn variant="accent" onClick={runAnalysis} disabled={!tpIntervention || tpOutcomes.filter((o) => o !== tpIntervention).length === 0 || running}>
             <Play size={14} />{running ? "Running…" : "Step 5: Run analysis"}
           </Btn>
-          {!tpIntervention && <span className="text-xs text-slate-400 ml-2">Select an intervention variable to begin.</span>}
+          {!tpIntervention && <span className="text-xs text-neutral-600 ml-2">Select an intervention variable to begin.</span>}
         </div>
       </div>
 
@@ -9432,7 +9442,7 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
               <h4 className="text-sm font-semibold">Response curves: {result.interventionName} ({transitionRangeLabel(result.direction)})</h4>
               <Btn variant="outline" onClick={() => setFigResponseOpen((v) => !v)}><SlidersHorizontal size={13} />{figResponseOpen ? "Hide figure options" : "Customize & export"}</Btn>
             </div>
-            <p className="text-[11px] text-slate-400 mb-2">Dashed vertical lines mark each outcome's transition point (greatest marginal return). Drag the strip below the chart to zoom into an intensity range.</p>
+            <p className="text-[12.5px] text-neutral-600 mb-2">Dashed vertical lines mark each outcome's transition point (greatest marginal return). Drag the strip below the chart to zoom into an intensity range.</p>
             <div ref={responseChartRef} data-chart="transition-curves" className="w-full h-80" style={figResponseOpen ? { width: mmToPx(figResponse.widthMm, 96), height: mmToPx(figResponse.heightMm, 96), maxWidth: "100%" } : undefined}>
               <ResponsiveContainer>
                 <LineChart data={curveData} margin={{ bottom: 20 }}>
@@ -9483,7 +9493,7 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
               <h4 className="text-sm font-semibold">Marginal return: Greatest Marginal Return highlighted</h4>
               <Btn variant="outline" onClick={() => setFigSlopeOpen((v) => !v)}><SlidersHorizontal size={13} />{figSlopeOpen ? "Hide figure options" : "Customize & export"}</Btn>
             </div>
-            <p className="text-[11px] text-slate-400 mb-2">Slope(i) = (Y(i+1) − Y(i)) / Δx at every intensity step. The peak of each curve is that outcome's transition point.</p>
+            <p className="text-[12.5px] text-neutral-600 mb-2">Slope(i) = (Y(i+1) − Y(i)) / Δx at every intensity step. The peak of each curve is that outcome's transition point.</p>
             <div ref={slopeChartRef} className="w-full h-72" style={figSlopeOpen ? { width: mmToPx(figSlope.widthMm, 96), height: mmToPx(figSlope.heightMm, 96), maxWidth: "100%" } : undefined}>
               <ResponsiveContainer>
                 <LineChart data={slopeData}>
@@ -9530,10 +9540,10 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
               <h4 className="text-sm font-semibold">Transition point results</h4>
               <Btn variant="outline" onClick={exportTableCSV}><Download size={13} />Export CSV</Btn>
             </div>
-            <p className="text-[10px] text-slate-400 mb-1.5">Click a column header to sort by it; click again to reverse the direction.</p>
+            <p className="text-[11.5px] text-neutral-600 mb-1.5">Click a column header to sort by it; click again to reverse the direction.</p>
             <table className="w-full text-xs">
               <thead>
-                <tr className="text-left text-slate-400 border-b border-slate-100">
+                <tr className="text-left text-neutral-600 border-b border-slate-100">
                   {TRANSITION_TABLE_COLUMNS.map((col) => <SortHeader key={col.key} col={col} sortKey={tpSortKey} sortDir={tpSortDir} onSort={tpOnSort} />)}
                 </tr>
               </thead>
@@ -9543,11 +9553,12 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
                     <td className="py-1 pr-3">{r.interventionName}</td>
                     <td className="py-1 pr-3">{r.outcomeName}</td>
                     <td className="py-1 pr-3 font-mono">{round2(r.tp)}</td>
+                    <td className="py-1 pr-3 font-mono">{r.effectAtTp >= 0 ? "+" : ""}{round2(r.effectAtTp)}</td>
                     <td className="py-1 pr-3 font-mono">{r.effect >= 0 ? "+" : ""}{round2(r.effect)}</td>
                     <td className="py-1 pr-3 font-mono">{round2(r.range)}</td>
                     <td className="py-1 pr-3 font-mono">{r.efficiency >= 0 ? "+" : ""}{round2(r.efficiency)}</td>
                     <td className="py-1 pr-3">
-                      <span title={RESPONSE_TYPE_HELP[r.responseType]} className={`text-[10px] px-1.5 py-0.5 rounded-full border ${RESPONSE_TYPE_STYLE[r.responseType]}`}>{r.responseType}</span>
+                      <span title={RESPONSE_TYPE_HELP[r.responseType]} className={`text-[11.5px] px-1.5 py-0.5 rounded-full border ${RESPONSE_TYPE_STYLE[r.responseType]}`}>{r.responseType}</span>
                     </td>
                   </tr>
                 ))}
@@ -9563,28 +9574,28 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
               </div>
               <div className="grid grid-cols-4 gap-3">
                 <div className="border border-slate-200 rounded-lg p-3">
-                  <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wide">Earliest transition point</div>
+                  <div className="text-[11.5px] text-neutral-600 font-medium uppercase tracking-wide">Earliest transition point</div>
                   <div className="text-sm font-semibold mt-0.5">{kpis.earliest.outcomeName}</div>
-                  <div className="text-xs font-mono text-slate-500">TP = {round2(kpis.earliest.tp)}</div>
-                  <div className="text-[10px] text-slate-400 mt-1">Rapid impact.</div>
+                  <div className="text-xs font-mono text-neutral-700">TP = {round2(kpis.earliest.tp)}</div>
+                  <div className="text-[11.5px] text-neutral-600 mt-1">Rapid impact.</div>
                 </div>
                 <div className="border border-slate-200 rounded-lg p-3">
-                  <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wide">Latest transition point</div>
+                  <div className="text-[11.5px] text-neutral-600 font-medium uppercase tracking-wide">Latest transition point</div>
                   <div className="text-sm font-semibold mt-0.5">{kpis.latest.outcomeName}</div>
-                  <div className="text-xs font-mono text-slate-500">TP = {round2(kpis.latest.tp)}</div>
-                  <div className="text-[10px] text-slate-400 mt-1">Difficult leverage point.</div>
+                  <div className="text-xs font-mono text-neutral-700">TP = {round2(kpis.latest.tp)}</div>
+                  <div className="text-[11.5px] text-neutral-600 mt-1">Difficult leverage point.</div>
                 </div>
                 <div className="border border-slate-200 rounded-lg p-3">
-                  <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wide">Highest total effect</div>
+                  <div className="text-[11.5px] text-neutral-600 font-medium uppercase tracking-wide">Highest total effect</div>
                   <div className="text-sm font-semibold mt-0.5">{kpis.highestEffect.outcomeName}</div>
-                  <div className="text-xs font-mono text-slate-500">{kpis.highestEffect.effect >= 0 ? "+" : ""}{round2(kpis.highestEffect.effect)}</div>
-                  <div className="text-[10px] text-slate-400 mt-1">Largest equilibrium change.</div>
+                  <div className="text-xs font-mono text-neutral-700">{kpis.highestEffect.effect >= 0 ? "+" : ""}{round2(kpis.highestEffect.effect)}</div>
+                  <div className="text-[11.5px] text-neutral-600 mt-1">Largest equilibrium change.</div>
                 </div>
                 <div className="border border-slate-200 rounded-lg p-3">
-                  <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wide" title="Efficiency = Total Effect / Transition Point (TP). How much this outcome changed overall, relative to how far the intervention had to be pushed before its steepest response kicked in. A high efficiency means a small nudge produces a big change; a low one means most of the intervention's range is spent for comparatively little. Sign matches the effect: a negative efficiency means the outcome got worse, not better.">Most efficient lever <HelpCircle size={10} className="inline text-slate-300" /></div>
+                  <div className="text-[11.5px] text-neutral-600 font-medium uppercase tracking-wide" title="Efficiency = Total Effect / Transition Point (TP). How much this outcome changed overall, relative to how far the intervention had to be pushed before its steepest response kicked in. A high efficiency means a small nudge produces a big change; a low one means most of the intervention's range is spent for comparatively little. Sign matches the effect: a negative efficiency means the outcome got worse, not better.">Most efficient lever <HelpCircle size={10} className="inline text-neutral-500" /></div>
                   <div className="text-sm font-semibold mt-0.5">{kpis.mostEfficient.outcomeName}</div>
-                  <div className="text-xs font-mono text-slate-500">Efficiency = {round2(kpis.mostEfficient.efficiency)}</div>
-                  <div className="text-[10px] text-slate-400 mt-1">Effect size / required intensity.</div>
+                  <div className="text-xs font-mono text-neutral-700">Efficiency = {round2(kpis.mostEfficient.efficiency)}</div>
+                  <div className="text-[11.5px] text-neutral-600 mt-1">Effect size / required intensity.</div>
                 </div>
               </div>
             </div>
@@ -9592,16 +9603,16 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
 
           <div className="bg-white rounded-lg border border-slate-200 p-4">
             <h4 className="text-sm font-semibold mb-1">Intervention prioritization matrix</h4>
-            <p className="text-[11px] text-slate-400 mb-2">X: transition point (required intensity). Y: |effect size|. Point color: green = outcome improves, red = outcome declines.</p>
+            <p className="text-[12.5px] text-neutral-600 mb-2">X: transition point (required intensity). Y: |effect size|. Point color: green = outcome improves, red = outcome declines.</p>
             <div className="w-full h-80">
               <ResponsiveContainer>
                 <ScatterChart margin={{ top: 10, right: 20, bottom: 20, left: 10 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis type="number" dataKey="x" domain={[0, 1]} tick={{ fontSize: 10 }} label={{ value: "Transition Point", position: "insideBottom", offset: -12, fontSize: 11 }} />
-                  <YAxis type="number" dataKey="y" tick={{ fontSize: 10 }} label={{ value: "Effect Size", angle: -90, position: "insideLeft", fontSize: 11 }} />
+                  <XAxis type="number" dataKey="x" domain={[0, 1]} tick={{ fontSize: 12 }} label={{ value: "Transition Point", position: "insideBottom", offset: -12, fontSize: 11 }} />
+                  <YAxis type="number" dataKey="y" tick={{ fontSize: 12 }} label={{ value: "Effect Size", angle: -90, position: "insideLeft", fontSize: 11 }} />
                   <ZAxis range={[80, 80]} />
                   <RTooltip cursor={{ strokeDasharray: "3 3" }} content={({ active, payload }) => active && payload?.[0] ? (
-                    <div className="bg-white border border-slate-200 rounded shadow-sm p-2 text-[11px]">
+                    <div className="bg-white border border-slate-200 rounded shadow-sm p-2 text-[12.5px]">
                       <div className="font-semibold">{payload[0].payload.name}</div>
                       <div>TP = {payload[0].payload.x}</div>
                       <div>Effect = {payload[0].payload.effect >= 0 ? "+" : ""}{payload[0].payload.effect}</div>
@@ -9615,22 +9626,22 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
                 </ScatterChart>
               </ResponsiveContainer>
             </div>
-            <div className="grid grid-cols-2 gap-2 mt-2 text-[10px] text-slate-400">
-              <div><strong className="text-slate-600">Quick Wins</strong>: low TP, high effect</div>
-              <div><strong className="text-slate-600">Strategic Investments</strong>: high TP, high effect</div>
-              <div><strong className="text-slate-600">Small Improvements</strong>: low TP, low effect</div>
-              <div><strong className="text-slate-600">Poor Leverage Points</strong>: high TP, low effect</div>
+            <div className="grid grid-cols-2 gap-2 mt-2 text-[11.5px] text-neutral-600">
+              <div><strong className="text-neutral-900">Quick Wins</strong>: low TP, high effect</div>
+              <div><strong className="text-neutral-900">Strategic Investments</strong>: high TP, high effect</div>
+              <div><strong className="text-neutral-900">Small Improvements</strong>: low TP, low effect</div>
+              <div><strong className="text-neutral-900">Poor Leverage Points</strong>: high TP, low effect</div>
             </div>
           </div>
 
           {synergy && (
             <div className="bg-white rounded-lg border border-slate-200 p-4">
               <h4 className="text-sm font-semibold mb-1">Synergy classification</h4>
-              <p className="text-[11px] text-slate-400 mb-2">Across the {synergy.total} selected outcomes, evaluated at full intervention intensity (x = 1).</p>
+              <p className="text-[12.5px] text-neutral-600 mb-2">Across the {synergy.total} selected outcomes, evaluated at full intervention intensity (x = 1).</p>
               <div className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full border ${SYNERGY_STYLE[synergy.type]}`}>
                 {synergy.type}
               </div>
-              <p className="text-xs text-slate-500 mt-2">{synergy.improve} improved, {synergy.worsen} worsened, {synergy.total - synergy.improve - synergy.worsen} unchanged (within the flat-response threshold).</p>
+              <p className="text-xs text-neutral-700 mt-2">{synergy.improve} improved, {synergy.worsen} worsened, {synergy.total - synergy.improve - synergy.worsen} unchanged (within the flat-response threshold).</p>
             </div>
           )}
 
@@ -9644,7 +9655,7 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
               <Btn variant="outline" onClick={() => exportFigure(responseChartRef.current, "transition-response-curves.png", figResponse, { title: figResponse.title || `Response curves: ${result.interventionName} (${transitionRangeLabel(result.direction)})`, subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}` })}><Download size={13} />Response chart ({figResponse.format.toUpperCase()})</Btn>
               <Btn variant="outline" onClick={() => exportFigure(slopeChartRef.current, "transition-marginal-returns.png", figSlope, { title: figSlope.title || `Marginal return: ${result.interventionName}`, subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}` })}><Download size={13} />Marginal chart ({figSlope.format.toUpperCase()})</Btn>
             </div>
-            <p className="text-[10px] text-slate-400 mt-2 italic">PDF export is not yet implemented (see the roadmap note at the bottom of the page). Use PNG for images and CSV for data in the meantime.</p>
+            <p className="text-[11.5px] text-neutral-600 mt-2 italic">PDF export is not yet implemented (see the roadmap note at the bottom of the page). Use PNG for images and CSV for data in the meantime.</p>
           </div>
         </>
       )}
@@ -9724,24 +9735,24 @@ function PathwayStagesText({ c, nameOf, compact = false }) {
     <span className="inline-flex flex-wrap items-center gap-x-1 gap-y-0.5">
       {c.stages.map((s, i) => (
         <React.Fragment key={i}>
-          {i > 0 && <span className="text-slate-300">&rarr;</span>}
+          {i > 0 && <span className="text-neutral-500">&rarr;</span>}
           <span className="whitespace-nowrap">
             {nameOf(s.leverId)}
-            <span className="font-mono text-slate-400"> {s.scaleUp ? "raised to " : ""}{round2(s.u)}</span>
+            <span className="font-mono text-neutral-600"> {s.scaleUp ? "raised to " : ""}{round2(s.u)}</span>
           </span>
         </React.Fragment>
       ))}
-      {!compact && c.length === 0 && <span className="text-slate-400">(none)</span>}
+      {!compact && c.length === 0 && <span className="text-neutral-600">(none)</span>}
     </span>
   );
 }
 
 function ArchetypeBadges({ c }) {
-  if (!c.memberships?.length) return <span className="text-[10px] text-slate-400">{pathwayStatus(c)}</span>;
+  if (!c.memberships?.length) return <span className="text-[11.5px] text-neutral-600">{pathwayStatus(c)}</span>;
   return (
     <span className="inline-flex flex-wrap gap-1">
       {c.memberships.map((k) => (
-        <span key={k} title={PATHWAY_ARCHETYPE_BY_KEY[k].rule} className={`text-[10px] px-1.5 py-0.5 rounded-full border ${PATHWAY_ARCHETYPE_BY_KEY[k].badge} ${c.primary === k ? "font-semibold" : "opacity-70"}`}>
+        <span key={k} title={PATHWAY_ARCHETYPE_BY_KEY[k].rule} className={`text-[11.5px] px-1.5 py-0.5 rounded-full border ${PATHWAY_ARCHETYPE_BY_KEY[k].badge} ${c.primary === k ? "font-semibold" : "opacity-70"}`}>
           {PATHWAY_ARCHETYPE_BY_KEY[k].label}
         </span>
       ))}
@@ -9757,10 +9768,10 @@ function TransitionPathwaysGuide() {
       title="What is Transition Pathway Analysis?"
       summary="Finds the order in which interventions are best implemented: sequences of levers, each implemented up to its transition point, compared on how much they achieve, how much effort they need, and when the benefits arrive."
     >
-      <div className="text-xs text-slate-600 space-y-2 leading-relaxed">
+      <div className="text-xs text-neutral-900 space-y-2 leading-relaxed">
         <p>Transition Point Analysis asks at what intensity a single intervention is most effective. <strong>Transition Pathway Analysis</strong> asks in what order interventions should be implemented. A <strong>transition pathway</strong> is an ordered sequence of interventions that guides the system from its Business-as-Usual state towards a desired state.</p>
         <p><strong>How a pathway is simulated.</strong> The analysis starts from the Business-as-Usual equilibrium: the model's own starting values with no scenario applied. In each stage one lever is implemented up to its <em>conditional transition point</em>: the intensity at which, in the state the pathway has reached so far, one more step of effort gives the largest improvement in the nexus outcomes. The system then settles to equilibrium, the lever stays in place, and the next lever starts from that new state. Because every transition point is recomputed from the current state, the analysis shows how earlier levers make later ones more effective (their transition point moves earlier) or less effective (it moves later).</p>
-        <p className="font-medium text-slate-700">Steps</p>
+        <p className="font-medium text-neutral-900">Steps</p>
         <ol className="list-decimal pl-5 space-y-0.5">
           <li>Choose the nexus outcomes, and for each whether higher or lower is better.</li>
           <li>Choose the intervention levers that may be combined into pathways.</li>
@@ -9768,10 +9779,10 @@ function TransitionPathwaysGuide() {
           <li>Run the analysis. Every lever is first tested on its own (its transition point from Business-as-Usual), then pathways are built stage by stage.</li>
           <li>Read the effort-gain plane, the four pathway archetypes, the rankings, and the implementation portfolios.</li>
         </ol>
-        <p className="font-medium text-slate-700">The four pathway archetypes</p>
+        <p className="font-medium text-neutral-900">The four pathway archetypes</p>
         <ul className="space-y-1">
           {PATHWAY_ARCHETYPES.map((a) => (
-            <li key={a.key}><span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${a.badge}`}>{a.label}</span> {a.purpose} <span className="text-slate-400">Rule: {a.rule}</span></li>
+            <li key={a.key}><span className={`text-[11.5px] px-1.5 py-0.5 rounded-full border ${a.badge}`}>{a.label}</span> {a.purpose} <span className="text-neutral-600">Rule: {a.rule}</span></li>
           ))}
         </ul>
         <p>Thresholds such as "the lowest quarter" are computed across the admissible pathways of this analysis (those with a meaningful gain and no trade-offs), so an archetype describes a pathway compared with the other options, not an absolute standard. A pathway can belong to more than one archetype.</p>
@@ -10048,39 +10059,39 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
 
         <div>
           <div className="flex items-center gap-2 mb-1.5">
-            <label className="text-xs text-slate-500 font-medium">1. Nexus outcomes</label>
+            <label className="text-xs text-neutral-700 font-medium">1. Nexus outcomes</label>
             <select value="" onChange={(e) => addOutcome(e.target.value)} className="text-xs border border-slate-200 rounded px-2 py-1">
               <option value="">Add an outcome…</option>
               {concepts.filter((c) => !outcomeIds.includes(c.id)).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
-            <span className="text-[11px] text-slate-400">The outcomes a pathway should improve, for example food security, biodiversity, and climate.</span>
+            <span className="text-[12.5px] text-neutral-600">The outcomes a pathway should improve, for example food security, biodiversity, and climate.</span>
           </div>
           {config.outcomes.length === 0 ? (
-            <p className="text-xs text-slate-400 italic">No outcomes yet.</p>
+            <p className="text-xs text-neutral-600 italic">No outcomes yet.</p>
           ) : (
             <table className="w-full text-xs">
               <thead>
-                <tr className="text-left text-slate-400 border-b border-slate-100">
+                <tr className="text-left text-neutral-600 border-b border-slate-100">
                   <th className="py-1 font-medium pr-3">Outcome</th>
-                  <th className="py-1 font-medium pr-3" title="Which direction counts as an improvement for this outcome.">Improvement means <HelpCircle size={10} className="inline text-slate-300" /></th>
-                  <th className="py-1 font-medium pr-3" title="Relative importance in the total outcome gain. 1 for every outcome weighs them equally.">Weight <HelpCircle size={10} className="inline text-slate-300" /></th>
-                  <th className="py-1 font-medium pr-3" title="Optional. The level this outcome should reach in the desired future state (on the -1 to +1 activation scale). Pathways report how many targets they reach.">Desired level (optional) <HelpCircle size={10} className="inline text-slate-300" /></th>
+                  <th className="py-1 font-medium pr-3" title="Which direction counts as an improvement for this outcome.">Improvement means <HelpCircle size={10} className="inline text-neutral-500" /></th>
+                  <th className="py-1 font-medium pr-3" title="Relative importance in the total outcome gain. 1 for every outcome weighs them equally.">Weight <HelpCircle size={10} className="inline text-neutral-500" /></th>
+                  <th className="py-1 font-medium pr-3" title="Optional. The level this outcome should reach in the desired future state (on the -1 to +1 activation scale). Pathways report how many targets they reach.">Desired level (optional) <HelpCircle size={10} className="inline text-neutral-500" /></th>
                   <th />
                 </tr>
               </thead>
               <tbody>
                 {config.outcomes.map((o) => (
                   <tr key={o.id} className="border-b border-slate-50">
-                    <td className="py-1 pr-3">{nameOf(o.id)}{!inScope(o.id) && <span className="ml-1 text-[10px] text-amber-700">(outside the analysis scope)</span>}</td>
+                    <td className="py-1 pr-3">{nameOf(o.id)}{!inScope(o.id) && <span className="ml-1 text-[11.5px] text-amber-700">(outside the analysis scope)</span>}</td>
                     <td className="py-1 pr-3">
                       <div className="inline-flex border border-slate-200 rounded overflow-hidden">
-                        <button onClick={() => updateOutcome(o.id, { direction: 1 })} className={`text-[11px] px-2 py-0.5 ${o.direction !== -1 ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}>Higher is better</button>
-                        <button onClick={() => updateOutcome(o.id, { direction: -1 })} className={`text-[11px] px-2 py-0.5 ${o.direction === -1 ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}>Lower is better</button>
+                        <button onClick={() => updateOutcome(o.id, { direction: 1 })} className={`text-[12.5px] px-2 py-0.5 ${o.direction !== -1 ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}>Higher is better</button>
+                        <button onClick={() => updateOutcome(o.id, { direction: -1 })} className={`text-[12.5px] px-2 py-0.5 ${o.direction === -1 ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}>Lower is better</button>
                       </div>
                     </td>
                     <td className="py-1 pr-3"><input type="number" min={0} step={0.5} value={o.weight} onChange={(e) => updateOutcome(o.id, { weight: e.target.value })} className="w-16 border border-slate-200 rounded px-1.5 py-0.5 font-mono" /></td>
                     <td className="py-1 pr-3"><input type="number" min={-1} max={1} step={0.1} value={o.target} placeholder="none" onChange={(e) => updateOutcome(o.id, { target: e.target.value })} className="w-20 border border-slate-200 rounded px-1.5 py-0.5 font-mono" /></td>
-                    <td className="py-1 text-right"><button onClick={() => removeOutcome(o.id)} className="text-slate-400 hover:text-red-600" title="Remove this outcome"><X size={13} /></button></td>
+                    <td className="py-1 text-right"><button onClick={() => removeOutcome(o.id)} className="text-neutral-600 hover:text-red-600" title="Remove this outcome"><X size={13} /></button></td>
                   </tr>
                 ))}
               </tbody>
@@ -10090,38 +10101,38 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
 
         <div>
           <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-            <label className="text-xs text-slate-500 font-medium">2. Intervention levers</label>
+            <label className="text-xs text-neutral-700 font-medium">2. Intervention levers</label>
             <select value="" onChange={(e) => addLever(e.target.value)} className="text-xs border border-slate-200 rounded px-2 py-1">
               <option value="">Add a lever…</option>
               {concepts.filter((c) => !leverIds.includes(c.id) && !outcomeIds.includes(c.id)).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
-            <button onClick={suggestLevers} className="text-[11px] px-2 py-1 rounded border border-slate-200 text-slate-600 hover:border-slate-400" title="Adds every concept that acts on others but is not acted on by anything: the usual shape of a policy instrument. Review the suggestions before running.">Suggest levers</button>
-            <span className="text-[11px] text-slate-400">The interventions that can be combined, in any order, into pathways.</span>
+            <button onClick={suggestLevers} className="text-[12.5px] px-2 py-1 rounded border border-slate-200 text-neutral-900 hover:border-slate-400" title="Adds every concept that acts on others but is not acted on by anything: the usual shape of a policy instrument. Review the suggestions before running.">Suggest levers</button>
+            <span className="text-[12.5px] text-neutral-600">The interventions that can be combined, in any order, into pathways.</span>
           </div>
           {config.levers.length === 0 ? (
-            <p className="text-xs text-slate-400 italic">No levers yet.</p>
+            <p className="text-xs text-neutral-600 italic">No levers yet.</p>
           ) : (
             <table className="w-full text-xs">
               <thead>
-                <tr className="text-left text-slate-400 border-b border-slate-100">
+                <tr className="text-left text-neutral-600 border-b border-slate-100">
                   <th className="py-1 font-medium pr-3">Lever</th>
-                  <th className="py-1 font-medium pr-3" title="Increase: intensity 0 to 1 raises the lever's activation from 0 to +1, the same as setting it as a ▲ driver in Scenarios & Simulation. Decrease: intensity 0 to 1 lowers it from 0 to -1, the same as a ▼ driver. This is the same convention as on the Transition Point tab.">Intensity means <HelpCircle size={10} className="inline text-slate-300" /></th>
-                  <th className="py-1 font-medium pr-3" title="Optional. How demanding one unit of this lever is compared with the others (1 = the same). Enters the cumulative intervention intensity; no cost data needed, a ranking is enough.">Effort weight <HelpCircle size={10} className="inline text-slate-300" /></th>
+                  <th className="py-1 font-medium pr-3" title="Increase: intensity 0 to 1 raises the lever's activation from 0 to +1, the same as setting it as a ▲ driver in Scenarios & Simulation. Decrease: intensity 0 to 1 lowers it from 0 to -1, the same as a ▼ driver. This is the same convention as on the Transition Point tab.">Intensity means <HelpCircle size={10} className="inline text-neutral-500" /></th>
+                  <th className="py-1 font-medium pr-3" title="Optional. How demanding one unit of this lever is compared with the others (1 = the same). Enters the cumulative intervention intensity; no cost data needed, a ranking is enough.">Effort weight <HelpCircle size={10} className="inline text-neutral-500" /></th>
                   <th />
                 </tr>
               </thead>
               <tbody>
                 {config.levers.map((l) => (
                   <tr key={l.id} className="border-b border-slate-50">
-                    <td className="py-1 pr-3">{nameOf(l.id)}{!inScope(l.id) && <span className="ml-1 text-[10px] text-amber-700">(outside the analysis scope)</span>}</td>
+                    <td className="py-1 pr-3">{nameOf(l.id)}{!inScope(l.id) && <span className="ml-1 text-[11.5px] text-amber-700">(outside the analysis scope)</span>}</td>
                     <td className="py-1 pr-3">
                       <div className="inline-flex border border-slate-200 rounded overflow-hidden">
-                        <button onClick={() => updateLever(l.id, { direction: "increase" })} className={`text-[11px] px-2 py-0.5 ${l.direction !== "decrease" ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}>Increase (0 to 1)</button>
-                        <button onClick={() => updateLever(l.id, { direction: "decrease" })} className={`text-[11px] px-2 py-0.5 ${l.direction === "decrease" ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}>Decrease (0 to -1)</button>
+                        <button onClick={() => updateLever(l.id, { direction: "increase" })} className={`text-[12.5px] px-2 py-0.5 ${l.direction !== "decrease" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}>Increase (0 to 1)</button>
+                        <button onClick={() => updateLever(l.id, { direction: "decrease" })} className={`text-[12.5px] px-2 py-0.5 ${l.direction === "decrease" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}>Decrease (0 to -1)</button>
                       </div>
                     </td>
                     <td className="py-1 pr-3"><input type="number" min={0.1} step={0.5} value={l.effort} onChange={(e) => updateLever(l.id, { effort: e.target.value })} className="w-16 border border-slate-200 rounded px-1.5 py-0.5 font-mono" /></td>
-                    <td className="py-1 text-right"><button onClick={() => removeLever(l.id)} className="text-slate-400 hover:text-red-600" title="Remove this lever"><X size={13} /></button></td>
+                    <td className="py-1 text-right"><button onClick={() => removeLever(l.id)} className="text-neutral-600 hover:text-red-600" title="Remove this lever"><X size={13} /></button></td>
                   </tr>
                 ))}
               </tbody>
@@ -10130,34 +10141,34 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
         </div>
 
         <div>
-          <label className="text-xs text-slate-500 font-medium">3. How pathways are built</label>
+          <label className="text-xs text-neutral-700 font-medium">3. How pathways are built</label>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-1.5">
             <div>
-              <div className="text-[11px] text-slate-500 mb-0.5">Maximum number of stages</div>
+              <div className="text-[12.5px] text-neutral-700 mb-0.5">Maximum number of stages</div>
               <select value={J} onChange={(e) => patch({ maxLength: parseInt(e.target.value, 10) })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5">
                 {[1, 2, 3, 4, 5].map((k) => <option key={k} value={k}>{k} stage{k > 1 ? "s" : ""}</option>)}
               </select>
             </div>
             <div>
-              <div className="text-[11px] text-slate-500 mb-0.5" title="Up to the transition point: each stage stops where the lever's marginal return peaks, the default in the method. Full: every lever goes to intensity 1, as a reference case.">Stage intensity <HelpCircle size={10} className="inline text-slate-300" /></div>
+              <div className="text-[12.5px] text-neutral-700 mb-0.5" title="Up to the transition point: each stage stops where the lever's marginal return peaks, the default in the method. Full: every lever goes to intensity 1, as a reference case.">Stage intensity <HelpCircle size={10} className="inline text-neutral-500" /></div>
               <select value={config.rule} onChange={(e) => patch({ rule: e.target.value })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5">
                 <option value="tp">Up to the conditional transition point</option>
                 <option value="full">Full implementation (intensity 1)</option>
               </select>
-              <label className={`flex items-center gap-1.5 mt-1 text-[11px] ${config.rule === "tp" ? "text-slate-600" : "text-slate-300"}`} title="Staged scale-up: a lever implemented to its transition point may come back once in a later stage and be raised to full intensity.">
+              <label className={`flex items-center gap-1.5 mt-1 text-[12.5px] ${config.rule === "tp" ? "text-neutral-900" : "text-neutral-500"}`} title="Staged scale-up: a lever implemented to its transition point may come back once in a later stage and be raised to full intensity.">
                 <input type="checkbox" disabled={config.rule !== "tp"} checked={config.rule === "tp" && config.allowScaleUp} onChange={(e) => patch({ allowScaleUp: e.target.checked })} />
                 Allow scale-up stages
               </label>
             </div>
             <div>
-              <div className="text-[11px] text-slate-500 mb-0.5" title="Every order: all orderings of the levers up to the maximum length (exact, but grows fast). Beam search: keeps only the best partial pathways at each stage. Greedy: at each stage takes the lever with the highest marginal return.">Pathway construction <HelpCircle size={10} className="inline text-slate-300" /></div>
+              <div className="text-[12.5px] text-neutral-700 mb-0.5" title="Every order: all orderings of the levers up to the maximum length (exact, but grows fast). Beam search: keeps only the best partial pathways at each stage. Greedy: at each stage takes the lever with the highest marginal return.">Pathway construction <HelpCircle size={10} className="inline text-neutral-500" /></div>
               <select value={config.strategy} onChange={(e) => patch({ strategy: e.target.value })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5">
                 <option value="exhaustive">Every order (exhaustive)</option>
                 <option value="beam">Beam search</option>
                 <option value="greedy">Greedy (highest marginal return)</option>
               </select>
               {config.strategy === "beam" && (
-                <div className="flex items-center gap-1.5 mt-1 text-[11px] text-slate-600">
+                <div className="flex items-center gap-1.5 mt-1 text-[12.5px] text-neutral-900">
                   keep
                   <input type="number" min={1} max={200} value={config.beamWidth} onChange={(e) => patch({ beamWidth: e.target.value })} className="w-12 border border-slate-200 rounded px-1 py-0.5 font-mono" />
                   best by
@@ -10169,7 +10180,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
               )}
             </div>
             <div>
-              <div className="text-[11px] text-slate-500 mb-0.5" title="Number of intensity steps each lever is swept in. A transition point can only fall on one of these steps, so this sets its precision.">Intensity resolution <HelpCircle size={10} className="inline text-slate-300" /></div>
+              <div className="text-[12.5px] text-neutral-700 mb-0.5" title="Number of intensity steps each lever is swept in. A transition point can only fall on one of these steps, so this sets its precision.">Intensity resolution <HelpCircle size={10} className="inline text-neutral-500" /></div>
               <select value={N} onChange={(e) => patch({ resolution: parseInt(e.target.value, 10) })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5">
                 <option value={10}>10 steps (±0.1)</option>
                 <option value={20}>20 steps (±0.05)</option>
@@ -10177,19 +10188,19 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
               </select>
             </div>
             <div>
-              <div className="text-[11px] text-slate-500 mb-0.5" title="An outcome change smaller than this counts as no change: for the synergy score, trade-offs, and excluding levers that move nothing.">Flat-response threshold <HelpCircle size={10} className="inline text-slate-300" /></div>
+              <div className="text-[12.5px] text-neutral-700 mb-0.5" title="An outcome change smaller than this counts as no change: for the synergy score, trade-offs, and excluding levers that move nothing.">Flat-response threshold <HelpCircle size={10} className="inline text-neutral-500" /></div>
               <input type="number" step={0.005} min={0} max={1} value={config.flatThreshold} onChange={(e) => patch({ flatThreshold: e.target.value })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 font-mono" />
             </div>
             <div>
-              <div className="text-[11px] text-slate-500 mb-0.5" title="Pathways count as admissible (and are classified into archetypes) only if their total outcome gain is at least this share of the best pathway's gain, and they have no trade-offs.">Minimum gain (% of best) <HelpCircle size={10} className="inline text-slate-300" /></div>
+              <div className="text-[12.5px] text-neutral-700 mb-0.5" title="Pathways count as admissible (and are classified into archetypes) only if their total outcome gain is at least this share of the best pathway's gain, and they have no trade-offs.">Minimum gain (% of best) <HelpCircle size={10} className="inline text-neutral-500" /></div>
               <input type="number" step={5} min={0} max={100} value={Math.round((Number(config.minGainShare) || 0) * 100)} onChange={(e) => patch({ minGainShare: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) / 100 })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 font-mono" />
             </div>
             <div>
-              <div className="text-[11px] text-slate-500 mb-0.5" title="Near a transition point the model settles slowly, and every stage sits at one, so pathway runs allow more iterations than the global setting before a run counts as not converged. All other simulation settings are the global ones (Scenarios & Simulation, Advanced options).">Maximum iterations per run <HelpCircle size={10} className="inline text-slate-300" /></div>
+              <div className="text-[12.5px] text-neutral-700 mb-0.5" title="Near a transition point the model settles slowly, and every stage sits at one, so pathway runs allow more iterations than the global setting before a run counts as not converged. All other simulation settings are the global ones (Scenarios & Simulation, Advanced options).">Maximum iterations per run <HelpCircle size={10} className="inline text-neutral-500" /></div>
               <input type="number" step={100} min={10} value={config.maxIterations} onChange={(e) => patch({ maxIterations: e.target.value })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 font-mono" />
             </div>
             <div className="flex items-end">
-              <label className="flex items-center gap-1.5 text-[11px] text-slate-600" title="Repeats the whole analysis with steepness halved and doubled, the other squash function, and the other update rule, and reports how often the top pathways keep their archetype and rank. About five times longer.">
+              <label className="flex items-center gap-1.5 text-[12.5px] text-neutral-900" title="Repeats the whole analysis with steepness halved and doubled, the other squash function, and the other update rule, and reports how often the top pathways keep their archetype and rank. About five times longer.">
                 <input type="checkbox" checked={!!config.robustness} onChange={(e) => patch({ robustness: e.target.checked })} />
                 Also test robustness (4 alternative settings)
               </label>
@@ -10199,27 +10210,27 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
 
         <div>
           <div className="flex items-center gap-2">
-            <label className="text-xs text-slate-500 font-medium">4. Order constraints (optional)</label>
-            <button onClick={addPrecedence} disabled={scopedLevers.length < 2} className="text-[11px] px-2 py-0.5 rounded border border-slate-200 text-slate-600 hover:border-slate-400 disabled:opacity-40">Add a constraint</button>
-            <span className="text-[11px] text-slate-400">For example a legal or practical prerequisite: one lever can only follow another.</span>
+            <label className="text-xs text-neutral-700 font-medium">4. Order constraints (optional)</label>
+            <button onClick={addPrecedence} disabled={scopedLevers.length < 2} className="text-[12.5px] px-2 py-0.5 rounded border border-slate-200 text-neutral-900 hover:border-slate-400 disabled:opacity-40">Add a constraint</button>
+            <span className="text-[12.5px] text-neutral-600">For example a legal or practical prerequisite: one lever can only follow another.</span>
           </div>
           {config.precedence.map((p, i) => (
             <div key={i} className="flex items-center gap-2 mt-1.5 text-xs">
               <select value={p.after} onChange={(e) => patch({ precedence: config.precedence.map((x, j) => (j === i ? { ...x, after: e.target.value } : x)) })} className="border border-slate-200 rounded px-1.5 py-1">
                 {scopedLevers.map((l) => <option key={l.id} value={l.id}>{nameOf(l.id)}</option>)}
               </select>
-              <span className="text-slate-500">can only come after</span>
+              <span className="text-neutral-700">can only come after</span>
               <select value={p.before} onChange={(e) => patch({ precedence: config.precedence.map((x, j) => (j === i ? { ...x, before: e.target.value } : x)) })} className="border border-slate-200 rounded px-1.5 py-1">
                 {scopedLevers.map((l) => <option key={l.id} value={l.id}>{nameOf(l.id)}</option>)}
               </select>
-              {p.before === p.after && <span className="text-[10px] text-amber-700">(same lever: ignored)</span>}
-              <button onClick={() => patch({ precedence: config.precedence.filter((_, j) => j !== i) })} className="text-slate-400 hover:text-red-600"><X size={13} /></button>
+              {p.before === p.after && <span className="text-[11.5px] text-amber-700">(same lever: ignored)</span>}
+              <button onClick={() => patch({ precedence: config.precedence.filter((_, j) => j !== i) })} className="text-neutral-600 hover:text-red-600"><X size={13} /></button>
             </div>
           ))}
         </div>
 
         {outOfScope.length > 0 && (
-          <p className="text-[11px] text-amber-700">{outOfScope.length} selected concept{outOfScope.length > 1 ? "s are" : " is"} outside the current analysis scope and will be left out.</p>
+          <p className="text-[12.5px] text-amber-700">{outOfScope.length} selected concept{outOfScope.length > 1 ? "s are" : " is"} outside the current analysis scope and will be left out.</p>
         )}
 
         <div className="flex items-center gap-3 flex-wrap pt-1 border-t border-slate-100">
@@ -10228,7 +10239,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
           ) : (
             <Btn variant="outline" onClick={cancel}><X size={14} />Cancel</Btn>
           )}
-          <span className="text-[11px] text-slate-500">
+          <span className="text-[12.5px] text-neutral-700">
             {scopedLevers.length === 0 || scopedOutcomes.length === 0
               ? "Add at least one outcome and one lever to begin."
               : tooMany
@@ -10238,7 +10249,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
         </div>
         {running && progress && (
           <div>
-            <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1">
+            <div className="flex items-center justify-between text-[12.5px] text-neutral-700 mb-1">
               <span>{progress.phase ? `${progress.phase}: ` : ""}{progress.stage}</span>
               <span className="font-mono">{progress.done.toLocaleString()} / {progress.total.toLocaleString()}</span>
             </div>
@@ -10252,7 +10263,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
         <>
           {isStale && <StaleResultBanner label="this pathway analysis" />}
           {configChanged && !isStale && (
-            <div className="rounded-md border border-slate-200 bg-slate-50 p-2.5 text-xs text-slate-600 flex items-start gap-1.5">
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-2.5 text-xs text-neutral-900 flex items-start gap-1.5">
               <Info size={13} className="shrink-0 mt-0.5" />
               <span>The setup above has changed since this analysis was run. The results below still describe the previous setup; run it again to update them.</span>
             </div>
@@ -10292,17 +10303,17 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
               return (
                 <div key={a.key} className="bg-white rounded-lg border border-slate-200 p-3">
                   <div className="flex items-center justify-between">
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${a.badge}`}>{a.label}</span>
+                    <span className={`text-[11.5px] px-1.5 py-0.5 rounded-full border ${a.badge}`}>{a.label}</span>
                     <span className="text-lg font-semibold font-mono" style={{ color: a.color }}>{s.counts[a.key]}</span>
                   </div>
-                  <p className="text-[10px] text-slate-400 mt-1">{a.purpose}</p>
+                  <p className="text-[11.5px] text-neutral-600 mt-1">{a.purpose}</p>
                   {top ? (
-                    <button onClick={() => selectPathway(top.id)} className="mt-2 text-left text-[11px] text-slate-700 hover:text-cobalt-800">
-                      <div className="text-[10px] text-slate-400 uppercase tracking-wide">Best: {a.ranking.toLowerCase()}</div>
+                    <button onClick={() => selectPathway(top.id)} className="mt-2 text-left text-[12.5px] text-neutral-900 hover:text-cobalt-800">
+                      <div className="text-[11.5px] text-neutral-600 uppercase tracking-wide">Best: {a.ranking.toLowerCase()}</div>
                       <PathwayStagesText c={top} nameOf={nameOf} compact />
                     </button>
                   ) : (
-                    <p className="mt-2 text-[11px] text-slate-400 italic" title={Object.entries(s.why[a.key]).map(([k, v]) => `${k}: ${v} of ${s.counts.admissible}`).join("\n")}>
+                    <p className="mt-2 text-[12.5px] text-neutral-600 italic" title={Object.entries(s.why[a.key]).map(([k, v]) => `${k}: ${v} of ${s.counts.admissible}`).join("\n")}>
                       No pathway meets all conditions. {Object.entries(s.why[a.key]).map(([k, v]) => `${k}: ${v}`).join("; ")}.
                     </p>
                   )}
@@ -10316,7 +10327,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
               <h4 className="text-sm font-semibold">Effort-gain plane</h4>
               <Btn variant="outline" onClick={() => setFigPlaneOpen((v) => !v)}><SlidersHorizontal size={13} />{figPlaneOpen ? "Hide figure options" : "Customize & export"}</Btn>
             </div>
-            <p className="text-[11px] text-slate-400 mb-2">Every pathway by the effort it needs (cumulative intervention intensity) and what it achieves (total outcome gain), coloured by primary archetype. The dashed line is the efficient frontier: no other pathway achieves more with less. The selected pathway is ringed and labelled directly on the chart, so it stays identifiable once the image is saved. Click a point to open that pathway below.</p>
+            <p className="text-[12.5px] text-neutral-600 mb-2">Every pathway by the effort it needs (cumulative intervention intensity) and what it achieves (total outcome gain), coloured by primary archetype. The dashed line is the efficient frontier: no other pathway achieves more with less. The selected pathway is ringed and labelled directly on the chart, so it stays identifiable once the image is saved. Click a point to open that pathway below.</p>
             <div ref={planeRef} data-chart="pathway-plane" className="w-full h-96" style={figPlaneOpen ? { width: mmToPx(figPlane.widthMm, 96), height: mmToPx(figPlane.heightMm, 96), maxWidth: "100%" } : undefined}>
               <ResponsiveContainer>
                 <ScatterChart margin={{ top: 10, right: 24, bottom: 24, left: 16 }}>
@@ -10330,10 +10341,10 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
                   <RTooltip cursor={{ strokeDasharray: "3 3" }} content={({ active, payload }) => {
                     const c = active && payload?.[0] ? candById.get(payload[0].payload.id) : null;
                     return c ? (
-                      <div className="bg-white border border-slate-200 rounded shadow-sm p-2 text-[11px] max-w-xs">
+                      <div className="bg-white border border-slate-200 rounded shadow-sm p-2 text-[12.5px] max-w-xs">
                         <div className="font-semibold mb-0.5"><PathwayStagesText c={c} nameOf={nameOf} compact /></div>
                         <div>TOG {fmtNum(c.tog)}, CII {fmtNum(c.cii)}, PEI {fmtNum(c.pei)}</div>
-                        <div className="text-slate-500">{pathwayStatus(c)}</div>
+                        <div className="text-neutral-700">{pathwayStatus(c)}</div>
                       </div>
                     ) : null;
                   }} />
@@ -10394,19 +10405,19 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
               {PATHWAY_ARCHETYPES.map((a) => (
                 <div key={a.key}>
                   <div className="flex items-center gap-2 mb-1">
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${a.badge}`}>{a.label}</span>
-                    <span className="text-[10px] text-slate-400">{a.ranking}</span>
+                    <span className={`text-[11.5px] px-1.5 py-0.5 rounded-full border ${a.badge}`}>{a.label}</span>
+                    <span className="text-[11.5px] text-neutral-600">{a.ranking}</span>
                   </div>
                   {s.ranked[a.key].length === 0 ? (
-                    <p className="text-[11px] text-slate-400 italic">None in this run.</p>
+                    <p className="text-[12.5px] text-neutral-600 italic">None in this run.</p>
                   ) : (
                     <ol className="space-y-0.5">
                       {s.ranked[a.key].slice(0, PATHWAY_TOP_N).map((c, i) => (
                         <li key={c.id}>
-                          <button onClick={() => selectPathway(c.id)} className={`w-full text-left text-[11px] px-1.5 py-1 rounded hover:bg-slate-50 flex gap-2 ${selectedId === c.id ? "bg-slate-100" : ""}`}>
-                            <span className="font-mono text-slate-400 w-4 shrink-0">{i + 1}</span>
+                          <button onClick={() => selectPathway(c.id)} className={`w-full text-left text-[12.5px] px-1.5 py-1 rounded hover:bg-slate-50 flex gap-2 ${selectedId === c.id ? "bg-slate-100" : ""}`}>
+                            <span className="font-mono text-neutral-600 w-4 shrink-0">{i + 1}</span>
                             <span className="flex-1"><PathwayStagesText c={c} nameOf={nameOf} compact /></span>
-                            <span className="font-mono text-slate-500 shrink-0">{a.key === "ef" ? `PEI ${fmtNum(c.pei)}` : a.key === "lhf" ? `CII ${fmtNum(c.cii)}` : `TOG ${fmtNum(c.tog)}`}</span>
+                            <span className="font-mono text-neutral-700 shrink-0">{a.key === "ef" ? `PEI ${fmtNum(c.pei)}` : a.key === "lhf" ? `CII ${fmtNum(c.cii)}` : `TOG ${fmtNum(c.tog)}`}</span>
                           </button>
                         </li>
                       ))}
@@ -10423,7 +10434,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
                 <div>
                   <h4 className="text-sm font-semibold">Selected pathway</h4>
                   <div className="text-xs mt-1"><PathwayStagesText c={selected} nameOf={nameOf} /></div>
-                  <div className="mt-1.5"><ArchetypeBadges c={selected} />{selected.frontier && <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full border border-slate-300 text-slate-600">On the efficient frontier</span>}</div>
+                  <div className="mt-1.5"><ArchetypeBadges c={selected} />{selected.frontier && <span className="ml-1 text-[11.5px] px-1.5 py-0.5 rounded-full border border-slate-300 text-neutral-900">On the efficient frontier</span>}</div>
                 </div>
                 <Btn variant="outline" onClick={exportStagesCSV}><Download size={13} />Stages (CSV)</Btn>
               </div>
@@ -10431,18 +10442,18 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
                 {[["TOG", selected.tog, PATHWAY_METRIC_HELP.tog], ["CII", selected.cii, PATHWAY_METRIC_HELP.cii], ["PEI", selected.pei, PATHWAY_METRIC_HELP.pei], ["Avg TP", selected.avgTp, PATHWAY_METRIC_HELP.avgTp],
                   ["SS", selected.ss, PATHWAY_METRIC_HELP.ss], ["EBI", selected.ebi, PATHWAY_METRIC_HELP.ebi], ["IG", selected.ig, PATHWAY_METRIC_HELP.ig], ["TP shift", selected.meanShift, PATHWAY_METRIC_HELP.shift]].map(([k, v, h]) => (
                   <div key={k} className="border border-slate-200 rounded p-2" title={h}>
-                    <div className="text-[10px] text-slate-400">{k}</div>
+                    <div className="text-[11.5px] text-neutral-600">{k}</div>
                     <div className="text-sm font-mono">{k === "SS" ? `${v} of ${result.outcomes.length}` : k === "IG" || k === "TP shift" ? fmtSigned(v) : fmtNum(v)}</div>
                   </div>
                 ))}
               </div>
-              {selected.targetsSet > 0 && <p className="text-xs text-slate-600">Reaches {selected.targetsMet} of {selected.targetsSet} desired outcome levels.</p>}
+              {selected.targetsSet > 0 && <p className="text-xs text-neutral-900">Reaches {selected.targetsMet} of {selected.targetsSet} desired outcome levels.</p>}
               {!selected.converged && <p className="text-xs text-amber-700">At least one stage of this pathway did not converge within {result.settingsUsed.maxIterations} iterations; its end state is not a settled equilibrium.</p>}
 
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="text-left text-slate-400 border-b border-slate-100">
+                    <tr className="text-left text-neutral-600 border-b border-slate-100">
                       <th className="py-1 font-medium pr-3">Stage</th>
                       <th className="py-1 font-medium pr-3">Lever</th>
                       <th className="py-1 font-medium pr-3" title="The lever's transition point on its own, from Business-as-Usual.">TP alone</th>
@@ -10458,7 +10469,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
                     </tr>
                   </thead>
                   <tbody>
-                    <tr className="border-b border-slate-50 text-slate-400">
+                    <tr className="border-b border-slate-50 text-neutral-600">
                       <td className="py-1 pr-3">BAU</td><td className="py-1 pr-3" colSpan={8}>Business-as-Usual equilibrium</td>
                       {result.outcomes.map((o) => <td key={o.id} className="py-1 pr-3 font-mono">{fmtNum(result.bauOutcomes[o.id])}</td>)}
                     </tr>
@@ -10468,7 +10479,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
                       return (
                         <tr key={i} className="border-b border-slate-50">
                           <td className="py-1 pr-3">{i + 1}</td>
-                          <td className="py-1 pr-3">{nameOf(st.leverId)}{st.scaleUp && <span className="text-[10px] text-slate-400"> (scale-up)</span>}{!st.converged && <span className="text-[10px] text-amber-700"> (not converged)</span>}</td>
+                          <td className="py-1 pr-3">{nameOf(st.leverId)}{st.scaleUp && <span className="text-[11.5px] text-neutral-600"> (scale-up)</span>}{!st.converged && <span className="text-[11.5px] text-amber-700"> (not converged)</span>}</td>
                           <td className="py-1 pr-3 font-mono">{fmtNum(st.tauIso)}</td>
                           <td className="py-1 pr-3 font-mono">{fmtNum(st.tauCond)}</td>
                           <td className={`py-1 pr-3 font-mono ${st.shift < 0 ? "text-cobalt-700" : st.shift > 0 ? "text-orange-700" : ""}`}>{st.shift === null ? "" : fmtSigned(st.shift)}</td>
@@ -10487,10 +10498,10 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <div className="text-xs font-medium text-slate-600">Outcome trajectory</div>
+                    <div className="text-xs font-medium text-neutral-900">Outcome trajectory</div>
                     <Btn variant="outline" onClick={() => setFigTrajectoryOpen((v) => !v)}><SlidersHorizontal size={13} />{figTrajectoryOpen ? "Hide figure options" : "Customize & export"}</Btn>
                   </div>
-                  <p className="text-[10px] text-slate-400 mb-1">Improvement of each outcome relative to Business-as-Usual after every stage (up is better for every outcome), and the total outcome gain.</p>
+                  <p className="text-[11.5px] text-neutral-600 mb-1">Improvement of each outcome relative to Business-as-Usual after every stage (up is better for every outcome), and the total outcome gain.</p>
                   <div ref={trajectoryRef} className="h-60" style={figTrajectoryOpen ? { width: mmToPx(figTrajectory.widthMm, 96), height: mmToPx(figTrajectory.heightMm, 96), maxWidth: "100%" } : undefined}>
                     <ResponsiveContainer>
                       <LineChart data={trajectory.rows} margin={{ top: 16, right: 10, bottom: 5, left: 0 }}>
@@ -10536,10 +10547,10 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
                 </div>
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <div className="text-xs font-medium text-slate-600">Benefit accrual (EBI {fmtNum(selected.ebi)})</div>
+                    <div className="text-xs font-medium text-neutral-900">Benefit accrual (EBI {fmtNum(selected.ebi)})</div>
                     <Btn variant="outline" onClick={() => setFigAccrualOpen((v) => !v)} disabled={trajectory.accrual.length <= 1}><SlidersHorizontal size={13} />{figAccrualOpen ? "Hide figure options" : "Customize & export"}</Btn>
                   </div>
-                  <p className="text-[10px] text-slate-400 mb-1">Share of the final gain realized against share of the effort spent. The shaded area is the Early Benefit Index itself; above the dashed diagonal, benefits arrive ahead of effort.</p>
+                  <p className="text-[11.5px] text-neutral-600 mb-1">Share of the final gain realized against share of the effort spent. The shaded area is the Early Benefit Index itself; above the dashed diagonal, benefits arrive ahead of effort.</p>
                   <div ref={accrualRef} className="h-60" style={figAccrualOpen ? { width: mmToPx(figAccrual.widthMm, 96), height: mmToPx(figAccrual.heightMm, 96), maxWidth: "100%" } : undefined}>
                     {trajectory.accrual.length > 1 ? (
                       <ResponsiveContainer>
@@ -10554,7 +10565,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
                           <Area type="linear" dataKey="y" name="Share of gain" stroke={figurePalette(figAccrual.palette, 1)[0]} strokeWidth={figAccrual.lineWidth} fill={figurePalette(figAccrual.palette, 1)[0]} fillOpacity={0.22 * figAccrual.opacity} dot={figAccrual.markerSize > 0 ? { r: figAccrual.markerSize } : false} isAnimationActive={false} />
                         </AreaChart>
                       </ResponsiveContainer>
-                    ) : <p className="text-[11px] text-slate-400 italic">Not defined for a pathway without a positive gain and effort.</p>}
+                    ) : <p className="text-[12.5px] text-neutral-600 italic">Not defined for a pathway without a positive gain and effort.</p>}
                   </div>
                   {figAccrualOpen && trajectory.accrual.length > 1 && (
                     <FigurePanel
@@ -10593,7 +10604,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="text-left text-slate-400 border-b border-slate-100">
+                  <tr className="text-left text-neutral-600 border-b border-slate-100">
                     {PATHWAY_TABLE_COLUMNS.map((col) => <SortHeader key={col.key} col={col} sortKey={sortKey} sortDir={sortDir} onSort={onSort} />)}
                   </tr>
                 </thead>
@@ -10626,11 +10637,11 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
               <h4 className="text-sm font-semibold">Implementation portfolios</h4>
               <Btn variant="outline" onClick={exportPortfoliosCSV}><Download size={13} />Export CSV</Btn>
             </div>
-            <p className="text-[11px] text-slate-400 mb-2">Every pathway starts with one of these opening moves. <strong className="text-slate-600">Regret</strong> is how much total outcome gain an opening gives up compared with the best pathway of all (0: the best outcome stays within reach). <strong className="text-slate-600">Top pathways opened</strong> counts how many of the top {PATHWAY_TOP_N} pathways of each archetype start this way; a low-regret opening that opens many of them is a no-regret first move.</p>
+            <p className="text-[12.5px] text-neutral-600 mb-2">Every pathway starts with one of these opening moves. <strong className="text-neutral-900">Regret</strong> is how much total outcome gain an opening gives up compared with the best pathway of all (0: the best outcome stays within reach). <strong className="text-neutral-900">Top pathways opened</strong> counts how many of the top {PATHWAY_TOP_N} pathways of each archetype start this way; a low-regret opening that opens many of them is a no-regret first move.</p>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="text-left text-slate-400 border-b border-slate-100">
+                  <tr className="text-left text-neutral-600 border-b border-slate-100">
                     <th className="py-1 font-medium pr-3">Opening</th>
                     <th className="py-1 font-medium pr-3">Regret</th>
                     <th className="py-1 font-medium pr-3">Top pathways opened</th>
@@ -10647,7 +10658,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
                         const c = f.bestBy[a.key] !== null ? candById.get(f.bestBy[a.key]) : null;
                         return (
                           <td key={a.key} className="py-1 pr-3">
-                            {c ? <button onClick={() => selectPathway(c.id)} className="text-left hover:text-cobalt-800"><PathwayStagesText c={{ ...c, stages: c.stages.slice(f.stages.length), length: c.length - f.stages.length }} nameOf={nameOf} compact />{c.length === f.stages.length && <span className="text-slate-400">(stop here)</span>}</button> : <span className="text-slate-300">none</span>}
+                            {c ? <button onClick={() => selectPathway(c.id)} className="text-left hover:text-cobalt-800"><PathwayStagesText c={{ ...c, stages: c.stages.slice(f.stages.length), length: c.length - f.stages.length }} nameOf={nameOf} compact />{c.length === f.stages.length && <span className="text-neutral-600">(stop here)</span>}</button> : <span className="text-neutral-500">none</span>}
                           </td>
                         );
                       })}
@@ -10656,7 +10667,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
                 </tbody>
               </table>
             </div>
-            {result.portfolios.openings.length > 0 && <p className="text-[10px] text-slate-400 mt-1">Below the line: the two-stage openings shared by the most top-ranked pathways.</p>}
+            {result.portfolios.openings.length > 0 && <p className="text-[11.5px] text-neutral-600 mt-1">Below the line: the two-stage openings shared by the most top-ranked pathways.</p>}
           </div>
 
           <div className="bg-white rounded-lg border border-slate-200 p-4">
@@ -10664,11 +10675,11 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
               <h4 className="text-sm font-semibold">Lever profiles (each lever on its own, from Business-as-Usual)</h4>
               <Btn variant="outline" onClick={exportLeversCSV}><Download size={13} />Export CSV</Btn>
             </div>
-            <p className="text-[11px] text-slate-400 mb-2">Step 1 of the method: the building blocks. Levers that move no outcome, or never improve the outcome gain, are left out of the pathways.</p>
+            <p className="text-[12.5px] text-neutral-600 mb-2">Step 1 of the method: the building blocks. Levers that move no outcome, or never improve the outcome gain, are left out of the pathways.</p>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="text-left text-slate-400 border-b border-slate-100">
+                  <tr className="text-left text-neutral-600 border-b border-slate-100">
                     <th className="py-1 font-medium pr-3">Lever</th>
                     <th className="py-1 font-medium pr-3">TP</th>
                     <th className="py-1 font-medium pr-3">Response type</th>
@@ -10681,13 +10692,13 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
                 <tbody>
                   {result.iso.map((l) => (
                     <tr key={l.id} className="border-b border-slate-50">
-                      <td className="py-1 pr-3">{nameOf(l.id)}{l.decrease && <span className="text-[10px] text-slate-400"> (decrease)</span>}</td>
+                      <td className="py-1 pr-3">{nameOf(l.id)}{l.decrease && <span className="text-[11.5px] text-neutral-600"> (decrease)</span>}</td>
                       <td className="py-1 pr-3 font-mono">{fmtNum(l.tau)}</td>
-                      <td className="py-1 pr-3"><span title={RESPONSE_TYPE_HELP[l.responseType] || l.reason} className={`text-[10px] px-1.5 py-0.5 rounded-full border ${RESPONSE_TYPE_STYLE[l.responseType] || "bg-slate-100 text-slate-500 border-slate-200"}`}>{l.responseType}</span></td>
+                      <td className="py-1 pr-3"><span title={RESPONSE_TYPE_HELP[l.responseType] || l.reason} className={`text-[11.5px] px-1.5 py-0.5 rounded-full border ${RESPONSE_TYPE_STYLE[l.responseType] || "bg-slate-100 text-neutral-700 border-slate-200"}`}>{l.responseType}</span></td>
                       <td className="py-1 pr-3 font-mono">{fmtSigned(l.gainAtFull)}</td>
-                      <td className="py-1 pr-3"><span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${SYNERGY_STYLE[l.synergy.type]}`}>{l.synergy.type}</span></td>
-                      {l.outcomeRows.map((r) => <td key={r.id} className="py-1 pr-3 font-mono">{fmtSigned(r.effect)} <span className="text-slate-400">({fmtNum(r.tp)})</span></td>)}
-                      <td className="py-1 pr-3">{l.included ? <Check size={13} className="text-cobalt-700" /> : <span className="text-[10px] text-amber-700" title={l.reason}>No: {l.reason.split(":")[0]}</span>}</td>
+                      <td className="py-1 pr-3"><span className={`text-[11.5px] px-1.5 py-0.5 rounded-full border ${SYNERGY_STYLE[l.synergy.type]}`}>{l.synergy.type}</span></td>
+                      {l.outcomeRows.map((r) => <td key={r.id} className="py-1 pr-3 font-mono">{fmtSigned(r.effect)} <span className="text-neutral-600">({fmtNum(r.tp)})</span></td>)}
+                      <td className="py-1 pr-3">{l.included ? <Check size={13} className="text-cobalt-700" /> : <span className="text-[11.5px] text-amber-700" title={l.reason}>No: {l.reason.split(":")[0]}</span>}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -10697,13 +10708,13 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
 
           <div className="bg-white rounded-lg border border-slate-200 p-4">
             <h4 className="text-sm font-semibold mb-1">Does the order decide the end state? (invariance test)</h4>
-            <p className="text-[11px] text-slate-400 mb-2">For the lever sets of the top pathways, every order of the same levers at the same final intensities was simulated stage by stage. If the end states differ by more than {PATHWAY_INVARIANCE_TOLERANCE}, the model has more than one equilibrium for these levers, and the order of implementation decides where the system ends up (path dependence). Smaller differences come from where each run stops settling.</p>
+            <p className="text-[12.5px] text-neutral-600 mb-2">For the lever sets of the top pathways, every order of the same levers at the same final intensities was simulated stage by stage. If the end states differ by more than {PATHWAY_INVARIANCE_TOLERANCE}, the model has more than one equilibrium for these levers, and the order of implementation decides where the system ends up (path dependence). Smaller differences come from where each run stops settling.</p>
             {result.invariance.tested === 0 ? (
-              <p className="text-xs text-slate-400 italic">No top pathway combines two or more levers, so there was nothing to test.</p>
+              <p className="text-xs text-neutral-600 italic">No top pathway combines two or more levers, so there was nothing to test.</p>
             ) : (
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="text-left text-slate-400 border-b border-slate-100">
+                  <tr className="text-left text-neutral-600 border-b border-slate-100">
                     <th className="py-1 font-medium pr-3">Levers (final intensity)</th>
                     <th className="py-1 font-medium pr-3">Orders tested</th>
                     <th className="py-1 font-medium pr-3">Largest difference between end states</th>
@@ -10716,7 +10727,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
                       <td className="py-1 pr-3">{r.ids.map((id) => `${nameOf(id)} (${round2(r.final[id])})`).join(", ")}</td>
                       <td className="py-1 pr-3 font-mono">{r.perms}</td>
                       <td className="py-1 pr-3 font-mono">{fmtNum(r.maxDiff, 3)}</td>
-                      <td className="py-1 pr-3">{!r.allConverged ? <span className="text-slate-500">Not all orders converged: undecided</span> : r.pathDependent ? <span className="text-amber-700 font-medium">Path dependent: the order matters</span> : <span className="text-cobalt-700">Same end state in every order</span>}</td>
+                      <td className="py-1 pr-3">{!r.allConverged ? <span className="text-neutral-700">Not all orders converged: undecided</span> : r.pathDependent ? <span className="text-amber-700 font-medium">Path dependent: the order matters</span> : <span className="text-cobalt-700">Same end state in every order</span>}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -10727,10 +10738,10 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
           {result.robustness && (
             <div className="bg-white rounded-lg border border-slate-200 p-4">
               <h4 className="text-sm font-semibold mb-1">Robustness of the top pathways</h4>
-              <p className="text-[11px] text-slate-400 mb-2">The whole analysis was repeated under {result.robustness.configs.length} alternative simulation settings: {result.robustness.configs.map((c) => `${c.label} (${c.admissible} of ${c.candidates} admissible${c.counts.nonConverged ? `, ${c.counts.nonConverged} did not converge` : ""})`).join("; ")}. For each top pathway (matched by the order of its levers; intensities follow each setting's own transition points), how often it stayed admissible, kept its archetype, and stayed among the top {PATHWAY_TOP_N} of that archetype. A pathway that holds up across settings reflects the causal structure rather than a modelling choice.</p>
+              <p className="text-[12.5px] text-neutral-600 mb-2">The whole analysis was repeated under {result.robustness.configs.length} alternative simulation settings: {result.robustness.configs.map((c) => `${c.label} (${c.admissible} of ${c.candidates} admissible${c.counts.nonConverged ? `, ${c.counts.nonConverged} did not converge` : ""})`).join("; ")}. For each top pathway (matched by the order of its levers; intensities follow each setting's own transition points), how often it stayed admissible, kept its archetype, and stayed among the top {PATHWAY_TOP_N} of that archetype. A pathway that holds up across settings reflects the causal structure rather than a modelling choice.</p>
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="text-left text-slate-400 border-b border-slate-100">
+                  <tr className="text-left text-neutral-600 border-b border-slate-100">
                     <th className="py-1 font-medium pr-3">Pathway</th>
                     <th className="py-1 font-medium pr-3">Archetype (rank)</th>
                     <th className="py-1 font-medium pr-3">Admissible</th>
@@ -10744,7 +10755,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
                     return (
                       <tr key={`${r.id}-${r.archetype}`} className="border-b border-slate-50">
                         <td className="py-1 pr-3">{c ? <button onClick={() => selectPathway(c.id)} className="text-left hover:text-cobalt-800"><PathwayStagesText c={c} nameOf={nameOf} compact /></button> : r.sig}</td>
-                        <td className="py-1 pr-3"><span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${PATHWAY_ARCHETYPE_BY_KEY[r.archetype].badge}`}>{PATHWAY_ARCHETYPE_BY_KEY[r.archetype].label}</span> <span className="font-mono text-slate-500">#{r.rank}</span></td>
+                        <td className="py-1 pr-3"><span className={`text-[11.5px] px-1.5 py-0.5 rounded-full border ${PATHWAY_ARCHETYPE_BY_KEY[r.archetype].badge}`}>{PATHWAY_ARCHETYPE_BY_KEY[r.archetype].label}</span> <span className="font-mono text-neutral-700">#{r.rank}</span></td>
                         <td className="py-1 pr-3 font-mono">{r.admissible} of {r.of}</td>
                         <td className={`py-1 pr-3 font-mono ${r.sameArchetype === r.of ? "text-cobalt-700" : r.sameArchetype === 0 ? "text-orange-700" : ""}`}>{r.sameArchetype} of {r.of}</td>
                         <td className="py-1 pr-3 font-mono">{r.top} of {r.of}</td>
@@ -10767,7 +10778,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
               <Btn variant="outline" onClick={() => exportFigure(trajectoryRef.current, "transition-pathway-trajectory.png", figTrajectory, { title: figTrajectory.title || `Outcome trajectory: ${selectedLabel}`, subtitle: pathwayContextLine })} disabled={!selected}><Download size={13} />Selected trajectory ({figTrajectory.format.toUpperCase()})</Btn>
               <Btn variant="outline" onClick={() => exportFigure(accrualRef.current, "transition-pathway-benefit-accrual.png", figAccrual, { title: figAccrual.title || `Benefit accrual: ${selectedLabel}`, subtitle: `Early Benefit Index ${fmtNum(selected?.ebi)}` })} disabled={!selected || !trajectory || trajectory.accrual.length <= 1}><Download size={13} />Selected benefit accrual ({figAccrual.format.toUpperCase()})</Btn>
             </div>
-            <p className="text-[10px] text-slate-400 mt-2">The Export Analysis Workbook in the header also includes these results (pathways, rankings, stages of the top pathways, lever profiles, portfolios, and the invariance and robustness tests).</p>
+            <p className="text-[11.5px] text-neutral-600 mt-2">The Export Analysis Workbook in the header also includes these results (pathways, rankings, stages of the top pathways, lever profiles, portfolios, and the invariance and robustness tests).</p>
           </div>
         </>
       )}
@@ -10804,10 +10815,10 @@ class AppCrashBoundary extends React.Component {
     if (!this.state.error) return this.props.children;
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 p-8" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
-        <div className="max-w-lg bg-white border border-slate-200 rounded-lg p-6 space-y-3 text-sm text-slate-700">
-          <h1 className="text-lg font-semibold text-slate-900">The Spaghetti Engine ran into a problem</h1>
+        <div className="max-w-lg bg-white border border-slate-200 rounded-lg p-6 space-y-3 text-sm text-neutral-900">
+          <h1 className="text-lg font-semibold text-neutral-900">The Spaghetti Engine ran into a problem</h1>
           <p>Something went wrong while showing the page. Your model is saved in this browser, and reloading the page usually solves this.</p>
-          <p className="text-xs text-slate-400 font-mono break-words">{String(this.state.error?.message || this.state.error)}</p>
+          <p className="text-xs text-neutral-600 font-mono break-words">{String(this.state.error?.message || this.state.error)}</p>
           <div className="flex flex-wrap gap-2 pt-1">
             <button onClick={() => window.location.reload()} className="px-3 py-1.5 rounded-md bg-cobalt-700 text-white text-sm">Reload</button>
             <button onClick={() => this.downloadSaved()} className="px-3 py-1.5 rounded-md border border-slate-300 text-sm">Download the saved model</button>
@@ -11754,20 +11765,20 @@ function SpaghettiEngineApp() {
   };
 
   return (
-    <div className="w-full h-full min-h-[820px] bg-white text-slate-800 flex flex-col" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+    <div className="w-full h-full min-h-[820px] bg-white text-neutral-900 flex flex-col" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
       {/* Top bar */}
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-5 py-2.5 border-b-2 border-citrus-400 bg-ink text-white">
         <button onClick={() => setTab("about")} className="flex items-center gap-2.5 text-left rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-citrus-400" title="About the Spaghetti Engine, and the documentation">
           <BrandMark size={32} />
           <span className="leading-tight">
             <span className="block font-semibold tracking-tight whitespace-nowrap">The Spaghetti Engine</span>
-            <span className="hidden lg:block text-[10px] uppercase tracking-[0.12em] text-slate-400 whitespace-nowrap">Visual system modelling workspace</span>
+            <span className="hidden lg:block text-[11.5px] uppercase tracking-[0.12em] text-slate-300 whitespace-nowrap">Visual system modelling workspace</span>
           </span>
-          <span className="ml-1 text-[10px] font-mono px-1.5 py-0.5 rounded border border-slate-700 bg-slate-800 text-citrus-400" title="Version">v{APP_VERSION}</span>
+          <span className="ml-1 text-[11.5px] font-mono px-1.5 py-0.5 rounded border border-slate-700 bg-slate-800 text-citrus-400" title="Version">v{APP_VERSION}</span>
         </button>
         <div className="flex flex-wrap items-center gap-2">
           {savedAt && (
-            <span className="text-[11px] text-slate-400 mr-1 flex items-center gap-1" title="Your model is saved automatically in this browser. Use Export JSON to keep a file copy or move it to another computer.">
+            <span className="text-[12.5px] text-slate-300 mr-1 flex items-center gap-1" title="Your model is saved automatically in this browser. Use Export JSON to keep a file copy or move it to another computer.">
               <Check size={12} className="text-cobalt-400" />Saved in this browser {new Date(savedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
             </span>
           )}
@@ -11822,10 +11833,10 @@ function SpaghettiEngineApp() {
             className="bg-white rounded-lg shadow-xl border border-slate-200 max-w-md w-full p-5 space-y-3"
             onKeyDown={(e) => { if (e.key === "Escape") closeConfirm(false); }}
           >
-            <h2 id="se-confirm-title" className="text-base font-semibold text-slate-900">{confirmState.title}</h2>
-            <p className="text-sm text-slate-600">{confirmState.message}</p>
+            <h2 id="se-confirm-title" className="text-base font-semibold text-neutral-900">{confirmState.title}</h2>
+            <p className="text-sm text-neutral-900">{confirmState.message}</p>
             <div className="flex flex-wrap justify-end gap-2 pt-1">
-              <button onClick={() => closeConfirm(false)} className="px-3 py-1.5 rounded-md border border-slate-300 text-sm text-slate-700 hover:bg-slate-50">Cancel</button>
+              <button onClick={() => closeConfirm(false)} className="px-3 py-1.5 rounded-md border border-slate-300 text-sm text-neutral-900 hover:bg-slate-50">Cancel</button>
               {confirmState.secondary && (
                 <button onClick={() => { confirmState.secondary.action(); closeConfirm(true); }} className="px-3 py-1.5 rounded-md border border-cobalt-300 bg-cobalt-50 text-sm text-cobalt-800 hover:bg-cobalt-100">
                   {confirmState.secondary.label}
@@ -11852,7 +11863,7 @@ function SpaghettiEngineApp() {
         <div className="fixed bottom-12 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-slate-900 text-white text-xs rounded-md shadow-lg px-3.5 py-2.5" role="status">
           <span>{toast.text}</span>
           <button onClick={() => { undo(); setToast(null); }} className="font-semibold text-cobalt-300 hover:text-cobalt-200">Undo</button>
-          <button onClick={() => setToast(null)} className="text-slate-400 hover:text-white" aria-label="Dismiss"><X size={13} /></button>
+          <button onClick={() => setToast(null)} className="text-neutral-600 hover:text-white" aria-label="Dismiss"><X size={13} /></button>
         </div>
       )}
 
@@ -11870,8 +11881,8 @@ function SpaghettiEngineApp() {
                 title={g.hint}
                 className={`px-3.5 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${g.accent ? "ml-auto " : ""}${
                   g.accent
-                    ? (on ? "bg-citrus-400 text-slate-900" : "bg-citrus-50 text-citrus-700 border border-citrus-300 hover:bg-citrus-100")
-                    : (on ? "bg-cobalt-700 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900")
+                    ? (on ? "bg-citrus-400 text-neutral-900" : "bg-citrus-50 text-citrus-700 border border-citrus-300 hover:bg-citrus-100")
+                    : (on ? "bg-cobalt-700 text-white" : "bg-slate-100 text-neutral-900 hover:bg-slate-200 hover:text-black")
                 }`}
               >
                 {g.label}
@@ -11889,14 +11900,14 @@ function SpaghettiEngineApp() {
                 aria-selected={tab === id}
                 onClick={() => setTab(id)}
                 className={`flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                  tab === id ? "border-cobalt-700 text-cobalt-800" : "border-transparent text-slate-500 hover:text-slate-800"
+                  tab === id ? "border-cobalt-700 text-cobalt-800" : "border-transparent text-neutral-700 hover:text-black"
                 }`}
               >
                 <Icon size={15} /> {label}
               </button>
             ))}
           </div>
-          <span className="hidden xl:block text-xs text-slate-400 whitespace-nowrap">{activeGroup.hint}</span>
+          <span className="hidden xl:block text-xs text-neutral-600 whitespace-nowrap">{activeGroup.hint}</span>
         </div>
         )}
       </div>
@@ -11919,11 +11930,11 @@ function SpaghettiEngineApp() {
               <button onClick={() => setShowMatrixPanel((v) => !v)} className="flex items-center gap-1.5 text-sm font-semibold w-full text-left">
                 <ClipboardPaste size={15} className="text-cobalt-700" />
                 Build from an adjacency matrix
-                {showMatrixPanel ? <ChevronDown size={14} className="ml-auto text-slate-400" /> : <ChevronRight size={14} className="ml-auto text-slate-400" />}
+                {showMatrixPanel ? <ChevronDown size={14} className="ml-auto text-neutral-600" /> : <ChevronRight size={14} className="ml-auto text-neutral-600" />}
               </button>
               {showMatrixPanel && (
                 <div className="mt-3 space-y-2">
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-neutral-700">
                     Copy a square weight matrix out of Excel (concept names as both column headers and row labels, cell [row, col] = weight of the edge <em>row → col</em>) and paste it below. This <strong>replaces</strong> the current model.
                   </p>
                   <textarea
@@ -11949,10 +11960,10 @@ function SpaghettiEngineApp() {
               <button onClick={() => setShowInitialValueHelp((v) => !v)} className="flex items-center gap-1.5 text-sm font-semibold w-full text-left">
                 <HelpCircle size={15} className="text-cobalt-700" />
                 How to set each concept's "Initial" value
-                {showInitialValueHelp ? <ChevronDown size={14} className="ml-auto text-slate-400" /> : <ChevronRight size={14} className="ml-auto text-slate-400" />}
+                {showInitialValueHelp ? <ChevronDown size={14} className="ml-auto text-neutral-600" /> : <ChevronRight size={14} className="ml-auto text-neutral-600" />}
               </button>
               {showInitialValueHelp && (
-                <div className="mt-3 space-y-2.5 text-xs text-slate-600">
+                <div className="mt-3 space-y-2.5 text-xs text-neutral-900">
                   <p>This is <strong>A(0)</strong>: each concept's activation at the start of a run, on the same -1 (fully suppressed) to +1 (fully active) scale as relationship weights. It's what the <button onClick={() => setTab("equilibrium")} className="underline font-medium text-cobalt-700">Baseline Equilibrium tab</button> starts from.</p>
 
                   <p><strong>Important: all-zero will always stay at zero.</strong> If every concept is set to 0 here, the Baseline Equilibrium run cannot move away from zero, no matter how strong or complex the causal weights are. This isn't a limit of this app; it's a mathematical property of the tanh/sigmoid update rule itself, since tanh(0) = sigmoid(0) = 0: with nothing pushing a concept away from zero, the model has no way to activate itself from nothing. Use this "all zeros" setup only when you specifically want that structural check ("could this network run away on its own from total rest, e.g. because of a strong self-reinforcing loop") rather than a realistic system state.</p>
@@ -11961,7 +11972,7 @@ function SpaghettiEngineApp() {
 
                   <p><strong>Don't use this field to test interventions or policies</strong> once you have a meaningful baseline set up. Setting, say, "Fertiliser use" to +1 to see "what if fertiliser use were at its maximum" changes what the baseline itself represents, so it stops being a clean reference to compare against. For that, use the <button onClick={() => setTab("scenarios")} className="underline font-medium text-cobalt-700">Scenarios &amp; Simulation tab</button> instead: its driver controls (▲/▼) hold a concept at full activation for a whole run without touching these baseline values, and every scenario there is automatically compared back against this baseline.</p>
 
-                  <p className="text-slate-400">After setting values here, open Baseline Equilibrium and click Run. With any concept away from zero, expect a multi-iteration trace toward wherever the structure settles; with everything still at zero, expect immediate convergence back to zero, exactly as described above, and the diagnostics panel there will say so explicitly.</p>
+                  <p className="text-neutral-600">After setting values here, open Baseline Equilibrium and click Run. With any concept away from zero, expect a multi-iteration trace toward wherever the structure settles; with everything still at zero, expect immediate convergence back to zero, exactly as described above, and the diagnostics panel there will say so explicitly.</p>
                 </div>
               )}
             </div>
@@ -11973,7 +11984,7 @@ function SpaghettiEngineApp() {
                 <Btn onClick={addConcept}><Plus size={14} />Add concept</Btn>
               </div>
               <div className="space-y-2 max-h-[560px] overflow-auto pr-1">
-                {concepts.length === 0 && <p className="text-sm text-slate-400 italic">No concepts yet: add one, paste a matrix above, or pick an example from "New / example model" at the top right.</p>}
+                {concepts.length === 0 && <p className="text-sm text-neutral-600 italic">No concepts yet: add one, paste a matrix above, or pick an example from "New / example model" at the top right.</p>}
                 {concepts.map((c) => (
                   <div key={c.id} className="border border-slate-200 rounded-md p-2.5">
                     <div className="flex items-center gap-2">
@@ -11986,8 +11997,8 @@ function SpaghettiEngineApp() {
                         placeholder="Concept name"
                         className="flex-1 text-sm font-medium border-none focus:outline-none focus:ring-1 focus:ring-cobalt-500 rounded px-1"
                       />
-                      <button onClick={() => revealItem("concept", c.id)} className="text-[11px] text-slate-400 hover:text-cobalt-700" title="Show this concept on the map">show</button>
-                      <button onClick={() => { commitHistory(); removeConcept(c.id); }} className="text-slate-300 hover:text-red-500" title="Delete this concept"><Trash2 size={14} /></button>
+                      <button onClick={() => revealItem("concept", c.id)} className="text-[12.5px] text-neutral-600 hover:text-cobalt-700" title="Show this concept on the map">show</button>
+                      <button onClick={() => { commitHistory(); removeConcept(c.id); }} className="text-neutral-500 hover:text-red-500" title="Delete this concept"><Trash2 size={14} /></button>
                     </div>
                     <div className="flex items-center gap-2 mt-1.5">
                       <input
@@ -11998,7 +12009,7 @@ function SpaghettiEngineApp() {
                         onChange={(e) => updateConcept(c.id, { category: e.target.value })}
                         className="text-xs flex-1 border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-cobalt-500"
                       />
-                      <label className="text-[11px] text-slate-500" title="Starting value for simulations, from -1 (very low) to +1 (very high)">Start</label>
+                      <label className="text-[12.5px] text-neutral-700" title="Starting value for simulations, from -1 (very low) to +1 (very high)">Start</label>
                       <input
                         type="number" min={-1} max={1} step={0.05} value={c.initialValue}
                         onChange={(e) => updateConcept(c.id, { initialValue: clamp(parseFloat(e.target.value) || 0) })}
@@ -12024,21 +12035,21 @@ function SpaghettiEngineApp() {
                 <Btn onClick={addEdge} disabled={concepts.length < 2}><Plus size={14} />Add relationship</Btn>
               </div>
               <div className="space-y-2 max-h-[560px] overflow-auto pr-1">
-                {edges.length === 0 && <p className="text-sm text-slate-400 italic">No relationships yet.</p>}
+                {edges.length === 0 && <p className="text-sm text-neutral-600 italic">No relationships yet.</p>}
                 {edges.map((e) => (
                   <div key={e.id} className="border border-slate-200 rounded-md p-2.5">
                     <div className="flex items-center gap-2 mb-2">
                       <select value={e.source} onChange={(ev) => updateEdge(e.id, { source: ev.target.value })} className="text-xs border border-slate-200 rounded px-1 py-1 flex-1">
                         {concepts.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                       </select>
-                      <ChevronRight size={14} className="text-slate-400 shrink-0" />
+                      <ChevronRight size={14} className="text-neutral-600 shrink-0" />
                       <select value={e.target} onChange={(ev) => updateEdge(e.id, { target: ev.target.value })} className="text-xs border border-slate-200 rounded px-1 py-1 flex-1">
                         {concepts.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                       </select>
-                      <button onClick={() => { commitHistory(); removeEdge(e.id); }} className="text-slate-300 hover:text-red-500 shrink-0" title="Delete this relationship"><Trash2 size={14} /></button>
+                      <button onClick={() => { commitHistory(); removeEdge(e.id); }} className="text-neutral-500 hover:text-red-500 shrink-0" title="Delete this relationship"><Trash2 size={14} /></button>
                     </div>
                     <WeightSlider value={e.weight} onChange={(v) => updateEdge(e.id, { weight: v })} />
-                    <p className="text-[11px] text-slate-500 mt-1">
+                    <p className="text-[12.5px] text-neutral-700 mt-1">
                       {relationshipSentence(concepts.find((c) => c.id === e.source)?.name, concepts.find((c) => c.id === e.target)?.name, e.weight)}
                     </p>
                   </div>
@@ -12050,7 +12061,7 @@ function SpaghettiEngineApp() {
             <div className="bg-white rounded-lg border border-slate-200 p-4">
               <div className="flex items-center gap-3 flex-wrap">
                 <h3 className="font-semibold text-sm flex items-center gap-1.5"><Download size={15} className="text-cobalt-700" />Export model tables</h3>
-                <span className="text-xs text-slate-500">The complete model as tables, for a report, an appendix, or other software.</span>
+                <span className="text-xs text-neutral-700">The complete model as tables, for a report, an appendix, or other software.</span>
               </div>
               <div className="flex items-center gap-2 flex-wrap mt-3">
                 <Btn variant="accent" onClick={exportModelTablesXlsx} disabled={!concepts.length} title="One Excel file with three sheets: Concepts, Relationships, Adjacency Matrix">
@@ -12060,7 +12071,7 @@ function SpaghettiEngineApp() {
                 <Btn variant="outline" onClick={() => exportModelTable("relationships")} disabled={!edges.length}><Download size={13} />Relationships (CSV)</Btn>
                 <Btn variant="outline" onClick={() => exportModelTable("matrix")} disabled={!concepts.length}><Download size={13} />Adjacency matrix (CSV)</Btn>
               </div>
-              <p className="text-[11px] text-slate-400 mt-2">
+              <p className="text-[12.5px] text-neutral-600 mt-2">
                 Concepts: ID, name, module, definition, starting value, and number of relationships. Relationships: from, to, weight, effect, strength, the relationship in words,
                 modules, and whether it links two modules. Adjacency matrix: rows are the source concept, columns the target, 0 where there is no relationship; it can be pasted
                 back into "Build from an adjacency matrix". The Excel file is the easiest to open in Excel with any regional settings.
@@ -12110,19 +12121,19 @@ function SpaghettiEngineApp() {
               <button onClick={() => setShowScenarioHelp((v) => !v)} className="flex items-center gap-1.5 text-sm font-semibold w-full text-left">
                 <HelpCircle size={15} className="text-cobalt-700" />
                 What-If Scenario Analysis: how it works
-                {showScenarioHelp ? <ChevronDown size={14} className="ml-auto text-slate-400" /> : <ChevronRight size={14} className="ml-auto text-slate-400" />}
+                {showScenarioHelp ? <ChevronDown size={14} className="ml-auto text-neutral-600" /> : <ChevronRight size={14} className="ml-auto text-neutral-600" />}
               </button>
               {showScenarioHelp && (
-                <div className="mt-3 space-y-3 text-xs text-slate-600">
+                <div className="mt-3 space-y-3 text-xs text-neutral-900">
                   <div className="space-y-2.5">
                     <p>A <ScenarioTerm term="Scenario">scenario</ScenarioTerm> is a "what if" copy of your model: the same concepts and causal relationships, but with one or more <ScenarioTerm term="Intervention">interventions</ScenarioTerm> applied, such as holding a concept at a fixed value or changing a relationship's strength. Running it re-computes where the system settles, reaching its new <ScenarioTerm term="Equilibrium">equilibrium</ScenarioTerm>, and compares that against the baseline.</p>
                     <p>Scenario analysis is useful because it lets you test a policy option, a shock, or a combination of measures entirely inside the model before anything is implemented in reality: does strengthening this driver actually move the outcome you care about, and by how much, given everything else the model says influences it?</p>
                     <p>When interpreting results, look at the <ScenarioTerm term="Effect Size">effect size</ScenarioTerm> for each concept (how far it moved from baseline), whether interventions combine with <ScenarioTerm term="Synergy">synergy</ScenarioTerm> or work against each other as a <ScenarioTerm term="Trade-Off">trade-off</ScenarioTerm>, and whether the run actually reached a stable equilibrium or was still changing when it stopped.</p>
-                    <p className="text-slate-400"><strong>Results do not predict the future.</strong> They show what this specific causal structure, as you've defined it, implies under the assumptions you set, not a forecast of what will actually happen. Treat scenario output as a tool for reasoning about the system's structure and stakeholders' shared understanding of it, not as a prediction.</p>
+                    <p className="text-neutral-600"><strong>Results do not predict the future.</strong> They show what this specific causal structure, as you've defined it, implies under the assumptions you set, not a forecast of what will actually happen. Treat scenario output as a tool for reasoning about the system's structure and stakeholders' shared understanding of it, not as a prediction.</p>
                   </div>
 
                   <div className="pt-2 border-t border-slate-100">
-                    <p className="font-medium text-slate-700 mb-1.5">Typical workflow</p>
+                    <p className="font-medium text-neutral-900 mb-1.5">Typical workflow</p>
                     <ol className="list-decimal list-inside space-y-1">
                       <li>Make sure the baseline (no intervention) reflects a meaningful starting state; see the Model Editor's guidance on setting initial values.</li>
                       <li>Click <strong>New</strong> to create a scenario, or <strong>Duplicate</strong> an existing one as a starting point.</li>
@@ -12156,22 +12167,22 @@ function SpaghettiEngineApp() {
                         className="text-sm bg-transparent font-medium flex-1 focus:outline-none"
                       />
                       {s.id === "baseline" ? (
-                        <span className="text-[10px] text-slate-400 whitespace-nowrap" title="The baseline is always included in the comparison; tick compare on the scenarios you want to set against it.">
+                        <span className="text-[11.5px] text-neutral-600 whitespace-nowrap" title="The baseline is always included in the comparison; tick compare on the scenarios you want to set against it.">
                           always compared
                         </span>
                       ) : (
-                        <label className="flex items-center gap-1 text-[10px] text-slate-500" onClick={(e) => e.stopPropagation()}>
+                        <label className="flex items-center gap-1 text-[11.5px] text-neutral-700" onClick={(e) => e.stopPropagation()}>
                           <input type="checkbox" checked={compareIds.includes(s.id)} onChange={() => toggleCompare(s.id)} /> compare
                         </label>
                       )}
                       {s.id !== "baseline" && (
-                        <button onClick={(e) => { e.stopPropagation(); removeScenario(s.id); }} className="text-slate-300 hover:text-red-500 ml-1"><Trash2 size={12} /></button>
+                        <button onClick={(e) => { e.stopPropagation(); removeScenario(s.id); }} className="text-neutral-500 hover:text-red-500 ml-1"><Trash2 size={12} /></button>
                       )}
                     </div>
                     <select
                       value={s.type} onClick={(e) => e.stopPropagation()}
                       onChange={(e) => updateScenario(s.id, { type: e.target.value })}
-                      className="text-[10px] text-slate-500 mt-1 bg-transparent"
+                      className="text-[11.5px] text-neutral-700 mt-1 bg-transparent"
                     >
                       <option value="baseline">baseline</option>
                       <option value="intervention">intervention</option>
@@ -12183,7 +12194,7 @@ function SpaghettiEngineApp() {
                       placeholder="Short description (used in the exported workbook)"
                       onChange={(e) => updateScenario(s.id, { description: e.target.value })}
                       onClick={(e) => e.stopPropagation()}
-                      className="w-full mt-1 text-[11px] bg-transparent text-slate-500 placeholder:text-slate-300 focus:outline-none border-b border-transparent focus:border-slate-200"
+                      className="w-full mt-1 text-[12.5px] bg-transparent text-neutral-700 placeholder:text-neutral-400 focus:outline-none border-b border-transparent focus:border-slate-200"
                     />
                   </div>
                 ))}
@@ -12191,35 +12202,35 @@ function SpaghettiEngineApp() {
 
               <div className="mt-4 pt-3 border-t border-slate-100">
                 <details>
-                  <summary className="text-xs font-medium text-slate-500 cursor-pointer">Advanced options</summary>
-                  <p className="text-[11px] text-slate-400 mt-2 mb-1">
-                    These govern how every simulation in this app runs (Scenarios &amp; Simulation, Sensitivity Analysis, Transition Point Analysis, and the structural Influence/Sensitivity scores on the Influence Metrics tab), and are recorded exactly as set here in anything you export. Hover <HelpCircle size={10} className="inline text-slate-300" /> on any setting for what it does.
+                  <summary className="text-xs font-medium text-neutral-700 cursor-pointer">Advanced options</summary>
+                  <p className="text-[12.5px] text-neutral-600 mt-2 mb-1">
+                    These govern how every simulation in this app runs (Scenarios &amp; Simulation, Sensitivity Analysis, Transition Point Analysis, and the structural Influence/Sensitivity scores on the Influence Metrics tab), and are recorded exactly as set here in anything you export. Hover <HelpCircle size={10} className="inline text-neutral-500" /> on any setting for what it does.
                   </p>
                   <div className="mt-2 space-y-2">
-                    <label className="text-xs text-slate-500 flex justify-between items-center">
-                      <span className="flex items-center gap-1" title="The simulation stops after this many iterations even if it hasn't converged. Higher values let a slowly-converging or oscillating model keep running longer before being cut off, at the cost of a slower run.">Max iterations <HelpCircle size={10} className="text-slate-300" /></span>
+                    <label className="text-xs text-neutral-700 flex justify-between items-center">
+                      <span className="flex items-center gap-1" title="The simulation stops after this many iterations even if it hasn't converged. Higher values let a slowly-converging or oscillating model keep running longer before being cut off, at the cost of a slower run.">Max iterations <HelpCircle size={10} className="text-neutral-500" /></span>
                       <input type="number" value={settings.maxIterations} onChange={(e) => setSettings((s) => ({ ...s, maxIterations: parseInt(e.target.value) || 100 }))} className="w-16 border border-slate-200 rounded px-1 text-xs" />
                     </label>
-                    <label className="text-xs text-slate-500 flex justify-between items-center">
-                      <span className="flex items-center gap-1" title="The run is considered converged, and stops, once the largest change in any concept's activation from one iteration to the next drops below this value. A smaller threshold demands a more precise, closer-to-exact equilibrium before stopping.">Convergence threshold <HelpCircle size={10} className="text-slate-300" /></span>
+                    <label className="text-xs text-neutral-700 flex justify-between items-center">
+                      <span className="flex items-center gap-1" title="The run is considered converged, and stops, once the largest change in any concept's activation from one iteration to the next drops below this value. A smaller threshold demands a more precise, closer-to-exact equilibrium before stopping.">Convergence threshold <HelpCircle size={10} className="text-neutral-500" /></span>
                       <input type="number" step={0.0001} value={settings.convergenceThreshold} onChange={(e) => setSettings((s) => ({ ...s, convergenceThreshold: parseFloat(e.target.value) || 0.001 }))} className="w-16 border border-slate-200 rounded px-1 text-xs" />
                     </label>
-                    <label className="text-xs text-slate-500 flex justify-between items-center">
-                      <span className="flex items-center gap-1" title="Synchronous: every concept updates at once, each computed purely from the PREVIOUS iteration's values; the standard FCM update, and the only mode that gives a reproducible result for a given model. Asynchronous: concepts update one at a time in a randomly shuffled order each iteration, each seeing already-updated values from earlier in that same pass, so results can differ between runs of the identical model.">Update mode <HelpCircle size={10} className="text-slate-300" /></span>
+                    <label className="text-xs text-neutral-700 flex justify-between items-center">
+                      <span className="flex items-center gap-1" title="Synchronous: every concept updates at once, each computed purely from the PREVIOUS iteration's values; the standard FCM update, and the only mode that gives a reproducible result for a given model. Asynchronous: concepts update one at a time in a randomly shuffled order each iteration, each seeing already-updated values from earlier in that same pass, so results can differ between runs of the identical model.">Update mode <HelpCircle size={10} className="text-neutral-500" /></span>
                       <select value={settings.mode} onChange={(e) => setSettings((s) => ({ ...s, mode: e.target.value }))} className="text-xs border border-slate-200 rounded px-1">
                         <option value="synchronous">synchronous</option>
                         <option value="asynchronous">asynchronous</option>
                       </select>
                     </label>
-                    <label className="text-xs text-slate-500 flex justify-between items-center">
-                      <span className="flex items-center gap-1" title="Relative (adds to current state): A(t+1) = squash(A(t) + W·A(t)); each concept's new value builds on top of where it currently is, the standard FCM formulation this app uses by default. Absolute (from inputs only): A(t+1) = squash(W·A(t)); each concept's new value comes purely from incoming influences, discarding its own previous value entirely (the original Kosko FCM rule).">Update rule <HelpCircle size={10} className="text-slate-300" /></span>
+                    <label className="text-xs text-neutral-700 flex justify-between items-center">
+                      <span className="flex items-center gap-1" title="Relative (adds to current state): A(t+1) = squash(A(t) + W·A(t)); each concept's new value builds on top of where it currently is, the standard FCM formulation this app uses by default. Absolute (from inputs only): A(t+1) = squash(W·A(t)); each concept's new value comes purely from incoming influences, discarding its own previous value entirely (the original Kosko FCM rule).">Update rule <HelpCircle size={10} className="text-neutral-500" /></span>
                       <select value={settings.updateRule} onChange={(e) => setSettings((s) => ({ ...s, updateRule: e.target.value }))} className="text-xs border border-slate-200 rounded px-1">
                         <option value="relative">Relative (adds to current state)</option>
                         <option value="absolute">Absolute (from inputs only)</option>
                       </select>
                     </label>
-                    <label className="text-xs text-slate-500 flex justify-between items-center">
-                      <span className="flex items-center gap-1" title="Maps a concept's total incoming influence onto the -1..+1 activation scale. Hyperbolic tangent: smooth and symmetric, tanh(x), with gain 1 at zero. Sigmoid: smooth and symmetric, 2/(1+e^-λx)-1, but with gain 0.5 at zero, half as responsive to weak signals as tanh, so the same weights can settle at a different, sometimes zero, equilibrium under each. Trivalent (step): a hard threshold that snaps straight to -1, 0, or +1 with no smooth transition. None (linear): no squashing at all, so the model runs on the raw dynamics of its weight matrix, A(t+1) = A(t) + W·A(t); activation is no longer held inside -1 to +1, and a model whose feedback amplifies itself runs away (the run is stopped and marked as diverged once a concept passes ±1000).">Squashing function <HelpCircle size={10} className="text-slate-300" /></span>
+                    <label className="text-xs text-neutral-700 flex justify-between items-center">
+                      <span className="flex items-center gap-1" title="Maps a concept's total incoming influence onto the -1..+1 activation scale. Hyperbolic tangent: smooth and symmetric, tanh(x), with gain 1 at zero. Sigmoid: smooth and symmetric, 2/(1+e^-λx)-1, but with gain 0.5 at zero, half as responsive to weak signals as tanh, so the same weights can settle at a different, sometimes zero, equilibrium under each. Trivalent (step): a hard threshold that snaps straight to -1, 0, or +1 with no smooth transition. None (linear): no squashing at all, so the model runs on the raw dynamics of its weight matrix, A(t+1) = A(t) + W·A(t); activation is no longer held inside -1 to +1, and a model whose feedback amplifies itself runs away (the run is stopped and marked as diverged once a concept passes ±1000).">Squashing function <HelpCircle size={10} className="text-neutral-500" /></span>
                       <select value={settings.squashFunction} onChange={(e) => setSettings((s) => ({ ...s, squashFunction: e.target.value }))} className="text-xs border border-slate-200 rounded px-1">
                         <option value="tanh">Hyperbolic tangent</option>
                         <option value="sigmoid">Sigmoid</option>
@@ -12228,8 +12239,8 @@ function SpaghettiEngineApp() {
                       </select>
                     </label>
                     {settings.squashFunction !== "trivalent" && settings.squashFunction !== "linear" && (
-                      <label className="text-xs text-slate-500 flex justify-between items-center">
-                        <span className="flex items-center gap-1" title="Multiplies a concept's total incoming influence before it's passed through the squashing function, controlling how sharply activation responds. Higher values make the model behave more like a step function (fast transitions between -1 and +1 for a given change in influence); lower values make it respond more gradually to the same influence. Not shown for Trivalent (already a hard step regardless of this) or for None (linear), which has no curve to steepen.">λ (steepness) <HelpCircle size={10} className="text-slate-300" /></span>
+                      <label className="text-xs text-neutral-700 flex justify-between items-center">
+                        <span className="flex items-center gap-1" title="Multiplies a concept's total incoming influence before it's passed through the squashing function, controlling how sharply activation responds. Higher values make the model behave more like a step function (fast transitions between -1 and +1 for a given change in influence); lower values make it respond more gradually to the same influence. Not shown for Trivalent (already a hard step regardless of this) or for None (linear), which has no curve to steepen.">λ (steepness) <HelpCircle size={10} className="text-neutral-500" /></span>
                         <input
                           type="number" step={0.1} min={0.1} max={10} value={settings.lambda}
                           onChange={(e) => setSettings((s) => ({ ...s, lambda: parseFloat(e.target.value) || 1 }))}
@@ -12251,7 +12262,7 @@ function SpaghettiEngineApp() {
               {/* editing overrides for the active scenario */}
               <div className="bg-white rounded-lg border border-slate-200 p-4">
                 <h3 className="font-semibold text-sm mb-1">Editing: {activeScenario?.name}</h3>
-                <p className="text-xs text-slate-400 mb-3">
+                <p className="text-xs text-neutral-600 mb-3">
                   Mark a concept as a <strong>driver</strong> (▲ increase / ▼ decrease) the way Mental Modeler scenarios work: it's forced to full activation (+1 / -1) and held there for the entire run. Or set a custom starting value for finer-grained control, and lock it independently if you want it held fixed too.
                 </p>
                 <div className="grid grid-cols-2 gap-2">
@@ -12266,12 +12277,12 @@ function SpaghettiEngineApp() {
                         <button
                           onClick={() => setDriver(activeScenario.id, c.id, 1)}
                           title="Driver: increase (locked at +1)"
-                          className={`text-[10px] w-5 h-5 rounded border leading-none ${isIncreaseDriver ? "border-cobalt-700 bg-cobalt-50 text-cobalt-800" : "border-slate-200 text-slate-400 hover:border-slate-400"}`}
+                          className={`text-[11.5px] w-5 h-5 rounded border leading-none ${isIncreaseDriver ? "border-cobalt-700 bg-cobalt-50 text-cobalt-800" : "border-slate-200 text-neutral-600 hover:border-slate-400"}`}
                         >▲</button>
                         <button
                           onClick={() => setDriver(activeScenario.id, c.id, -1)}
                           title="Driver: decrease (locked at −1)"
-                          className={`text-[10px] w-5 h-5 rounded border leading-none ${isDecreaseDriver ? "border-rose-600 bg-rose-50 text-rose-700" : "border-slate-200 text-slate-400 hover:border-slate-400"}`}
+                          className={`text-[11.5px] w-5 h-5 rounded border leading-none ${isDecreaseDriver ? "border-rose-600 bg-rose-50 text-rose-700" : "border-slate-200 text-neutral-600 hover:border-slate-400"}`}
                         >▼</button>
                         <input
                           type="number" step={0.05} min={-1} max={1}
@@ -12280,7 +12291,7 @@ function SpaghettiEngineApp() {
                           onChange={(e) => e.target.value === "" ? clearOverride(activeScenario.id, c.id) : setOverride(activeScenario.id, c.id, clamp(parseFloat(e.target.value)))}
                           className="w-14 text-xs border border-slate-200 rounded px-1 py-0.5"
                         />
-                        <button onClick={() => toggleLock(activeScenario.id, c.id, ov ?? c.initialValue)} title="Lock this value for the whole run" className={locked ? "text-cobalt-700" : "text-slate-300 hover:text-slate-500"}>
+                        <button onClick={() => toggleLock(activeScenario.id, c.id, ov ?? c.initialValue)} title="Lock this value for the whole run" className={locked ? "text-cobalt-700" : "text-neutral-500 hover:text-neutral-900"}>
                           {locked ? <Lock size={13} /> : <Unlock size={13} />}
                         </button>
                       </div>
@@ -12291,7 +12302,7 @@ function SpaghettiEngineApp() {
 
               {/* comparison */}
               {comparedIds.length === 0 && (
-                <div className="bg-white rounded-lg border border-dashed border-slate-300 p-4 text-xs text-slate-500">
+                <div className="bg-white rounded-lg border border-dashed border-slate-300 p-4 text-xs text-neutral-700">
                   Tick <strong>compare</strong> on one or more scenarios in the list, then click Run simulation, to see them side by side with the baseline.
                 </div>
               )}
@@ -12305,7 +12316,7 @@ function SpaghettiEngineApp() {
                     </div>
                   </div>
                   {!Object.keys(results).length ? (
-                    <p className="text-xs text-slate-400 italic">Run the simulation to see results here.</p>
+                    <p className="text-xs text-neutral-600 italic">Run the simulation to see results here.</p>
                   ) : (
                     <>
                       {resultsStale && <div className="mb-3"><StaleResultBanner label="this comparison" /></div>}
@@ -12359,7 +12370,7 @@ function SpaghettiEngineApp() {
                         const ConceptTick = ({ x, y, payload }) => (
                           <g transform={`translate(${x},${y})`}>
                             <title>{payload.value}</title>
-                            <text dy={10} textAnchor="end" transform="rotate(-35)" fontSize={figComparisonBar.tickFontSize} fill="#475569">{short(payload.value)}</text>
+                            <text dy={10} textAnchor="end" transform="rotate(-35)" fontSize={figComparisonBar.tickFontSize} fill="#262626">{short(payload.value)}</text>
                           </g>
                         );
                         return (
@@ -12383,7 +12394,7 @@ function SpaghettiEngineApp() {
                                   <ReferenceLine y={0} stroke="#94a3b8" />
                                   {/* minPointSize: a value of exactly 0 is drawn as a thin bar on the
                                       zero line, so "settled at 0" is visibly different from "missing". */}
-                                  <Bar dataKey="baseline" name={comparisonNames.baseline} fill="#64748b" fillOpacity={figComparisonBar.opacity} radius={[3, 3, 0, 0]} minPointSize={2} />
+                                  <Bar dataKey="baseline" name={comparisonNames.baseline} fill="#404040" fillOpacity={figComparisonBar.opacity} radius={[3, 3, 0, 0]} minPointSize={2} />
                                   {comparedIds.map((id, i) => (
                                     <Bar key={id} dataKey={id} name={comparisonNames[id]} fill={colors[i % colors.length]} fillOpacity={figComparisonBar.opacity} radius={[3, 3, 0, 0]} minPointSize={2} />
                                   ))}
@@ -12391,7 +12402,7 @@ function SpaghettiEngineApp() {
                               </ResponsiveContainer>
                             </div>
                             {baselineAllZero && (
-                              <p className="text-[11px] text-slate-500 mb-4">
+                              <p className="text-[12.5px] text-neutral-700 mb-4">
                                 The baseline settles at 0 for every concept, so its bars are the thin grey marks on the zero line. That happens when every concept starts at 0 and nothing is held fixed;
                                 give concepts a starting value (Inspector or Model editor) for a baseline that reflects the current state of the system.
                               </p>
@@ -12417,7 +12428,7 @@ function SpaghettiEngineApp() {
                       })()}
                       <table className="w-full text-xs">
                         <thead>
-                          <tr className="text-left text-slate-400 border-b border-slate-100">
+                          <tr className="text-left text-neutral-600 border-b border-slate-100">
                             <th className="py-1 font-medium">Concept</th>
                             <th className="py-1 font-medium">{comparisonNames.baseline}</th>
                             {comparedIds.map((id) => <th key={id} className="py-1 font-medium">{comparisonNames[id]}</th>)}
@@ -12454,7 +12465,7 @@ function SpaghettiEngineApp() {
                             <h4 className="text-sm font-semibold flex items-center gap-1.5"><Activity size={14} className="text-cobalt-700" />Trajectory comparison</h4>
                             <Btn variant="outline" onClick={() => setFigTrajComparisonOpen((v) => !v)}><SlidersHorizontal size={13} />{figTrajComparisonOpen ? "Hide figure options" : "Customize & export"}</Btn>
                           </div>
-                          <p className="text-xs text-slate-400">
+                          <p className="text-xs text-neutral-600">
                             The baseline is always computed and shown alongside every scenario run. Baseline (no scenario applied) and "{comparisonNames[comparedIds[0]]}", iteration by iteration, plus their difference (scenario minus baseline).
                           </p>
                           {figTrajComparisonOpen && (
@@ -12484,7 +12495,7 @@ function SpaghettiEngineApp() {
                             { key: "difference", title: "Difference (scenario minus baseline)", ref: trajDifferenceRef },
                           ].map(({ key, title, ref }) => (
                             <div key={key}>
-                              <div className="text-xs font-medium text-slate-600 mb-1">{title}</div>
+                              <div className="text-xs font-medium text-neutral-900 mb-1">{title}</div>
                               <div ref={ref} className="w-full h-52" style={figTrajComparisonOpen ? { width: mmToPx(figTrajComparison.widthMm, 96), height: mmToPx(figTrajComparison.heightMm, 96), maxWidth: "100%" } : undefined}>
                                 <ResponsiveContainer>
                                   <LineChart data={trajectoryComparison[key]}>
@@ -12516,7 +12527,7 @@ function SpaghettiEngineApp() {
                       {componentChangeData && (
                         <div className="mt-5 pt-4 border-t border-slate-100">
                           <h4 className="text-sm font-semibold mb-1 flex items-center gap-1.5"><GitCompare size={14} className="text-cobalt-700" />Component change vs. baseline</h4>
-                          <p className="text-xs text-slate-400 mb-3">
+                          <p className="text-xs text-neutral-600 mb-3">
                             Mental-Modeler-style output: each concept's equilibrium activation under "{comparisonNames[comparedIds[0]]}", expressed in percentage points of the full −100%…+100% activation range, relative to baseline. Sorted by magnitude of change.
                           </p>
                           <div className="w-full" style={{ height: Math.max(200, componentChangeData.length * 26 + 40) }}>
@@ -12531,7 +12542,7 @@ function SpaghettiEngineApp() {
                                     the Sensitivity curves' YAxis below: -100..100 stays the default
                                     view for ordinary changes, and only expands when the data actually
                                     needs it, so nothing is ever cut off. */}
-                                <XAxis type="number" domain={[(dataMin) => Math.min(-100, dataMin - 10), (dataMax) => Math.max(100, dataMax + 10)]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 10 }} />
+                                <XAxis type="number" domain={[(dataMin) => Math.min(-100, dataMin - 10), (dataMax) => Math.max(100, dataMax + 10)]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 12 }} />
                                 <YAxis type="category" dataKey="name" width={labelAxisWidth(componentChangeData.map((d) => d.name))} interval={0} tick={(p) => <SingleLineTick {...p} />} />
                                 <RTooltip formatter={(v) => [`${v > 0 ? "+" : ""}${v}%`, "Change"]} />
                                 <ReferenceLine x={0} stroke="#94a3b8" />
@@ -12598,7 +12609,7 @@ function SpaghettiEngineApp() {
         </ErrorBoundary>
       </div>
 
-      <div className="px-5 py-2 border-t border-slate-200 bg-white text-[11px] text-slate-500 flex items-center gap-1.5">
+      <div className="px-5 py-2 border-t border-slate-200 bg-white text-[12.5px] text-neutral-700 flex items-center gap-1.5">
         <Info size={12} className="shrink-0" />
         <span className="flex-1 hidden sm:inline">Prototype scope: runs entirely in your browser. Your model is saved automatically in this browser only; use Export JSON to keep a copy or move it to another computer. Analysis results are not saved and are re-run on demand. PDF/DOCX/PPTX export are not yet implemented.</span>
         <span className="flex-1 sm:hidden">Prototype: runs in your browser; your model is saved in this browser only.</span>
