@@ -9,13 +9,13 @@ const file = process.argv[2] || path.join(__dirname, "..", "src", "SpaghettiEngi
 const lines = fs.readFileSync(file, "utf8").split("\n");
 const idx = (re, from = 0) => { for (let i = from; i < lines.length; i++) if (re.test(lines[i])) return i; throw new Error("not found " + re); };
 const a = idx(/^\/\/ Utilities/) - 1, aEnd = idx(/^function Btn\(/);
-const s = idx(/^function runTransitionSweep\(/), sEnd = idx(/^function TransitionPointAnalysisTab\(/);
+const s = idx(/^\/\/ The marginal-benefit transition point of a response/), sEnd = idx(/^function TransitionPointAnalysisTab\(/);
 const code = [lines.slice(a, aEnd), lines.slice(s, sEnd)].map((x) => x.join(String.fromCharCode(10))).join(String.fromCharCode(10));
 const stub = () => { throw new Error("stub"); };
 const store = {};
 const ls = { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); }, removeItem: (k) => { delete store[k]; } };
 const api = new Function("localStorage", "performance", "ExcelJS", "document", "window", "ELK", "forceSimulation", "forceManyBody", "forceLink", "forceCenter", "forceCollide", "domNodeToPngBlob",
-  "function layoutByModule(c){ return c; }\n" + code + "\nreturn { makeTemplate, runTransitionSweep, transitionRangeLabel, classifyResponseType, DEFAULT_SETTINGS, BASELINE_SCENARIO, simulate, makePathwayEngine, pathwaySimSettings, pathwayLeverValue, runPathwayAnalysis, DEFAULT_PATHWAY_CONFIG };")(ls, { now: () => Date.now() }, {}, {}, {}, class {}, stub, stub, stub, stub, stub, stub);
+  "function layoutByModule(c){ return c; }\n" + code + "\nreturn { makeTemplate, runTransitionSweep, transitionSimSettings, transitionRangeLabel, classifyResponseType, DEFAULT_SETTINGS, BASELINE_SCENARIO, simulate, makePathwayEngine, pathwaySimSettings, pathwayLeverValue, runPathwayAnalysis, DEFAULT_PATHWAY_CONFIG };")(ls, { now: () => Date.now() }, {}, {}, {}, class {}, stub, stub, stub, stub, stub, stub);
 
 let pass = 0, fail = 0;
 const ok = (c, msg) => { if (c) { pass++; console.log("PASS " + msg); } else { fail++; console.log("FAIL " + msg); } };
@@ -34,9 +34,11 @@ for (const kind of ["peat", "nexus"]) {
   const N = 50;
   const inc = api.runTransitionSweep(concepts, edges, base, settings, iv, "increase", outcomes, N);
   const dec = api.runTransitionSweep(concepts, edges, base, settings, iv, "decrease", outcomes, N);
-  const up = api.simulate(concepts, edges, driverScenario(base, iv, 1), settings);
-  const down = api.simulate(concepts, edges, driverScenario(base, iv, -1), settings);
-  const neutral = api.simulate(concepts, edges, driverScenario(base, iv, 0), settings);
+  // the sweep runs to the transition point's precision (transitionSimSettings), so the reference runs do too
+  const tight = api.transitionSimSettings(settings);
+  const up = api.simulate(concepts, edges, driverScenario(base, iv, 1), tight);
+  const down = api.simulate(concepts, edges, driverScenario(base, iv, -1), tight);
+  const neutral = api.simulate(concepts, edges, driverScenario(base, iv, 0), tight);
 
   ok(outcomes.every((id) => near(inc.perOutcome[id].y[N], up.final[id])), `${kind}: the last step of an increase equals the ▲ driver scenario for every outcome`);
   ok(outcomes.every((id) => near(dec.perOutcome[id].y[N], down.final[id])), `${kind}: the last step of a decrease equals the ▼ driver scenario for every outcome`);
@@ -82,7 +84,7 @@ for (const kind of ["nexus", "peat"]) {
   ok(dec.res.levers[0].decrease === true && inc.res.levers[0].decrease === false, `${kind}: the result still records which lever is a decrease`);
 }
 
-// ---- Change at TP: the outcome at the end of the steepest step (TP + Δx) minus its value at intensity 0 -------------------------
+// ---- Change at TP: the outcome at the transition point minus its value at intensity 0 ----------------------------------------
 for (const kind of ["peat", "nexus"]) {
   const { concepts, edges } = api.makeTemplate(kind);
   const settings = { ...api.DEFAULT_SETTINGS };
@@ -92,9 +94,10 @@ for (const kind of ["peat", "nexus"]) {
   const outcomes = concepts.map((c) => c.id).filter((id) => id !== iv).slice(0, 6);
   for (const dir of ["increase", "decrease"]) {
     const sw = api.runTransitionSweep(concepts, edges, base, settings, iv, dir, outcomes, 50);
-    ok(outcomes.every((id) => { const o = sw.perOutcome[id]; return near(o.effectAtTp, o.y[o.tpIndex + 1] - o.y[0]); }), `${kind}, ${dir}: Change at TP is Y(TP + Δx) - Y(0), the end of the steepest step`);
-    const at = (id, x) => api.simulate(concepts, edges, driverScenario(base, iv, dir === "decrease" ? 0 - x : x), settings).final[id];
-    ok(outcomes.every((id) => { const o = sw.perOutcome[id]; return near(o.effectAtTp, at(id, sw.steps[o.tpIndex + 1]) - at(id, 0)); }), `${kind}, ${dir}: Change at TP equals the run with the lever held one step past the TP minus the run at 0`);
+    ok(outcomes.every((id) => { const o = sw.perOutcome[id]; return near(o.tp, sw.steps[o.tpIndex]) && near(o.effectAtTp, o.y[o.tpIndex] - o.y[0]); }), `${kind}, ${dir}: Change at TP is Y(TP) - Y(0)`);
+    const at = (id, x) => api.simulate(concepts, edges, driverScenario(base, iv, dir === "decrease" ? 0 - x : x), api.transitionSimSettings(settings)).final[id];
+    ok(outcomes.every((id) => { const o = sw.perOutcome[id]; return near(o.effectAtTp, at(id, o.tp) - at(id, 0)); }), `${kind}, ${dir}: Change at TP equals the run with the lever held at the TP minus the run at 0`);
+    ok(outcomes.every((id) => { const o = sw.perOutcome[id]; return o.shareAtTp === null || near(o.shareAtTp * o.effect, o.effectAtTp); }), `${kind}, ${dir}: Share at TP is Change at TP over Max Change`);
   }
 }
 

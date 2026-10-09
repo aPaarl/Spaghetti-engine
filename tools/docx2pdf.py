@@ -258,7 +258,9 @@ def convert(docx_path, footer_title, out_pdf, meta_title, workdir):
         if os.path.exists(pdf_path):
             os.remove(pdf_path)
         win = lambda p: os.path.abspath(p)
-        cmd = [EDGE, "--headless=new", "--disable-gpu", "--no-pdf-header-footer", "--print-to-pdf=" + win(pdf_path), "file:///" + win(hp).replace("\\", "/")]
+        # A profile of its own: with the default one, an open browser window takes the call over and nothing is printed.
+        cmd = [EDGE, "--headless=new", "--disable-gpu", "--no-pdf-header-footer", "--user-data-dir=" + win(os.path.join(workdir, "browser-profile")),
+               "--print-to-pdf=" + win(pdf_path), "file:///" + win(hp).replace("\\", "/")]
         for attempt in range(3):
             try:
                 subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=120)

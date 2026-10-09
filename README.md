@@ -6,7 +6,7 @@ The Spaghetti Engine is a visual system modelling workspace for Fuzzy Cognitive 
 
 Developer and contact: Alfred Paarlberg, Wageningen University & Research, alfred.paarlberg@wur.nl.
 
-Version 0.4.2. The tool opens on an About & documentation page, which offers the user manual, the methodological annex, and the development log as PDF downloads.
+Version 0.4.3. The tool opens on an About & documentation page, which offers the user manual, the methodological annex, and the development log as PDF downloads.
 
 ## Running it
 
@@ -38,7 +38,7 @@ Netlify builds and deploys the site from the `main` branch.
 | `public/favicon.svg`, `public/apple-touch-icon.png` | Site icons. |
 | `brand-assets/` | Logo files (SVG and PNG) for use in documents and slides. Not deployed. |
 | `tools/` | Scripts that produce the PDFs and the manifest, and a helper for editing the Word documents (see below). |
-| `tests/` | Checks that load the engine straight from `src/SpaghettiEngine.jsx`; run with `node tests/test_transition_direction.cjs`. |
+| `tests/` | Checks that load the engine straight from `src/SpaghettiEngine.jsx`; run with `node tests/test_transition_direction.cjs` and `node tests/test_marginal_benefit_tp.cjs`. |
 
 ## Releasing a new version
 

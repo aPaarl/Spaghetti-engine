@@ -206,11 +206,14 @@ function makeTemplate(kind) {
     // drainage/farming system dominated by two reinforcing feedback loops
     // (the subsidence spiral and the intensification loop), which settle
     // the baseline into an almost saturated intensive state. Weights and
-    // positions match the annex exactly, so results reproduce its tables.
+    // positions match the annex exactly. Its tables were computed with the
+    // transition point of version 0.4.2 and earlier (the step with the largest
+    // marginal return), so pathway results from later versions, which use the
+    // marginal-benefit transition point, differ from them.
     // Every lever has a threshold or back-loaded response (Table A5): near
     // its transition point the model settles slowly, so this example raises
     // Max iterations per run to 300 (see settings below); the Transition
-    // Pathways tab already uses its own 500-iteration cap regardless.
+    // Point and Transition Pathways tabs run at least 1000 iterations anyway.
     const c = [
       // --- Interventions ---------------------------------------------------
       ["WLV", "Raised groundwater levels", "Interventions", 0, "Water-board target levels raised towards the surface in peat polders, supported by submerged or pressurized drainage. Lever.", 0, 40],
@@ -542,6 +545,7 @@ function simulate(concepts, edges, scenario, settings, rand = Math.random) {
   const isRelative = settings.updateRule !== "absolute";
   let converged = false;
   let diverged = false;
+  let lastDelta = Infinity;
   let t = 0;
 
   for (t = 1; t <= maxIter; t++) {
@@ -562,6 +566,7 @@ function simulate(concepts, edges, scenario, settings, rand = Math.random) {
     }
     if (unbounded && ids.some((id) => !Number.isFinite(next[id]))) { diverged = true; t -= 1; break; }
     const maxDelta = Math.max(...ids.map((id) => Math.abs(next[id] - current[id])));
+    lastDelta = maxDelta;
     current = next;
     series.push({ iteration: t, values: { ...current } });
     if (unbounded && ids.some((id) => Math.abs(current[id]) > LINEAR_DIVERGENCE_LIMIT)) { diverged = true; break; }
@@ -569,7 +574,7 @@ function simulate(concepts, edges, scenario, settings, rand = Math.random) {
   }
 
   // A loop that ran to its cap leaves t one past it.
-  return { series, final: current, converged, diverged, iterationsRun: Math.min(t, maxIter) };
+  return { series, final: current, converged, diverged, lastDelta, iterationsRun: Math.min(t, maxIter) };
 }
 
 // Small, fast, seeded PRNG (mulberry32) — good enough for sampling noise,
@@ -7306,10 +7311,58 @@ function BaselineEquilibriumTab({
 // ============================================================================
 // Transition Point Analysis
 // ============================================================================
-// Sensitivity Analysis asks "what happens if I change X?"; this asks "at
-// what intervention intensity does the marginal return become greatest?";
-// a different analytical question, so it gets its own module rather than
-// living inside Sensitivity Analysis.
+// Sensitivity Analysis asks "what happens if I change X?"; this asks "from
+// what intervention intensity does extra effort start to pay off markedly
+// less?"; a different analytical question, so it gets its own module rather
+// than living inside Sensitivity Analysis.
+
+// The marginal-benefit transition point of a response sampled at equal steps
+// dx, from y[0] (the start of the sweep) to y[n] (full intensity), with s = +1
+// or -1 the direction that counts as benefit. The marginal benefit of step i
+// is MB_i = s (y[i+1] - y[i]) / dx, and the transition point is the sampled
+// level x_i (i = 1 .. n-1) at which the marginal benefit declines most
+// steeply, the minimum of (MB_i - MB_{i-1}) / dx: the point of diminishing
+// returns, from where each further step of effort adds markedly less than the
+// step before. When that steepest decline falls on the last interior level,
+// or the marginal benefit does not decline anywhere in the range (a straight
+// or ever-steepening response), benefit keeps accruing up to full intensity
+// and the transition point is the end of the sweep ("proportional"). A
+// decline smaller than MB_TP_TOLERANCE of the largest marginal benefit (per
+// unit of intensity) is numerical noise, not a decline: second differences
+// amplify whatever is left of a run that has not quite settled, which is
+// also why the sweeps that feed this run to a far tighter convergence
+// threshold than an ordinary simulation (TP_PRECISION_THRESHOLD).
+const MB_TP_TOLERANCE = 0.01;
+const TP_PRECISION_THRESHOLD = 1e-9;
+const TP_MIN_ITERATIONS = 1000;
+function marginalBenefitTP(y, dx, s = 1) {
+  const n = y.length - 1;
+  const mb = [];
+  for (let i = 0; i < n; i++) mb.push((s * (y[i + 1] - y[i])) / dx);
+  let index = n, drop = 0;
+  for (let i = 1; i < n; i++) {
+    const d = (mb[i] - mb[i - 1]) / dx;
+    if (d < drop) { drop = d; index = i; }
+  }
+  const peak = mb.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
+  if (index >= n - 1 || drop > -MB_TP_TOLERANCE * peak) index = n;
+  return { index, mb, proportional: index === n };
+}
+
+// The settings a transition sweep runs under: the global ones, but run on to
+// TP_PRECISION_THRESHOLD (or the user's threshold, if that is tighter) with at
+// least TP_MIN_ITERATIONS iterations. Whether a run counts as converged still
+// follows the user's own threshold; a run that settles to that but not to the
+// precision target is counted separately, as a caution on the transition point.
+function transitionSimSettings(settings) {
+  const threshold = settings.convergenceThreshold ?? 0.001;
+  return {
+    ...settings,
+    convergenceThreshold: Math.min(threshold, TP_PRECISION_THRESHOLD),
+    maxIterations: Math.max(settings.maxIterations ?? 100, TP_MIN_ITERATIONS),
+    acceptThreshold: threshold,
+  };
+}
 
 // Sweeps one "intervention" concept away from 0 in equal steps, locking it
 // (clamped for the whole run, the same convention setDriver already uses
@@ -7323,14 +7376,17 @@ function BaselineEquilibriumTab({
 // not a simplified approximation): every selected outcome's equilibrium
 // value is read off that single result, exactly like the existing
 // SensitivityAnalysisTab sweep already does; always the same equilibrium
-// engine as Baseline Equilibrium and Scenario Simulation.
+// engine as Baseline Equilibrium and Scenario Simulation, run on to the
+// precision of transitionSimSettings().
 function runTransitionSweep(concepts, edges, baseScenario, settings, interventionId, direction, outcomeIds, resolution) {
   const n = Math.max(2, resolution);
   const steps = Array.from({ length: n + 1 }, (_, i) => i / n);
   const locks = { ...(baseScenario?.lockedConcepts || {}) };
   const overrides = { ...(baseScenario?.initialOverrides || {}) };
+  const sim = transitionSimSettings(settings);
   const perOutcome = {};
   outcomeIds.forEach((id) => (perOutcome[id] = { y: [] }));
+  let notConverged = 0, notPrecise = 0;
 
   steps.forEach((x) => {
     // 0 - x rather than -x, so the first step is +0 and not -0.
@@ -7340,39 +7396,37 @@ function runTransitionSweep(concepts, edges, baseScenario, settings, interventio
       initialOverrides: { ...overrides, [interventionId]: driverValue },
       lockedConcepts: { ...locks, [interventionId]: driverValue },
     };
-    const r = simulate(concepts, edges, sc, settings);
+    const r = simulate(concepts, edges, sc, sim);
+    if (!r.converged) notPrecise += 1;
+    if (r.diverged || !(r.lastDelta < sim.acceptThreshold)) notConverged += 1;
     outcomeIds.forEach((id) => perOutcome[id].y.push(r.final[id] ?? 0));
   });
 
   const dx = 1 / n;
   outcomeIds.forEach((id) => {
     const y = perOutcome[id].y;
+    const effect = y[n] - y[0];
+    // This app has no per-concept "higher is better" flag, so the benefit is
+    // counted in the direction the outcome moves over the whole sweep: for an
+    // outcome that falls, a further fall is its marginal benefit. Check the
+    // sign of the effect before treating a transition point as a leverage
+    // point worth pursuing.
+    const sign = effect < 0 ? -1 : 1;
     const slope = [];
-    for (let i = 0; i < y.length - 1; i++) slope.push((y[i + 1] - y[i]) / dx);
-    // Steepest point of change by MAGNITUDE, not signed value: this app has
-    // no per-concept "higher is better" flag, so a signed max would treat
-    // an outcome that's improving as its "transition point" but, for one
-    // that's monotonically getting WORSE across the sweep (a very normal
-    // case: sweeping a stressor concept down towards 0 and watching
-    // something it drives fall too), would report wherever it worsens
-    // LEAST as the transition point, the opposite of a meaningful
-    // leverage point. Magnitude-based picks the step where the outcome is
-    // moving fastest in whichever direction it's actually moving,
-    // regardless of whether that's an improvement or not; the sign of
-    // slope[tpIndex] still tells you which direction it is.
-    let tpIndex = 0;
-    for (let i = 1; i < slope.length; i++) if (Math.abs(slope[i]) > Math.abs(slope[tpIndex])) tpIndex = i;
+    for (let i = 0; i < n; i++) slope.push((y[i + 1] - y[i]) / dx);
+    const tp = marginalBenefitTP(y, dx, sign);
     perOutcome[id] = {
-      y, slope, tpIndex, tp: steps[tpIndex],
-      // How far the outcome has moved once the steepest step, which begins at the
-      // transition point, is complete (Y(TP + Δx) - Y(0)), next to the full effect below.
-      effectAtTp: y[tpIndex + 1] - y[0],
-      effect: y[y.length - 1] - y[0],
+      y, slope, mb: tp.mb, sign, tpIndex: tp.index, tp: steps[tp.index], proportional: tp.proportional,
+      // How far the outcome has moved by the transition point, Y(TP) - Y(0),
+      // and that as a share of the full effect below.
+      effectAtTp: y[tp.index] - y[0],
+      shareAtTp: Math.abs(effect) > 1e-12 ? (y[tp.index] - y[0]) / effect : null,
+      effect,
       range: Math.max(...y) - Math.min(...y),
     };
   });
 
-  return { steps, perOutcome };
+  return { steps, perOutcome, runs: steps.length, notConverged, notPrecise, settingsUsed: sim };
 }
 
 // The range the lever travels in a sweep, for headings and exports.
@@ -7380,16 +7434,17 @@ function transitionRangeLabel(direction) {
   return direction === "decrease" ? "0→-1" : "0→1";
 }
 
-// "Flat" is checked first (no meaningful response regardless of where the
-// slope happens to peak); otherwise classified by *where* the transition
-// point falls in [0,1]: Front-Loaded: "strongest slope near starting
-// intensity"; Back-Loaded: "...near maximum intensity"; Threshold-Type:
-// "somewhere inside the range"; operationalized as equal thirds.
-function classifyResponseType(tp, range, flatThreshold) {
+// "Flat" is checked first (no meaningful response wherever the marginal
+// benefit happens to fall); then "Proportional", for a response whose
+// marginal benefit does not decline before full intensity (TP = 1);
+// otherwise classified by *where* the transition point falls in [0,1], in
+// equal thirds: Early, Middle, Late.
+function classifyResponseType(tp, range, flatThreshold, proportional = false) {
   if (range < flatThreshold) return "Flat";
-  if (tp <= 1 / 3) return "Front-Loaded";
-  if (tp >= 2 / 3) return "Back-Loaded";
-  return "Threshold-Type";
+  if (proportional) return "Proportional";
+  if (tp <= 1 / 3) return "Early";
+  if (tp >= 2 / 3) return "Late";
+  return "Middle";
 }
 
 // Generalizes the spec's 3-outcome (Food Security / Biodiversity / Climate)
@@ -7420,11 +7475,11 @@ function classifySynergy(rows, epsilon) {
 // Extends Transition Point Analysis from single levers to ordered sequences
 // of levers, following the methods text "Transition Pathway Analysis". A
 // pathway is a sequence of stages. Each stage implements one lever (by
-// default up to its conditional transition point, the intensity at which
-// one more step of effort gives the largest improvement in the nexus
-// outcomes from the state reached so far), the system settles to
-// equilibrium, and that equilibrium is the starting point of the next
-// stage. Implemented levers stay in place.
+// default up to its conditional transition point, the intensity from which
+// further effort adds markedly less to the total outcome gain, the
+// marginal-benefit transition point of that gain from the state reached so
+// far), the system settles to equilibrium, and that equilibrium is the
+// starting point of the next stage. Implemented levers stay in place.
 //
 // One analysis runs thousands of simulations, so the equilibrium operator
 // below is simulate() in a compact typed-array form: the same update rule,
@@ -7445,9 +7500,11 @@ const DEFAULT_PATHWAY_CONFIG = {
   flatThreshold: 0.015,
   minGainShare: 0.25,
   // Near a transition point the model settles slowly (critical slowing
-  // down), and every stage is placed at one, so pathway runs allow more
-  // iterations than the global default before calling a run non-convergent.
-  maxIterations: 500,
+  // down), every stage is placed at one, and the transition point needs runs
+  // settled far more tightly than usual (pathwaySimSettings), so pathway
+  // runs allow more iterations than the global default; never fewer than
+  // TP_MIN_ITERATIONS.
+  maxIterations: 1000,
   precedence: [],        // [{ before, after }]
   robustness: false,
 };
@@ -7461,6 +7518,9 @@ function readPathwayConfig() {
     const list = (v, ok) => (Array.isArray(v) ? v.filter((x) => x && typeof x === "object" && ok(x)) : []);
     // Setups saved by 0.3.0 hold the beam criterion under its old value.
     if (raw.beamCriterion === "tng") raw.beamCriterion = "tog";
+    // Setups saved by 0.4.2 and earlier hold the old 500-iteration default, below the
+    // floor pathway runs now keep anyway (pathwaySimSettings).
+    if (!(Number(raw.maxIterations) >= TP_MIN_ITERATIONS)) raw.maxIterations = TP_MIN_ITERATIONS;
     return {
       ...DEFAULT_PATHWAY_CONFIG,
       ...Object.fromEntries(Object.entries(raw).filter(([k]) => k in DEFAULT_PATHWAY_CONFIG && !["outcomes", "levers", "precedence"].includes(k))),
@@ -7507,8 +7567,11 @@ function makePathwayEngine(concepts, edges, settings) {
   const relative = settings.updateRule !== "absolute";
   const maxIter = settings.maxIterations ?? 100;
   const threshold = settings.convergenceThreshold ?? 0.001;
+  // A run counts as converged by this threshold, which can be looser than the
+  // one it runs on to (see pathwaySimSettings).
+  const accept = settings.acceptThreshold ?? threshold;
   const initial = Float64Array.from(concepts, (c) => (Number.isFinite(c.initialValue) ? c.initialValue : 0));
-  let runs = 0;
+  let runs = 0, imprecise = 0;
   // The equilibrium operator: iterate from A0 with the concepts in lockIdx
   // held at lockVal, until the largest change falls below the threshold.
   function equilibrate(A0, lockIdx, lockVal) {
@@ -7522,10 +7585,9 @@ function makePathwayEngine(concepts, edges, settings) {
       lv[lockIdx[k]] = lockVal[k];
       cur[lockIdx[k]] = lockVal[k];
     }
-    let converged = false, t;
+    let precise = false, runaway = false, lastDelta = Infinity, t;
     for (t = 1; t <= maxIter; t++) {
       let maxDelta = 0;
-      let runaway = false;
       for (let j = 0; j < n; j++) {
         let v;
         if (locked[j]) v = lv[j];
@@ -7541,19 +7603,30 @@ function makePathwayEngine(concepts, edges, settings) {
         if (d > maxDelta) maxDelta = d;
       }
       const tmp = cur; cur = next; next = tmp;
+      lastDelta = maxDelta;
       if (runaway) break;
-      if (maxDelta < threshold) { converged = true; break; }
+      if (maxDelta < threshold) { precise = true; break; }
     }
-    return { state: cur, converged, iterations: Math.min(t, maxIter) };
+    if (!precise) imprecise += 1;
+    return { state: cur, converged: !runaway && lastDelta < accept, precise, iterations: Math.min(t, maxIter) };
   }
-  return { n, index, initial, equilibrate, runs: () => runs };
+  return { n, index, initial, equilibrate, runs: () => runs, imprecise: () => imprecise };
 }
 
 // The simulation settings a pathway analysis runs under: the global ones,
-// always synchronous, with the analysis's own iteration limit.
+// always synchronous, with the analysis's own iteration limit (at least
+// TP_MIN_ITERATIONS), and run on to the precision transition points need, as
+// on the Transition Point tab (transitionSimSettings). Whether a run counts as
+// converged still follows the global threshold.
 function pathwaySimSettings(settings, config) {
   const it = Math.round(Number(config?.maxIterations));
-  return { ...settings, mode: "synchronous", maxIterations: Number.isFinite(it) && it >= 1 ? it : (settings.maxIterations ?? 100) };
+  const threshold = settings.convergenceThreshold ?? 0.001;
+  return {
+    ...settings, mode: "synchronous",
+    maxIterations: Math.max(TP_MIN_ITERATIONS, Number.isFinite(it) && it >= 1 ? it : (settings.maxIterations ?? 100)),
+    convergenceThreshold: Math.min(threshold, TP_PRECISION_THRESHOLD),
+    acceptThreshold: threshold,
+  };
 }
 
 // Linear-interpolation quantile of an ascending array (the usual definition).
@@ -7624,8 +7697,9 @@ function* pathwayEnumeration(concepts, edges, settings, config, phase = "") {
   const act = (lever, u) => pathwayLeverValue(lever.decrease, u);
 
   // Sweep one lever over the grid from index s0 to N, starting every run
-  // from state A with the locks (li, lv) already in place.
-  function sweep(A, li, lv, lever, s0) {
+  // from state A (whose outcome gain is g0) with the locks (li, lv) already
+  // in place.
+  function sweep(A, li, lv, lever, s0, g0) {
     const pos = li.indexOf(lever.idx);
     const pts = [];
     for (let s = s0; s <= N; s++) {
@@ -7633,16 +7707,18 @@ function* pathwayEnumeration(concepts, edges, settings, config, phase = "") {
       const L = li.slice(), V = lv.slice();
       if (pos >= 0) V[pos] = act(lever, u); else { L.push(lever.idx); V.push(act(lever, u)); }
       const r = eng.equilibrate(A, L, V);
-      pts.push({ u, state: r.state, converged: r.converged, g: gain(r.state), L, V });
+      pts.push({ u, state: r.state, converged: r.converged, precise: r.precise, g: gain(r.state), L, V });
     }
-    // The transition point: the step with the largest POSITIVE marginal
-    // return in outcome gain, reported at the upper end of that step.
-    let best = -1, bestR = 1e-9;
-    for (let k = 0; k < pts.length - 1; k++) {
-      const r = (pts[k + 1].g - pts[k].g) * N;
-      if (r > bestR) { bestR = r; best = k; }
-    }
-    return { pts, tpAt: best >= 0 ? best + 1 : -1, tau: best >= 0 ? pts[best + 1].u : null, maxReturn: best >= 0 ? bestR : null };
+    // The transition point: the marginal-benefit transition point of the
+    // total outcome gain along this sweep (marginalBenefitTP), the level from
+    // which further effort adds markedly less gain. A lever whose gain there
+    // is no higher than the gain already reached (g0) does not improve the
+    // nexus outcomes, and has no transition point. The largest marginal
+    // benefit of any step is kept for the greedy search.
+    const tp = marginalBenefitTP(pts.map((p) => p.g), 1 / N, 1);
+    const improves = pts[tp.index].g > g0 + 1e-9;
+    const maxReturn = tp.mb.reduce((m, r) => (r > 1e-9 && (m === null || r > m) ? r : m), null);
+    return { pts, tpAt: improves ? tp.index : -1, tau: improves ? pts[tp.index].u : null, proportional: improves && tp.proportional, maxReturn };
   }
 
   const progress = { phase, stage: "Lever profiles", done: 0, total: levers.length };
@@ -7650,15 +7726,12 @@ function* pathwayEnumeration(concepts, edges, settings, config, phase = "") {
   // ---- Step 1: every lever on its own, from BAU -------------------------------
   const iso = new Map();
   for (const lever of levers) {
-    const sw = sweep(B, [], [], lever, 0);
+    const sw = sweep(B, [], [], lever, 0, 0);
     const outcomeRows = outcomes.map((o) => {
       const ys = sw.pts.map((p) => p.state[o.idx]);
-      let best = -1, bestR = 1e-9;
-      for (let k = 0; k < ys.length - 1; k++) {
-        const r = o.d * (ys[k + 1] - ys[k]) * N;
-        if (r > bestR) { bestR = r; best = k; }
-      }
-      return { id: o.id, tp: best >= 0 ? sw.pts[best + 1].u : null, effect: o.d * (ys[ys.length - 1] - B[o.idx]), range: Math.max(...ys) - Math.min(...ys) };
+      // each outcome's own transition point, in its desirable direction
+      const k = marginalBenefitTP(ys, 1 / N, o.d).index;
+      return { id: o.id, tp: o.d * (ys[k] - ys[0]) > 1e-9 ? sw.pts[k].u : null, effect: o.d * (ys[ys.length - 1] - B[o.idx]), range: Math.max(...ys) - Math.min(...ys) };
     });
     const flat = outcomeRows.every((r) => r.range < eps);
     const gains = sw.pts.map((p) => p.g);
@@ -7666,10 +7739,11 @@ function* pathwayEnumeration(concepts, edges, settings, config, phase = "") {
       id: lever.id, decrease: lever.decrease, effort: lever.effort,
       gains, tau: sw.tau, maxReturn: sw.maxReturn, gainAtFull: gains[gains.length - 1],
       outcomeRows, flat, included: sw.tau !== null && !flat,
-      reason: flat ? "Flat: no outcome moves more than the flat-response threshold" : sw.tau === null ? "No step of this lever improves the nexus outcomes" : "",
-      responseType: flat ? "Flat" : sw.tau === null ? "No improvement" : sw.tau <= 1 / 3 ? "Front-Loaded" : sw.tau > 2 / 3 ? "Back-Loaded" : "Threshold-Type",
+      reason: flat ? "Flat: no outcome moves more than the flat-response threshold" : sw.tau === null ? "Up to its transition point this lever does not improve the nexus outcomes" : "",
+      responseType: flat ? "Flat" : sw.tau === null ? "No improvement" : classifyResponseType(sw.tau, Infinity, 0, sw.proportional),
       synergy: classifySynergy(outcomeRows, eps),
       nonConverged: sw.pts.filter((p) => !p.converged).length,
+      notPrecise: sw.pts.filter((p) => !p.precise).length,
     });
     progress.done += 1;
     yield progress;
@@ -7695,7 +7769,7 @@ function* pathwayEnumeration(concepts, edges, settings, config, phase = "") {
   function expand(node, lever) {
     const scaleUp = (node.countOf.get(lever.id) || 0) > 0;
     const u0 = scaleUp ? node.uOf.get(lever.id) : 0;
-    const sw = sweep(node.state, node.li, node.lv, lever, Math.round(u0 * N));
+    const sw = sweep(node.state, node.li, node.lv, lever, Math.round(u0 * N), node.g);
     let target;
     if (scaleUp || rule === "full") target = sw.pts.length - 1;
     else if (sw.tpAt < 0) { blocked += 1; return null; } else target = sw.tpAt;
@@ -7708,6 +7782,7 @@ function* pathwayEnumeration(concepts, edges, settings, config, phase = "") {
       maxReturn: sw.maxReturn,
       gainBefore: node.g, gainAfter: pt.g, ciiAfter: node.cii + lever.effort * (pt.u - u0),
       converged: pt.converged, sweepNonConverged: sw.pts.filter((p) => !p.converged).length,
+      sweepNotPrecise: sw.pts.filter((p) => !p.precise).length,
       outcomes: outcomes.map((o) => ({ id: o.id, value: pt.state[o.idx], improvement: o.d * (pt.state[o.idx] - B[o.idx]) })),
       // the benefit accrual curve inside this stage, at the sweep resolution
       segment: sw.pts.slice(0, target + 1).map((p) => [node.cii + lever.effort * (p.u - u0), p.g]),
@@ -8045,6 +8120,7 @@ function* runPathwayAnalysis(concepts, edges, settings, config) {
   const portfolios = pathwayPortfolios(base.candidates, summary);
   const invariance = yield* pathwayInvarianceTest(base, summary);
   const mainRuns = base.engine.runs();
+  const mainImprecise = base.engine.imprecise();
   const robustness = config.robustness ? yield* pathwayRobustness(concepts, edges, settings, config, summary) : null;
   return {
     config: JSON.parse(JSON.stringify(config)),
@@ -8056,7 +8132,7 @@ function* runPathwayAnalysis(concepts, edges, settings, config) {
     bauOutcomes: Object.fromEntries(base.outcomes.map((o) => [o.id, base.B[o.idx]])),
     iso: base.iso, candidates: base.candidates, blocked: base.blocked, truncated: base.truncated,
     poolIds: base.poolIds, summary, portfolios, invariance, robustness,
-    runs: mainRuns,
+    runs: mainRuns, imprecise: mainImprecise,
   };
 }
 
@@ -8830,11 +8906,11 @@ async function buildAnalysisWorkbook({
   if (transitionResult) {
     const tSheet = addDataSheet(workbook, "Transition Point Analysis", [
       { header: "Outcome Concept", key: "outcomeName" }, { header: "Transition Point", key: "tp" },
-      { header: "Change at Transition Point", key: "effectAtTp" },
+      { header: "Change at Transition Point", key: "effectAtTp" }, { header: "Share of Effect at Transition Point", key: "shareAtTp" },
       { header: "Range", key: "range" }, { header: "Effect", key: "effect" },
       { header: "Response Type", key: "responseType" }, { header: "Efficiency", key: "efficiency" },
     ], transitionResult.rows.map((r) => ({
-      outcomeName: r.outcomeName, tp: round2(r.tp), effectAtTp: round2(r.effectAtTp), range: round2(r.range), effect: round2(r.effect),
+      outcomeName: r.outcomeName, tp: round2(r.tp), effectAtTp: round2(r.effectAtTp), shareAtTp: r.shareAtTp === null ? "" : round2(r.shareAtTp), range: round2(r.range), effect: round2(r.effect),
       responseType: r.responseType, efficiency: round2(r.efficiency),
     })), usedNames);
     if (isStale(transitionResult)) {
@@ -8861,12 +8937,12 @@ async function buildAnalysisWorkbook({
       { item: "Levers", value: pr.levers.map((l) => `${pn(l.id)} (${l.decrease ? "decrease" : "increase"}, effort ${l.effort})`).join("; ") },
       { item: "Maximum stages", value: pr.J },
       { item: "Stage intensity", value: pr.rule === "tp" ? `Up to the conditional transition point${pr.scaleUpAllowed ? ", scale-up stages allowed" : ""}` : "Full implementation (intensity 1)" },
-      { item: "Pathway construction", value: pr.strategy === "exhaustive" ? "Every order (exhaustive)" : pr.strategy === "greedy" ? "Greedy (highest marginal return)" : `Beam search (width ${cfg.beamWidth}, by ${cfg.beamCriterion === "pei" ? "efficiency" : "outcome gain"})` },
+      { item: "Pathway construction", value: pr.strategy === "exhaustive" ? "Every order (exhaustive)" : pr.strategy === "greedy" ? "Greedy (highest marginal benefit)" : `Beam search (width ${cfg.beamWidth}, by ${cfg.beamCriterion === "pei" ? "efficiency" : "outcome gain"})` },
       { item: "Order constraints", value: (cfg.precedence || []).map((p) => `${pn(p.after)} after ${pn(p.before)}`).join("; ") || "None" },
       { item: "Intensity resolution (steps)", value: pr.N },
       { item: "Flat-response threshold", value: pr.eps },
       { item: "Minimum gain (share of best)", value: cfg.minGainShare },
-      { item: "Simulation settings", value: `${pr.settingsUsed.squashFunction === "linear" ? "no squashing function (linear, unbounded)" : `${pr.settingsUsed.squashFunction}, lambda ${pr.settingsUsed.lambda}`}, ${pr.settingsUsed.updateRule} rule, synchronous, up to ${pr.settingsUsed.maxIterations} iterations, threshold ${pr.settingsUsed.convergenceThreshold}` },
+      { item: "Simulation settings", value: `${pr.settingsUsed.squashFunction === "linear" ? "no squashing function (linear, unbounded)" : `${pr.settingsUsed.squashFunction}, lambda ${pr.settingsUsed.lambda}`}, ${pr.settingsUsed.updateRule} rule, synchronous, up to ${pr.settingsUsed.maxIterations} iterations, run on to ${pr.settingsUsed.convergenceThreshold}, converged below ${pr.settingsUsed.acceptThreshold ?? pr.settingsUsed.convergenceThreshold}` },
       { item: "Pathways evaluated", value: pr.candidates.length },
       { item: "Admissible pathways", value: pr.summary.counts.admissible },
       { item: "Minimum meaningful gain", value: num(pr.summary.gMin) },
@@ -8913,7 +8989,7 @@ async function buildAnalysisWorkbook({
     }))), usedNames);
     addDataSheet(workbook, "Pathway Lever Profiles", [
       { header: "Lever", key: "lever" }, { header: "Direction", key: "dir" }, { header: "Effort Weight", key: "effort" },
-      { header: "Isolated TP", key: "tau" }, { header: "Response Type", key: "type" }, { header: "Max Marginal Return", key: "mr" },
+      { header: "Isolated TP", key: "tau" }, { header: "Response Type", key: "type" }, { header: "Max Marginal Benefit", key: "mr" },
       { header: "Outcome Gain at Full Intensity", key: "full" }, { header: "Synergy", key: "syn" },
       { header: "In Pathways", key: "inc" }, { header: "Reason", key: "reason" },
       ...pr.outcomes.flatMap((o) => [{ header: `${pn(o.id)} Effect at Full Intensity`, key: `e_${o.id}` }, { header: `${pn(o.id)} TP`, key: `t_${o.id}` }]),
@@ -9125,25 +9201,28 @@ async function buildAnalysisWorkbook({
 
 const RESPONSE_TYPE_STYLE = {
   "Flat": "bg-slate-100 text-neutral-700 border-slate-200",
-  "Front-Loaded": "bg-cobalt-50 text-cobalt-800 border-cobalt-200",
-  "Threshold-Type": "bg-amber-50 text-amber-800 border-amber-200",
-  "Back-Loaded": "bg-rose-50 text-rose-800 border-rose-200",
+  "Early": "bg-cobalt-50 text-cobalt-800 border-cobalt-200",
+  "Middle": "bg-amber-50 text-amber-800 border-amber-200",
+  "Late": "bg-rose-50 text-rose-800 border-rose-200",
+  "Proportional": "bg-violet-50 text-violet-800 border-violet-200",
 };
 const RESPONSE_TYPE_HELP = {
   "Flat": "No meaningful response: the maximum change in this outcome across the whole intensity range is below the flat-response threshold.",
-  "Front-Loaded": "Most benefit is achieved with low effort: the strongest marginal return happens near the starting intensity, with diminishing returns after that.",
-  "Threshold-Type": "A threshold must be crossed before substantial impact occurs: the strongest marginal return happens at an intermediate intensity.",
-  "Back-Loaded": "Requires substantial effort before impacts emerge: the strongest marginal return happens near the maximum intensity.",
+  "Early": "Diminishing returns set in early (transition point at most 1/3): most of the benefit comes at low intensity, and pushing further adds comparatively little.",
+  "Middle": "Diminishing returns set in at an intermediate intensity (transition point between 1/3 and 2/3).",
+  "Late": "The benefit keeps building until high intensity (transition point of 2/3 or more) before further effort pays off markedly less.",
+  "Proportional": "The marginal benefit does not decline before full intensity (transition point 1): the benefit keeps accruing in proportion to the effort, or faster, over the whole range.",
 };
 
 const TRANSITION_TABLE_COLUMNS = [
   { key: "interventionName", label: "Intervention", type: "text" },
   { key: "outcomeName", label: "Outcome", type: "text" },
-  { key: "tp", label: "TP", type: "num", help: "Transition point: the intensity at which this outcome's response is steepest." },
-  { key: "effectAtTp", label: "Change at TP", type: "num", help: "Change in the outcome from intensity 0 to the end of the steepest step, which begins at the TP: Y(TP + Δx) - Y(0). Compare with Max Change to see how much of the full effect has been reached." },
+  { key: "tp", label: "TP", type: "num", help: "Transition point: the intensity from which this outcome's marginal benefit declines most steeply, the point of diminishing returns. 1 means it does not decline before full intensity (Proportional)." },
+  { key: "effectAtTp", label: "Change at TP", type: "num", help: "Change in the outcome from intensity 0 to the transition point: Y(TP) - Y(0)." },
+  { key: "shareAtTp", label: "Share at TP", type: "num", help: "Change at TP as a share of Max Change: how much of the full effect has been reached by the transition point. Above 100% (or below 0%) when the outcome overshoots its final value, or first moves the other way; n/a when Max Change is below the flat-response threshold." },
   { key: "effect", label: "Max Change", type: "num", help: "Effect size (change from start to end of the sweep)." },
   { key: "range", label: "Range", type: "num", help: "Total movement of this outcome across the whole sweep; below the flat-response threshold counts as no meaningful response." },
-  { key: "efficiency", label: "Efficiency", type: "num", help: "Total effect divided by the transition point: how much change was achieved relative to how far the intervention had to be pushed." },
+  { key: "efficiency", label: "Efficiency", type: "num", help: "Max Change divided by the transition point: how much change the intervention achieves relative to the intensity from which its returns diminish." },
   { key: "responseType", label: "Response Type", type: "text" },
 ];
 
@@ -9210,15 +9289,18 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
       const sweep = runTransitionSweep(concepts, edges, base, settings, tpIntervention, tpDirection, outcomeIds, tpResolution);
       const rows = outcomeIds.map((id) => {
         const o = sweep.perOutcome[id];
-        const responseType = classifyResponseType(o.tp, o.range, tpFlatThreshold);
+        const responseType = classifyResponseType(o.tp, o.range, tpFlatThreshold, o.proportional);
         const efficiency = o.effect / Math.max(o.tp, 1 / tpResolution);
-        return { outcomeId: id, outcomeName: concepts.find((c) => c.id === id)?.name || id, ...o, responseType, efficiency };
+        // a share of a full effect below the flat-response threshold says nothing
+        const shareAtTp = Math.abs(o.effect) < tpFlatThreshold ? null : o.shareAtTp;
+        return { outcomeId: id, outcomeName: concepts.find((c) => c.id === id)?.name || id, ...o, shareAtTp, responseType, efficiency };
       });
       setResult({
         interventionId: tpIntervention,
         interventionName: concepts.find((c) => c.id === tpIntervention)?.name || tpIntervention,
         direction: tpDirection, resolution: tpResolution, flatThreshold: tpFlatThreshold,
-        steps: sweep.steps, rows, __modelVersion: modelVersion,
+        steps: sweep.steps, rows, runs: sweep.runs, notConverged: sweep.notConverged, notPrecise: sweep.notPrecise,
+        settingsUsed: sweep.settingsUsed, __modelVersion: modelVersion,
       });
       setRunning(false);
     }, 10);
@@ -9240,14 +9322,17 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
     if (!result) return [];
     return result.steps.slice(0, -1).map((x, i) => {
       const row = { x: round2(x) };
-      result.rows.forEach((r) => (row[r.outcomeId] = round2(r.slope[i])));
+      result.rows.forEach((r) => (row[r.outcomeId] = round2(r.mb[i])));
       return row;
     });
   }, [result]);
 
   const kpis = useMemo(() => {
     if (!result || result.rows.length === 0) return null;
-    const rows = result.rows;
+    // a flat outcome's transition point is not meaningful, so it only counts
+    // when every outcome is flat
+    const moving = result.rows.filter((r) => r.responseType !== "Flat");
+    const rows = moving.length ? moving : result.rows;
     return {
       earliest: [...rows].sort((a, b) => a.tp - b.tp)[0],
       latest: [...rows].sort((a, b) => b.tp - a.tp)[0],
@@ -9295,14 +9380,15 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
   };
   const exportSlopeCSV = () => {
     if (!result) return;
-    const header = ["Intensity", ...result.rows.map((r) => r.outcomeName)];
-    const rows = result.steps.slice(0, -1).map((x, i) => [round2(x), ...result.rows.map((r) => round2(r.slope[i]))]);
-    downloadCSV([header, ...rows], "transition-marginal-returns.csv");
+    // each column is the marginal benefit in the direction its outcome moves
+    const header = ["Intensity", ...result.rows.map((r) => `${r.outcomeName} (benefit = ${r.sign < 0 ? "fall" : "rise"})`)];
+    const rows = result.steps.slice(0, -1).map((x, i) => [round2(x), ...result.rows.map((r) => round2(r.mb[i]))]);
+    downloadCSV([header, ...rows], "transition-marginal-benefit.csv");
   };
   const exportTableCSV = () => {
     if (!result) return;
-    const header = ["Intervention", "Outcome", "Direction", "TP", "Change at TP", "Max Change", "Response Type", "Efficiency Score"];
-    const rows = result.rows.map((r) => [result.interventionName, r.outcomeName, result.direction === "decrease" ? "Decrease (0 to -1)" : "Increase (0 to 1)", round2(r.tp), round2(r.effectAtTp), round2(r.effect), r.responseType, round2(r.efficiency)]);
+    const header = ["Intervention", "Outcome", "Direction", "TP", "Change at TP", "Share at TP", "Max Change", "Response Type", "Efficiency Score"];
+    const rows = result.rows.map((r) => [result.interventionName, r.outcomeName, result.direction === "decrease" ? "Decrease (0 to -1)" : "Increase (0 to 1)", round2(r.tp), round2(r.effectAtTp), r.shareAtTp === null ? "" : round2(r.shareAtTp), round2(r.effect), r.responseType, round2(r.efficiency)]);
     downloadCSV([header, ...rows], "transition-point-table.csv");
   };
   const exportRankingsCSV = () => {
@@ -9323,12 +9409,12 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
         storageKey="se.fold.transitionWhat"
         icon={TrendingUp}
         title="What is a Transition Point?"
-        summary="Finds the intervention intensity at which extra effort produces the largest extra change in an outcome, by sweeping one intervention from 0 up to +1 (or down to -1) and following each outcome's response."
+        summary="Finds the intervention intensity from which extra effort starts to pay off markedly less (the point of diminishing returns), by sweeping one intervention from 0 up to +1 (or down to -1) and following each outcome's response."
       >
         <div className="text-xs text-neutral-700 space-y-1.5 leading-relaxed">
-        <p>Transition Point Analysis identifies the intervention intensity at which additional effort produces the greatest additional change in an outcome, whether that change is an improvement or a worsening.</p>
-        <p>It works by sweeping one intervention concept away from its neutral value of 0 in small steps, either up to +1 (increase) or down to -1 (decrease), re-running the simulation at each step, and recording how each chosen outcome concept responds along the way. The intensity on the horizontal axis always runs from 0 to 1 and means how far the intervention is pushed: for a decrease, an intensity of 0.4 means the intervention is held at -0.4. The last step is therefore the same run as setting the concept as a driver in Scenarios &amp; Simulation (▲ for an increase, ▼ for a decrease), and the curve shows what happens on the way there. The <strong>transition point</strong> for an outcome is the step where its rate of change (marginal return) is largest in magnitude, i.e. where the response curve is steepest, in whichever direction it happens to be moving. This app has no notion of which direction is "good" for a given concept, so always check the sign of the effect (shown in the table below) before treating a transition point as a leverage point worth pursuing.</p>
-        <p>Many interventions produce non-linear responses. An intervention may produce its effect immediately, require substantial effort before that effect emerges, or remain ineffective across all intensities. Transition Point Analysis identifies where the rate of change is greatest.</p>
+        <p>Transition Point Analysis identifies the intervention intensity from which additional effort adds markedly less to an outcome than the effort before it: the point of diminishing returns.</p>
+        <p>It works by sweeping one intervention concept away from its neutral value of 0 in small steps, either up to +1 (increase) or down to -1 (decrease), re-running the simulation at each step, and recording how each chosen outcome concept responds along the way. The intensity on the horizontal axis always runs from 0 to 1 and means how far the intervention is pushed: for a decrease, an intensity of 0.4 means the intervention is held at -0.4. The last step is therefore the same run as setting the concept as a driver in Scenarios &amp; Simulation (▲ for an increase, ▼ for a decrease), and the curve shows what happens on the way there. The <strong>marginal benefit</strong> of each step is how much the outcome moves over that step, per unit of intensity, counted in the direction the outcome moves over the whole sweep. The <strong>transition point</strong> is the intensity at which this marginal benefit declines most steeply: up to there, extra effort keeps paying off; beyond it, each further step adds markedly less. If the marginal benefit does not decline before full intensity, the transition point is 1. This app has no notion of which direction is "good" for a given concept, so always check the sign of the effect (shown in the table below) before treating a transition point as a leverage point worth pursuing.</p>
+        <p>Many interventions produce non-linear responses. An intervention may deliver most of its effect at low intensity, keep building until high intensity, or remain ineffective across all intensities. Transition Point Analysis shows where along the range the returns on extra effort start to diminish, and how much of the full effect has been reached by then.</p>
         <p>This helps decision makers identify:</p>
         <ul className="list-disc pl-5 space-y-0.5">
           <li>Efficient intervention levels</li>
@@ -9344,7 +9430,7 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
           <li>Choose its direction: increase from 0 to +1, or decrease from 0 to -1 (Step 2). These are the two ways a scenario can drive a concept (▲ at +1, ▼ at -1).</li>
           <li>Choose one or more outcome variables to observe (Step 3), or use "All variables" to select every other concept at once.</li>
           <li>Choose the intensity resolution, i.e. how many steps to sample across the sweep (Step 4), and, optionally, adjust the flat-response threshold used to classify an outcome with little to no response.</li>
-          <li>Click Run analysis (Step 5) to generate the response curves, marginal-return curves, transition point table, and rankings.</li>
+          <li>Click Run analysis (Step 5) to generate the response curves, marginal-benefit curves, transition point table, and rankings.</li>
         </ol>
         </div>
       </FoldableBox>
@@ -9429,11 +9515,26 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
                 tone: result.rows.some((r) => r.range <= result.flatThreshold) ? "warn" : undefined,
                 hint: "Outcomes whose total movement across the whole sweep is below the flat threshold. Their transition point is not meaningful.",
               },
+              ...(result.runs ? [
+                {
+                  label: "Runs converged",
+                  value: `${result.runs - result.notConverged} of ${result.runs}`,
+                  tone: result.notConverged ? "warn" : undefined,
+                  hint: "Runs whose last change fell below the convergence threshold set in Advanced options. A run that never settles (usually a sustained oscillation) gives an unreliable curve and transition point.",
+                },
+                {
+                  label: `Settled to ${result.settingsUsed.convergenceThreshold}`,
+                  value: `${result.runs - result.notPrecise} of ${result.runs}`,
+                  tone: result.notPrecise ? "warn" : undefined,
+                  hint: `The transition point compares neighbouring changes of the curve, which magnifies whatever is left of a run that has not quite settled, so every run here continues until no concept changes by more than ${result.settingsUsed.convergenceThreshold} per iteration (up to ${result.settingsUsed.maxIterations} iterations). Runs that stop short of that give a less precise transition point.`,
+                },
+              ] : []),
             ]}
           >
-            <p><strong>The transition point is the steepest sampled step, not a solved inflection.</strong> The sweep evaluates {result.resolution + 1} equally spaced intervention levels, takes the difference between each neighbouring pair, and reports whichever step moved most. It can only ever land on one of those sampled levels, so its precision is bounded at &plusmn;{round2(1 / result.resolution)}. Before quoting a specific threshold value, re-run at a higher resolution and check it does not move.</p>
-            <p><strong>On a near-linear response the transition point is close to meaningless.</strong> If an outcome climbs at a near-constant rate, one step is "steepest" only by a rounding margin, and the dashed line lands essentially arbitrarily. The Range column and the Response type classification are the guard here: where Range is at or below the flat threshold ({result.flatThreshold}), treat the transition point as an artefact rather than a finding.</p>
-            <p><strong>"Steepest" is by magnitude, in whichever direction the outcome is moving.</strong> The tool has no notion of which direction is desirable for any concept, so a transition point marks the fastest change, not an improvement. Check the sign of the effect before describing one as a leverage point.</p>
+            <p><strong>The transition point is the sampled level at which the marginal benefit declines most steeply.</strong> The sweep evaluates {result.resolution + 1} equally spaced intervention levels. The marginal benefit of each step is the change in the outcome over that step divided by the step size, MB(i) = s (Y(i+1) - Y(i)) / Δx, and the transition point is the level x(i) at which (MB(i) - MB(i-1)) / Δx is lowest. It can only ever land on one of the sampled levels, so its precision is bounded at &plusmn;{round2(1 / result.resolution)}. Before quoting a specific value, re-run at a higher resolution and check it does not move.</p>
+            <p><strong>Every run is settled far more tightly than an ordinary simulation.</strong> Comparing neighbouring changes of the curve magnifies whatever is left of a run that has not quite settled, so each run continues until no concept changes by more than {result.settingsUsed?.convergenceThreshold ?? TP_PRECISION_THRESHOLD} per iteration, for up to {result.settingsUsed?.maxIterations ?? TP_MIN_ITERATIONS} iterations (the global threshold still decides whether a run counts as converged).{result.notPrecise ? ` ${result.notPrecise} of the ${result.runs} runs stopped short of that, so treat the transition points with some caution.` : ""}{result.notConverged ? ` ${result.notConverged} did not even settle to the global threshold: the model keeps oscillating there, and the curve and its transition points are not reliable. Check the Baseline Equilibrium tab, or try the absolute update rule.` : ""}</p>
+            <p><strong>A transition point of 1 means no point of diminishing returns inside the range.</strong> On a straight or ever-steepening response the marginal benefit does not decline (a decline of less than {Math.round(MB_TP_TOLERANCE * 100)}% of its largest value per unit of intensity counts as none), or declines most steeply only at the very last step, and the transition point is reported as 1: the Proportional response type. Where Range is at or below the flat threshold ({result.flatThreshold}), treat the transition point as an artefact rather than a finding.</p>
+            <p><strong>Benefit is counted in the direction the outcome moves.</strong> The tool has no notion of which direction is desirable for any concept, so s is +1 for an outcome that rises over the sweep and -1 for one that falls: for a falling outcome, a further fall is its marginal benefit. Check the sign of the effect before describing a transition point as a leverage point.</p>
             <p><strong>One intervention, held fixed, at equilibrium.</strong> The intervention concept is locked at each level for the whole run and every other concept evolves freely; nothing here sweeps two interventions together, and the x-axis is intensity rather than time, so the curves say nothing about how long a transition takes or what happens en route. Effects are measured from the intervention held at 0, not from the baseline in which it is free to move, and for a decrease a positive slope means the outcome rises as the intervention is pushed further down.</p>
           </MethodPanel>
 
@@ -9442,7 +9543,7 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
               <h4 className="text-sm font-semibold">Response curves: {result.interventionName} ({transitionRangeLabel(result.direction)})</h4>
               <Btn variant="outline" onClick={() => setFigResponseOpen((v) => !v)}><SlidersHorizontal size={13} />{figResponseOpen ? "Hide figure options" : "Customize & export"}</Btn>
             </div>
-            <p className="text-[12.5px] text-neutral-600 mb-2">Dashed vertical lines mark each outcome's transition point (greatest marginal return). Drag the strip below the chart to zoom into an intensity range.</p>
+            <p className="text-[12.5px] text-neutral-600 mb-2">Dashed vertical lines mark each outcome's transition point (where its marginal benefit declines most steeply). Drag the strip below the chart to zoom into an intensity range.</p>
             <div ref={responseChartRef} data-chart="transition-curves" className="w-full h-80" style={figResponseOpen ? { width: mmToPx(figResponse.widthMm, 96), height: mmToPx(figResponse.heightMm, 96), maxWidth: "100%" } : undefined}>
               <ResponsiveContainer>
                 <LineChart data={curveData} margin={{ bottom: 20 }}>
@@ -9490,16 +9591,16 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
 
           <div className="bg-white rounded-lg border border-slate-200 p-4">
             <div className="flex items-center justify-between mb-1">
-              <h4 className="text-sm font-semibold">Marginal return: Greatest Marginal Return highlighted</h4>
+              <h4 className="text-sm font-semibold">Marginal benefit: the transition point is where it declines most steeply</h4>
               <Btn variant="outline" onClick={() => setFigSlopeOpen((v) => !v)}><SlidersHorizontal size={13} />{figSlopeOpen ? "Hide figure options" : "Customize & export"}</Btn>
             </div>
-            <p className="text-[12.5px] text-neutral-600 mb-2">Slope(i) = (Y(i+1) − Y(i)) / Δx at every intensity step. The peak of each curve is that outcome's transition point.</p>
+            <p className="text-[12.5px] text-neutral-600 mb-2">MB(i) = s (Y(i+1) - Y(i)) / Δx at every intensity step, with s = +1 for an outcome that rises over the sweep and -1 for one that falls. Dashed vertical lines mark each outcome's transition point, where its curve falls most steeply.</p>
             <div ref={slopeChartRef} className="w-full h-72" style={figSlopeOpen ? { width: mmToPx(figSlope.widthMm, 96), height: mmToPx(figSlope.heightMm, 96), maxWidth: "100%" } : undefined}>
               <ResponsiveContainer>
                 <LineChart data={slopeData}>
                   {figSlope.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
                   <XAxis dataKey="x" type="number" domain={[0, 1]} tick={{ fontSize: figSlope.tickFontSize }} tickFormatter={(v) => fmtDec(v, figSlope.decimals)} label={{ value: figSlope.xLabel || "Intervention Intensity", position: "insideBottom", offset: -5, fontSize: figSlope.axisFontSize }} />
-                  <YAxis tick={{ fontSize: figSlope.tickFontSize }} tickFormatter={(v) => fmtDec(v, figSlope.decimals)} label={{ value: figSlope.yLabel || "Slope (Marginal Return)", angle: -90, position: "insideLeft", fontSize: figSlope.axisFontSize }} />
+                  <YAxis tick={{ fontSize: figSlope.tickFontSize }} tickFormatter={(v) => fmtDec(v, figSlope.decimals)} label={{ value: figSlope.yLabel || "Marginal Benefit", angle: -90, position: "insideLeft", fontSize: figSlope.axisFontSize }} />
                   <RTooltip />
                   {figSlope.legendPosition !== "hidden" && (
                     <Legend
@@ -9511,6 +9612,9 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
                   )}
                   {figSlope.title && <text x="50%" y={14} textAnchor="middle" fontSize={figSlope.titleFontSize} fontWeight={600} fill="#0f172a">{figSlope.title}</text>}
                   <ReferenceLine y={0} stroke="#cbd5e1" />
+                  {chartRows.map((r, i) => (
+                    <ReferenceLine key={`tp-${r.outcomeId}`} x={round2(r.tp)} stroke={figurePalette(figSlope.palette, chartRows.length)[i]} strokeDasharray="4 4" />
+                  ))}
                   {chartRows.map((r, i) => (
                     <Line key={r.outcomeId} type="monotone" dataKey={r.outcomeId} name={r.outcomeName} stroke={figurePalette(figSlope.palette, chartRows.length)[i]} strokeWidth={figSlope.lineWidth} strokeOpacity={figSlope.opacity} dot={figSlope.markerSize > 0 ? { r: figSlope.markerSize } : false} />
                   ))}
@@ -9525,8 +9629,8 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
                 exporting={figSlopeBusy}
                 onExport={async () => {
                   setFigSlopeBusy(true);
-                  await exportFigure(slopeChartRef.current, "transition-marginal-returns.png", figSlope, {
-                    title: figSlope.title || `Marginal return: ${result.interventionName}`,
+                  await exportFigure(slopeChartRef.current, "transition-marginal-benefit.png", figSlope, {
+                    title: figSlope.title || `Marginal benefit: ${result.interventionName}`,
                     subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}`,
                   });
                   setFigSlopeBusy(false);
@@ -9554,6 +9658,7 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
                     <td className="py-1 pr-3">{r.outcomeName}</td>
                     <td className="py-1 pr-3 font-mono">{round2(r.tp)}</td>
                     <td className="py-1 pr-3 font-mono">{r.effectAtTp >= 0 ? "+" : ""}{round2(r.effectAtTp)}</td>
+                    <td className="py-1 pr-3 font-mono">{r.shareAtTp === null ? "n/a" : `${Math.round(100 * r.shareAtTp)}%`}</td>
                     <td className="py-1 pr-3 font-mono">{r.effect >= 0 ? "+" : ""}{round2(r.effect)}</td>
                     <td className="py-1 pr-3 font-mono">{round2(r.range)}</td>
                     <td className="py-1 pr-3 font-mono">{r.efficiency >= 0 ? "+" : ""}{round2(r.efficiency)}</td>
@@ -9577,13 +9682,13 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
                   <div className="text-[11.5px] text-neutral-600 font-medium uppercase tracking-wide">Earliest transition point</div>
                   <div className="text-sm font-semibold mt-0.5">{kpis.earliest.outcomeName}</div>
                   <div className="text-xs font-mono text-neutral-700">TP = {round2(kpis.earliest.tp)}</div>
-                  <div className="text-[11.5px] text-neutral-600 mt-1">Rapid impact.</div>
+                  <div className="text-[11.5px] text-neutral-600 mt-1">Returns diminish soonest.</div>
                 </div>
                 <div className="border border-slate-200 rounded-lg p-3">
                   <div className="text-[11.5px] text-neutral-600 font-medium uppercase tracking-wide">Latest transition point</div>
                   <div className="text-sm font-semibold mt-0.5">{kpis.latest.outcomeName}</div>
                   <div className="text-xs font-mono text-neutral-700">TP = {round2(kpis.latest.tp)}</div>
-                  <div className="text-[11.5px] text-neutral-600 mt-1">Difficult leverage point.</div>
+                  <div className="text-[11.5px] text-neutral-600 mt-1">Benefit keeps building longest.</div>
                 </div>
                 <div className="border border-slate-200 rounded-lg p-3">
                   <div className="text-[11.5px] text-neutral-600 font-medium uppercase tracking-wide">Highest total effect</div>
@@ -9592,7 +9697,7 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
                   <div className="text-[11.5px] text-neutral-600 mt-1">Largest equilibrium change.</div>
                 </div>
                 <div className="border border-slate-200 rounded-lg p-3">
-                  <div className="text-[11.5px] text-neutral-600 font-medium uppercase tracking-wide" title="Efficiency = Total Effect / Transition Point (TP). How much this outcome changed overall, relative to how far the intervention had to be pushed before its steepest response kicked in. A high efficiency means a small nudge produces a big change; a low one means most of the intervention's range is spent for comparatively little. Sign matches the effect: a negative efficiency means the outcome got worse, not better.">Most efficient lever <HelpCircle size={10} className="inline text-neutral-500" /></div>
+                  <div className="text-[11.5px] text-neutral-600 font-medium uppercase tracking-wide" title="Efficiency = Total Effect / Transition Point (TP). How much this outcome changed overall, relative to the intensity from which further effort pays off markedly less. A high efficiency means a small nudge produces a big change; a low one means most of the intervention's range is spent for comparatively little. Sign matches the effect: a negative efficiency means the outcome got worse, not better.">Most efficient lever <HelpCircle size={10} className="inline text-neutral-500" /></div>
                   <div className="text-sm font-semibold mt-0.5">{kpis.mostEfficient.outcomeName}</div>
                   <div className="text-xs font-mono text-neutral-700">Efficiency = {round2(kpis.mostEfficient.efficiency)}</div>
                   <div className="text-[11.5px] text-neutral-600 mt-1">Effect size / required intensity.</div>
@@ -9603,7 +9708,7 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
 
           <div className="bg-white rounded-lg border border-slate-200 p-4">
             <h4 className="text-sm font-semibold mb-1">Intervention prioritization matrix</h4>
-            <p className="text-[12.5px] text-neutral-600 mb-2">X: transition point (required intensity). Y: |effect size|. Point color: green = outcome improves, red = outcome declines.</p>
+            <p className="text-[12.5px] text-neutral-600 mb-2">X: transition point (the intensity from which returns diminish). Y: |effect size|. Point color: green = outcome improves, red = outcome declines.</p>
             <div className="w-full h-80">
               <ResponsiveContainer>
                 <ScatterChart margin={{ top: 10, right: 20, bottom: 20, left: 10 }}>
@@ -9649,11 +9754,11 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
             <h4 className="text-sm font-semibold mb-2">Export</h4>
             <div className="flex flex-wrap gap-2">
               <Btn variant="outline" onClick={exportResponseCSV}><Download size={13} />Response curves (CSV)</Btn>
-              <Btn variant="outline" onClick={exportSlopeCSV}><Download size={13} />Marginal return curves (CSV)</Btn>
+              <Btn variant="outline" onClick={exportSlopeCSV}><Download size={13} />Marginal benefit curves (CSV)</Btn>
               <Btn variant="outline" onClick={exportTableCSV}><Download size={13} />TP table (CSV)</Btn>
               <Btn variant="outline" onClick={exportRankingsCSV} disabled={!kpis}><Download size={13} />Rankings (CSV)</Btn>
               <Btn variant="outline" onClick={() => exportFigure(responseChartRef.current, "transition-response-curves.png", figResponse, { title: figResponse.title || `Response curves: ${result.interventionName} (${transitionRangeLabel(result.direction)})`, subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}` })}><Download size={13} />Response chart ({figResponse.format.toUpperCase()})</Btn>
-              <Btn variant="outline" onClick={() => exportFigure(slopeChartRef.current, "transition-marginal-returns.png", figSlope, { title: figSlope.title || `Marginal return: ${result.interventionName}`, subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}` })}><Download size={13} />Marginal chart ({figSlope.format.toUpperCase()})</Btn>
+              <Btn variant="outline" onClick={() => exportFigure(slopeChartRef.current, "transition-marginal-benefit.png", figSlope, { title: figSlope.title || `Marginal benefit: ${result.interventionName}`, subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}` })}><Download size={13} />Marginal chart ({figSlope.format.toUpperCase()})</Btn>
             </div>
             <p className="text-[11.5px] text-neutral-600 mt-2 italic">PDF export is not yet implemented (see the roadmap note at the bottom of the page). Use PNG for images and CSV for data in the meantime.</p>
           </div>
@@ -9698,7 +9803,7 @@ const PATHWAY_METRIC_HELP = {
   tog: "Total Outcome Gain: the improvement of the nexus outcomes in the final state compared with Business-as-Usual, each outcome counted in its desirable direction and weighted.",
   cii: "Cumulative Intervention Intensity: the total effort, as the sum of the final lever intensities (times their effort weights). 1 means one lever at full intensity.",
   pei: "Pathway Efficiency Index: total outcome gain divided by cumulative intensity; outcome gain per unit of effort.",
-  avgTp: "Average Transition Point: the mean conditional transition point of the stages. Low values mean the levers deliver early in their range (front-loaded).",
+  avgTp: "Average Transition Point: the mean conditional transition point of the stages. Low values mean the levers' returns diminish early in their range: most of their benefit comes at low intensity.",
   ss: "Synergy Score: how many nexus outcomes the pathway improves by more than the flat-response threshold.",
   ebi: "Early Benefit Index: the area under the benefit accrual curve (share of effort spent against share of gain realized). Above 0.5 the benefits come ahead of the effort; below 0.5 they come late.",
   ig: "Interaction Gain: the pathway's outcome gain minus the sum of what each lever achieves on its own from Business-as-Usual at the same intensity. Positive: the levers reinforce each other.",
@@ -9770,7 +9875,7 @@ function TransitionPathwaysGuide() {
     >
       <div className="text-xs text-neutral-900 space-y-2 leading-relaxed">
         <p>Transition Point Analysis asks at what intensity a single intervention is most effective. <strong>Transition Pathway Analysis</strong> asks in what order interventions should be implemented. A <strong>transition pathway</strong> is an ordered sequence of interventions that guides the system from its Business-as-Usual state towards a desired state.</p>
-        <p><strong>How a pathway is simulated.</strong> The analysis starts from the Business-as-Usual equilibrium: the model's own starting values with no scenario applied. In each stage one lever is implemented up to its <em>conditional transition point</em>: the intensity at which, in the state the pathway has reached so far, one more step of effort gives the largest improvement in the nexus outcomes. The system then settles to equilibrium, the lever stays in place, and the next lever starts from that new state. Because every transition point is recomputed from the current state, the analysis shows how earlier levers make later ones more effective (their transition point moves earlier) or less effective (it moves later).</p>
+        <p><strong>How a pathway is simulated.</strong> The analysis starts from the Business-as-Usual equilibrium: the model's own starting values with no scenario applied. In each stage one lever is implemented up to its <em>conditional transition point</em>: the intensity from which, in the state the pathway has reached so far, further effort adds markedly less to the improvement of the nexus outcomes (the point of diminishing returns). The system then settles to equilibrium, the lever stays in place, and the next lever starts from that new state. Because every transition point is recomputed from the current state, the analysis shows how earlier levers change where later ones stop paying off: their transition point moves earlier (most of their benefit now comes at lower intensity) or later.</p>
         <p className="font-medium text-neutral-900">Steps</p>
         <ol className="list-decimal pl-5 space-y-0.5">
           <li>Choose the nexus outcomes, and for each whether higher or lower is better.</li>
@@ -10021,7 +10126,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
   };
   const exportLeversCSV = () => {
     if (!result) return;
-    const header = ["Lever", "Direction", "Effort Weight", "Isolated TP", "Response Type", "Max Marginal Return", "Outcome Gain at Full Intensity", "Synergy", "Included", "Reason",
+    const header = ["Lever", "Direction", "Effort Weight", "Isolated TP", "Response Type", "Max Marginal Benefit", "Outcome Gain at Full Intensity", "Synergy", "Included", "Reason",
       ...result.outcomes.flatMap((o) => [`${nameOf(o.id)} effect at full intensity`, `${nameOf(o.id)} TP`])];
     const rows = result.iso.map((l) => [nameOf(l.id), l.decrease ? "Decrease (0 to -1)" : "Increase (0 to 1)", l.effort, l.tau === null ? "" : round3(l.tau), l.responseType,
       l.maxReturn === null ? "" : round3(l.maxReturn), round3(l.gainAtFull), l.synergy.type, l.included ? "Yes" : "No", l.reason,
@@ -10150,7 +10255,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
               </select>
             </div>
             <div>
-              <div className="text-[12.5px] text-neutral-700 mb-0.5" title="Up to the transition point: each stage stops where the lever's marginal return peaks, the default in the method. Full: every lever goes to intensity 1, as a reference case.">Stage intensity <HelpCircle size={10} className="inline text-neutral-500" /></div>
+              <div className="text-[12.5px] text-neutral-700 mb-0.5" title="Up to the transition point: each stage stops at the lever's transition point, where its marginal benefit to the total outcome gain declines most steeply, the default in the method. Full: every lever goes to intensity 1, as a reference case.">Stage intensity <HelpCircle size={10} className="inline text-neutral-500" /></div>
               <select value={config.rule} onChange={(e) => patch({ rule: e.target.value })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5">
                 <option value="tp">Up to the conditional transition point</option>
                 <option value="full">Full implementation (intensity 1)</option>
@@ -10161,11 +10266,11 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
               </label>
             </div>
             <div>
-              <div className="text-[12.5px] text-neutral-700 mb-0.5" title="Every order: all orderings of the levers up to the maximum length (exact, but grows fast). Beam search: keeps only the best partial pathways at each stage. Greedy: at each stage takes the lever with the highest marginal return.">Pathway construction <HelpCircle size={10} className="inline text-neutral-500" /></div>
+              <div className="text-[12.5px] text-neutral-700 mb-0.5" title="Every order: all orderings of the levers up to the maximum length (exact, but grows fast). Beam search: keeps only the best partial pathways at each stage. Greedy: at each stage takes the lever with the highest marginal benefit (the steepest step of its sweep).">Pathway construction <HelpCircle size={10} className="inline text-neutral-500" /></div>
               <select value={config.strategy} onChange={(e) => patch({ strategy: e.target.value })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5">
                 <option value="exhaustive">Every order (exhaustive)</option>
                 <option value="beam">Beam search</option>
-                <option value="greedy">Greedy (highest marginal return)</option>
+                <option value="greedy">Greedy (highest marginal benefit)</option>
               </select>
               {config.strategy === "beam" && (
                 <div className="flex items-center gap-1.5 mt-1 text-[12.5px] text-neutral-900">
@@ -10196,8 +10301,8 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
               <input type="number" step={5} min={0} max={100} value={Math.round((Number(config.minGainShare) || 0) * 100)} onChange={(e) => patch({ minGainShare: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) / 100 })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 font-mono" />
             </div>
             <div>
-              <div className="text-[12.5px] text-neutral-700 mb-0.5" title="Near a transition point the model settles slowly, and every stage sits at one, so pathway runs allow more iterations than the global setting before a run counts as not converged. All other simulation settings are the global ones (Scenarios & Simulation, Advanced options).">Maximum iterations per run <HelpCircle size={10} className="inline text-neutral-500" /></div>
-              <input type="number" step={100} min={10} value={config.maxIterations} onChange={(e) => patch({ maxIterations: e.target.value })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 font-mono" />
+              <div className="text-[12.5px] text-neutral-700 mb-0.5" title={`Near a transition point the model settles slowly, every stage sits at one, and transition points need runs settled to ${TP_PRECISION_THRESHOLD}, so pathway runs allow more iterations than the global setting, at least ${TP_MIN_ITERATIONS}. Whether a run counts as converged follows the global threshold. All other simulation settings are the global ones (Scenarios & Simulation, Advanced options).`}>Maximum iterations per run <HelpCircle size={10} className="inline text-neutral-500" /></div>
+              <input type="number" step={100} min={TP_MIN_ITERATIONS} value={config.maxIterations} onChange={(e) => patch({ maxIterations: e.target.value })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 font-mono" />
             </div>
             <div className="flex items-end">
               <label className="flex items-center gap-1.5 text-[12.5px] text-neutral-900" title="Repeats the whole analysis with steepness halved and doubled, the other squash function, and the other update rule, and reports how often the top pathways keep their archetype and rank. About five times longer.">
@@ -10283,15 +10388,16 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
               { label: "Pathways evaluated", value: result.candidates.length.toLocaleString(), hint: "Every pathway and every shorter opening of it is a candidate." },
               { label: "Admissible", value: `${s.counts.admissible} of ${s.counts.total}`, hint: `Converged, no trade-offs, and a total outcome gain of at least ${fmtNum(s.gMin)} (${Math.round((Number(result.config.minGainShare) || 0) * 100)}% of the best, or the flat threshold per outcome).` },
               { label: "Simulation runs", value: result.runs.toLocaleString(), hint: "One run to equilibrium per sampled intensity, per lever, per stage (main analysis)." },
-              { label: "Did not converge", value: `${s.counts.nonConverged}`, tone: s.counts.nonConverged ? "warn" : undefined, hint: "Pathways with a stage that did not settle within the iteration limit (usually a sustained oscillation, or with no squashing function, a runaway). They are reported but not classified." },
+              { label: "Did not converge", value: `${s.counts.nonConverged}`, tone: s.counts.nonConverged ? "warn" : undefined, hint: "Pathways with a stage that did not settle to the global convergence threshold within the iteration limit (usually a sustained oscillation, or with no squashing function, a runaway). They are reported but not classified." },
+              ...(result.imprecise !== undefined ? [{ label: `Settled to ${result.settingsUsed.convergenceThreshold}`, value: `${(result.runs - result.imprecise).toLocaleString()} of ${result.runs.toLocaleString()}`, tone: result.imprecise ? "warn" : undefined, hint: `Transition points compare neighbouring changes of the gain curve, which magnifies whatever is left of a run that has not quite settled, so every run continues until no concept changes by more than ${result.settingsUsed.convergenceThreshold} per iteration. Runs that stop short of that at the iteration limit give less precise transition points.` }] : []),
               { label: "Transition point precision", value: `±${round2(1 / result.N)}`, hint: "A transition point can only fall on one of the sampled intensity steps." },
               { label: "Transfer function / λ", value: transferFunctionLabel(result.settingsUsed) },
-              { label: "Update / iterations", value: `${result.settingsUsed.updateRule ?? "relative"}, synchronous, ≤ ${result.settingsUsed.maxIterations}`, hint: "Pathway runs are always synchronous (deterministic) and use this analysis's own iteration limit; everything else follows the global simulation settings." },
+              { label: "Update / iterations", value: `${result.settingsUsed.updateRule ?? "relative"}, synchronous, ≤ ${result.settingsUsed.maxIterations}`, hint: `Pathway runs are always synchronous (deterministic) and use this analysis's own iteration limit (at least ${TP_MIN_ITERATIONS}); everything else follows the global simulation settings.` },
               { label: "Path dependence", value: result.invariance.tested ? `${result.invariance.pathDependent} of ${result.invariance.tested} lever sets` : "not tested", tone: result.invariance.pathDependent ? "warn" : undefined, hint: "Invariance test: the lever sets of the top pathways were simulated in every order at the same intensities. Different end states mean the order decides where the system ends up." },
             ]}
           >
-            <p><strong>Pathways are built stage by stage from Business-as-Usual.</strong> Business-as-Usual is the equilibrium of the model's own starting values with no scenario applied. In each stage a lever is swept from its current intensity to 1 in {result.N} steps, each run starting from the equilibrium the pathway has reached, with the earlier levers held in place. {result.rule === "tp" ? "The lever is implemented at its conditional transition point: the upper end of the step with the largest positive marginal return in total outcome gain." : "The lever is implemented at full intensity (the reference rule)."} Levers with no improving step from the current state are not added. A stage can still lower the total gain, when a lever first worsens the outcomes before its steepest improving step; such stage gains are shown in orange, and the efficient frontier and the rankings show whether the stage is worth taking.</p>
-            <p><strong>This transition point differs from the one on the Transition Point tab in two ways.</strong> It is signed by the desirability of the outcomes (it marks the largest improvement, not the steepest change of any kind), and it is reported at the upper end of the steepest step, so that implementing a lever up to it realizes that step in full.</p>
+            <p><strong>Pathways are built stage by stage from Business-as-Usual.</strong> Business-as-Usual is the equilibrium of the model's own starting values with no scenario applied. In each stage a lever is swept from its current intensity to 1 in {result.N} steps, each run starting from the equilibrium the pathway has reached, with the earlier levers held in place. {result.rule === "tp" ? "The lever is implemented at its conditional transition point: the sampled intensity at which the marginal benefit of the lever to the total outcome gain declines most steeply, or 1 if it does not decline before full intensity. A lever whose gain at that point is no higher than the gain the pathway has already reached is not added." : "The lever is implemented at full intensity (the reference rule)."} A stage at full intensity (the reference rule, or a scale-up stage) can lower the total gain, when the lever worsens the outcomes beyond its transition point; such stage gains are shown in orange, and the efficient frontier and the rankings show whether the stage is worth taking.</p>
+            <p><strong>This is the transition point of the Transition Point tab, applied to the total outcome gain.</strong> The marginal benefit is the change in the gain per step of intensity, and benefit is counted in each outcome's desirable direction as set above, rather than in the direction the outcome happens to move. Every run continues until no concept changes by more than {result.settingsUsed.convergenceThreshold} per iteration, because comparing neighbouring changes of the gain curve magnifies whatever is left of a run that has not quite settled.</p>
             <p><strong>Metrics.</strong> TOG is the weighted, direction-signed improvement of the outcomes relative to Business-as-Usual; CII the sum of final intensities times effort weights; PEI their ratio; the average TP the mean conditional transition point; SS the number of outcomes improved by more than {result.eps}; IG the gain beyond what the same levers achieve on their own at the same intensities (strongly negative when each lever alone already moves much of the system, so their separate effects overlap). The Early Benefit Index is the area under the accrual curve of gain against effort, traced at the sweep resolution within each stage (the stage-level formula uses only the stage end points; the finer curve keeps single-stage pathways classifiable).</p>
             <p><strong>Archetype thresholds are relative.</strong> Quartiles and quintiles are taken across the {s.counts.admissible} admissible pathways of this run{s.counts.admissible < 10 ? ", which is a small set, so the thresholds are coarse" : ""}. The rules are conventions that structure the comparison, not properties of the system; the robustness test shows how much the top pathways depend on the simulation settings.</p>
             <p><strong>What this does not tell you.</strong> Stages are implementation phases, not periods of time, and each is assumed to last long enough for the system to settle. Implemented levers are assumed to stay in place. Results are relative comparisons between pathways in the units of the map, implications of the causal structure as drawn rather than forecasts.</p>
@@ -10484,7 +10590,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
                           <td className="py-1 pr-3 font-mono">{fmtNum(st.tauCond)}</td>
                           <td className={`py-1 pr-3 font-mono ${st.shift < 0 ? "text-cobalt-700" : st.shift > 0 ? "text-orange-700" : ""}`}>{st.shift === null ? "" : fmtSigned(st.shift)}</td>
                           <td className="py-1 pr-3 font-mono">{st.scaleUp ? `${round2(st.uPrev)} to ` : ""}{round2(st.u)}</td>
-                          <td className={`py-1 pr-3 font-mono ${dG < -1e-6 ? "text-orange-700" : ""}`} title={dG < -1e-6 ? "This stage lowers the total outcome gain: from this state the lever first worsens the outcomes before its steepest improving step." : undefined}>{fmtSigned(dG)}</td>
+                          <td className={`py-1 pr-3 font-mono ${dG < -1e-6 ? "text-orange-700" : ""}`} title={dG < -1e-6 ? "This stage lowers the total outcome gain: from this state, the lever at this intensity worsens the outcomes." : undefined}>{fmtSigned(dG)}</td>
                           <td className="py-1 pr-3 font-mono">{fmtNum(st.gainAfter)}</td>
                           <td className="py-1 pr-3 font-mono">{du > 0 ? fmtNum(dG / (st.effort * du)) : "n/a"}</td>
                           {st.outcomes.map((o) => <td key={o.id} className="py-1 pr-3 font-mono">{fmtNum(o.value)}</td>)}
