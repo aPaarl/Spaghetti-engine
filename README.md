@@ -38,7 +38,7 @@ Netlify builds and deploys the site from the `main` branch.
 | `public/favicon.svg`, `public/apple-touch-icon.png` | Site icons. |
 | `brand-assets/` | Logo files (SVG and PNG) for use in documents and slides. Not deployed. |
 | `tools/` | Scripts that produce the PDFs and the manifest, and a helper for editing the Word documents (see below). |
-| `tests/` | Checks that load the engine straight from `src/SpaghettiEngine.jsx`; run with `node tests/test_transition_direction.cjs` and `node tests/test_marginal_benefit_tp.cjs`. |
+| `tests/` | Checks that load the engine straight from `src/SpaghettiEngine.jsx`; run each with `node tests/<file>.cjs`. |
 
 ## Releasing a new version
 
