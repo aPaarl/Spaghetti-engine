@@ -7688,6 +7688,13 @@ function countExhaustivePathways(leverIds, maxLength, allowScaleUp, precedence, 
   return count;
 }
 
+// A setup field as a number, or the fallback when it is blank or not a number.
+function pathwayNumberOr(v, fallback) {
+  if (v === "" || v === null || v === undefined) return fallback;
+  const x = Number(v);
+  return Number.isFinite(x) ? x : fallback;
+}
+
 // Steps 1 to 4 of the workflow: lever profiles from BAU, candidate pathway
 // construction with sequential simulation, and the pathway metrics. A
 // generator, so the tab can run it in slices and keep the page responsive;
@@ -7695,13 +7702,18 @@ function countExhaustivePathways(leverIds, maxLength, allowScaleUp, precedence, 
 function* pathwayEnumeration(concepts, edges, settings, config, phase = "") {
   const eng = makePathwayEngine(concepts, edges, pathwaySimSettings(settings, config));
   const N = Math.max(2, Math.round(Number(config.resolution) || 20));
-  const eps = Math.max(0, Number(config.flatThreshold) || 0);
+  // A field left blank while typing falls back to its default, not to 0
+  // (Number("") is 0, which would silently drop an outcome or the threshold).
+  const eps = Math.max(0, pathwayNumberOr(config.flatThreshold, DEFAULT_PATHWAY_CONFIG.flatThreshold));
   const J = Math.max(1, Math.min(6, Math.round(Number(config.maxLength) || 1)));
-  const outcomes = (config.outcomes || []).filter((o) => eng.index.has(o.id)).map((o) => ({
-    id: o.id, idx: eng.index.get(o.id), d: Number(o.direction) === -1 ? -1 : 1,
-    w: Number.isFinite(Number(o.weight)) && Number(o.weight) >= 0 ? Number(o.weight) : 1,
-    target: o.target === "" || o.target === null || o.target === undefined || !Number.isFinite(Number(o.target)) ? null : Number(o.target),
-  }));
+  const outcomes = (config.outcomes || []).filter((o) => eng.index.has(o.id)).map((o) => {
+    const w = pathwayNumberOr(o.weight, 1);
+    return {
+      id: o.id, idx: eng.index.get(o.id), d: Number(o.direction) === -1 ? -1 : 1,
+      w: w >= 0 ? w : 1,
+      target: o.target === "" || o.target === null || o.target === undefined || !Number.isFinite(Number(o.target)) ? null : Number(o.target),
+    };
+  });
   const outcomeIds = new Set(outcomes.map((o) => o.id));
   const levers = (config.levers || []).filter((l) => eng.index.has(l.id) && !outcomeIds.has(l.id)).map((l) => ({
     id: l.id, idx: eng.index.get(l.id), decrease: l.direction === "decrease",
@@ -10166,7 +10178,9 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
   const expertStageCount = expertSequences.reduce((a, q) => a + q.stages.length, 0);
   const robustnessRuns = config.robustness ? pathwayAlternativeSettings(settings).length + scopedOutcomes.length : 0;
   const estRuns = (scopedLevers.length + estPathways + expertStageCount) * (N + 1) * (1 + robustnessRuns);
-  const canRun = scopedLevers.length > 0 && scopedOutcomes.length > 0 && !tooMany && !running;
+  // Every outcome weighted 0 leaves nothing to gain, so no lever would ever be added.
+  const allWeightsZero = scopedOutcomes.length > 0 && scopedOutcomes.every((o) => o.weight !== "" && Number(o.weight) === 0);
+  const canRun = scopedLevers.length > 0 && scopedOutcomes.length > 0 && !allWeightsZero && !tooMany && !running;
 
   const run = () => {
     if (!canRun) return;
@@ -10570,6 +10584,8 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
           <span className="text-[12.5px] text-neutral-700">
             {scopedLevers.length === 0 || scopedOutcomes.length === 0
               ? "Add at least one outcome and one lever to begin."
+              : allWeightsZero
+                ? <span className="text-amber-700">Every outcome has weight 0, so no pathway can improve anything. Give at least one outcome a positive weight.</span>
               : tooMany
                 ? <span className="text-amber-700">Every order of {scopedLevers.length} levers over {J} stages is more than {PATHWAY_EXHAUSTIVE_LIMIT.toLocaleString()} pathways. Use beam search or fewer stages.</span>
                 : <>About {estPathways.toLocaleString()} pathway{estPathways === 1 ? "" : "s"} and {estRuns.toLocaleString()} simulations{config.robustness ? " including the robustness runs" : ""}.</>}
