@@ -163,7 +163,7 @@ export default function AboutTab({ onOpenTab }) {
           <span className="text-xs text-neutral-700">
             {manifest.version === APP_VERSION
               ? `All three describe version ${manifest.version}, the version you are using.`
-              : `All three describe version ${manifest.version}. Version ${APP_VERSION} contains only fixes that do not change what they describe.`}
+              : `All three describe version ${manifest.version}; they have not yet been updated for version ${APP_VERSION}.`}
           </span>
         </div>
         <div className="grid md:grid-cols-3 gap-4">
