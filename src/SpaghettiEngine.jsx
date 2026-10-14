@@ -7506,6 +7506,10 @@ const DEFAULT_PATHWAY_CONFIG = {
   // TP_MIN_ITERATIONS.
   maxIterations: 1000,
   precedence: [],        // [{ before, after }]
+  // Pathways proposed by stakeholders (Step 2 of the methods), simulated
+  // stage by stage like the others and classified with them. Each stage is a
+  // lever at its conditional transition point or at a fixed intensity.
+  expertSequences: [],   // [{ name, stages: [{ leverId, mode: "tp" | "fixed", u }] }]
   robustness: false,
 };
 const PATHWAY_CONFIG_KEY = "spaghetti-engine:pathways-setup:v1";
@@ -7523,10 +7527,14 @@ function readPathwayConfig() {
     if (!(Number(raw.maxIterations) >= TP_MIN_ITERATIONS)) raw.maxIterations = TP_MIN_ITERATIONS;
     return {
       ...DEFAULT_PATHWAY_CONFIG,
-      ...Object.fromEntries(Object.entries(raw).filter(([k]) => k in DEFAULT_PATHWAY_CONFIG && !["outcomes", "levers", "precedence"].includes(k))),
+      ...Object.fromEntries(Object.entries(raw).filter(([k]) => k in DEFAULT_PATHWAY_CONFIG && !["outcomes", "levers", "precedence", "expertSequences"].includes(k))),
       outcomes: list(raw.outcomes, (o) => typeof o.id === "string"),
       levers: list(raw.levers, (l) => typeof l.id === "string"),
       precedence: list(raw.precedence, (p) => typeof p.before === "string" && typeof p.after === "string"),
+      expertSequences: list(raw.expertSequences, (q) => Array.isArray(q.stages)).map((q) => ({
+        name: typeof q.name === "string" ? q.name : "",
+        stages: list(q.stages, (st) => typeof st.leverId === "string").map((st) => ({ leverId: st.leverId, mode: st.mode === "fixed" ? "fixed" : "tp", u: Number.isFinite(Number(st.u)) ? Number(st.u) : 0.5 })),
+      })),
     };
   } catch {
     return DEFAULT_PATHWAY_CONFIG;
@@ -7541,6 +7549,14 @@ const pathwayLeverValue = (decrease, u) => (decrease ? 0 - u : u);
 const PATHWAY_EXHAUSTIVE_LIMIT = 20000;
 const PATHWAY_TOP_N = 5;
 const PATHWAY_ARCHETYPE_KEYS = ["lhf", "hi", "ef", "di"];
+// The archetype decision rules of the methods (Table 2): effort quartiles,
+// the top share for gain and efficiency, the average-TP cut-offs, and the EBI
+// cut-offs of Low-Hanging Fruit and Deep Investment. The robustness test
+// varies these (pathwayThresholdVariants).
+const PATHWAY_THRESHOLD_DEFAULTS = { ciiLo: 0.25, ciiHi: 0.75, top: 0.8, tpLo: 1 / 3, tpHi: 1 / 2, ebiLhf: 0.5, ebiDi: 0.5 };
+const PATHWAY_EXPERT_MAX_STAGES = 8;
+// A pathway's identity: its levers in order with their intensities.
+const pathwayKeyOf = (stages) => stages.map((s) => `${s.leverId}${s.scaleUp ? "+" : ""}@${round2(s.u)}`).join(">");
 
 function makePathwayEngine(concepts, edges, settings) {
   const n = concepts.length;
@@ -7766,12 +7782,24 @@ function* pathwayEnumeration(concepts, edges, settings, config, phase = "") {
     return scaleUpAllowed && cnt === 1 && (node.uOf.get(l.id) ?? 1) < 1 - 1e-9;
   });
 
-  function expand(node, lever) {
+  // Adds one stage to a node. `how` is only given for expert-defined stages:
+  // { mode: "tp" } places the lever at its conditional transition point over
+  // its remaining range (also for a scale-up), { mode: "fixed", u } at a grid
+  // intensity above its current one; `push: false` keeps the stage out of the
+  // candidate list (an expert sequence counts only as a whole).
+  function expand(node, lever, how = null) {
     const scaleUp = (node.countOf.get(lever.id) || 0) > 0;
     const u0 = scaleUp ? node.uOf.get(lever.id) : 0;
-    const sw = sweep(node.state, node.li, node.lv, lever, Math.round(u0 * N), node.g);
+    const s0 = Math.round(u0 * N);
+    const sw = sweep(node.state, node.li, node.lv, lever, s0, node.g);
     let target;
-    if (scaleUp || rule === "full") target = sw.pts.length - 1;
+    if (how?.mode === "fixed") {
+      target = Math.round(how.u * N) - s0;
+      if (target < 1 || target >= sw.pts.length) return null;
+    } else if (how?.mode === "tp") {
+      if (sw.tpAt < 0) return null;
+      target = sw.tpAt;
+    } else if (scaleUp || rule === "full") target = sw.pts.length - 1;
     else if (sw.tpAt < 0) { blocked += 1; return null; } else target = sw.tpAt;
     const pt = sw.pts[target];
     const base = iso.get(lever.id);
@@ -7795,17 +7823,22 @@ function* pathwayEnumeration(concepts, edges, settings, config, phase = "") {
       li: pt.L, lv: pt.V, uOf, countOf, state: pt.state,
       g: pt.g, cii: stage.ciiAfter, converged: node.converged && pt.converged,
     };
-    candidates.push(child);
+    if (how?.push !== false) candidates.push(child);
     return child;
   }
 
-  const root = { id: 0, depth: 0, stages: [], li: [], lv: [], uOf: new Map(), countOf: new Map(), state: B, g: 0, cii: 0, converged: bau.converged };
+  const makeRoot = () => ({ id: 0, depth: 0, stages: [], li: [], lv: [], uOf: new Map(), countOf: new Map(), state: B, g: 0, cii: 0, converged: bau.converged });
+  const root = makeRoot();
   const beamWidth = strategy === "greedy" ? 1 : Math.max(1, Math.round(Number(config.beamWidth) || 10));
+  const expertDefs = (config.expertSequences || []).map((q, i) => ({
+    name: String(q.name || "").trim() || `Expert sequence ${i + 1}`,
+    stages: (q.stages || []).filter((st) => st && st.leverId).slice(0, PATHWAY_EXPERT_MAX_STAGES),
+  }));
   progress.stage = "Building pathways";
   progress.done = 0;
-  progress.total = strategy === "exhaustive"
+  progress.total = (strategy === "exhaustive"
     ? Math.min(PATHWAY_EXHAUSTIVE_LIMIT, countExhaustivePathways(poolIds, J, scaleUpAllowed, prec))
-    : Math.max(1, pool.length) * (1 + (J - 1) * Math.min(beamWidth, 50));
+    : Math.max(1, pool.length) * (1 + (J - 1) * Math.min(beamWidth, 50))) + expertDefs.reduce((a, q) => a + q.stages.length, 0);
   yield progress;
 
   if (strategy === "exhaustive") {
@@ -7845,6 +7878,49 @@ function* pathwayEnumeration(concepts, edges, settings, config, phase = "") {
     }
   }
 
+  // ---- Step 2, expert-defined sequences ----------------------------------------
+  // Each is simulated from Business-as-Usual with the same engine. Any of the
+  // chosen levers may be used, including those left out of the enumeration,
+  // and the order constraints do not apply: the sequence is the experts' own.
+  // Only the whole sequence becomes a candidate. One that coincides with an
+  // enumerated pathway is not added twice: that pathway is marked instead.
+  const leverById = new Map(levers.map((l) => [l.id, l]));
+  const keyIndex = new Map(candidates.map((c) => [pathwayKeyOf(c.stages), c]));
+  const expertReports = [];
+  progress.stage = "Expert-defined sequences";
+  for (const def of expertDefs) {
+    let node = makeRoot(), problem = null;
+    if (!def.stages.length) problem = "No stages";
+    for (let j = 0; j < def.stages.length && !problem; j++) {
+      const st = def.stages[j];
+      const lever = leverById.get(st.leverId);
+      if (!lever) { problem = `Stage ${j + 1}: not one of the chosen levers in the analysis scope`; break; }
+      const u0 = node.uOf.get(lever.id) ?? 0;
+      const fixed = st.mode === "fixed";
+      const u = fixed ? Math.round(Math.max(0, Math.min(1, Number(st.u) || 0)) * N) / N : null;
+      if (fixed && u <= u0 + 1e-9) { problem = `Stage ${j + 1}: intensity ${round2(u)} is not above the lever's current ${round2(u0)} (intensities are never lowered)`; break; }
+      if (!fixed && u0 >= 1 - 1e-9) { problem = `Stage ${j + 1}: the lever is already at full intensity`; break; }
+      const child = expand(node, lever, { mode: fixed ? "fixed" : "tp", u, push: false });
+      progress.done += 1;
+      yield progress;
+      if (!child) { problem = `Stage ${j + 1}: blocked, the lever has no transition point that improves the outcomes in the state reached`; break; }
+      node.state = null;
+      node = child;
+    }
+    if (problem) { expertReports.push({ name: def.name, problem, id: null }); continue; }
+    const same = keyIndex.get(pathwayKeyOf(node.stages));
+    if (same) {
+      same.expertNames = [...(same.expertNames || []), def.name];
+      expertReports.push({ name: def.name, problem: null, id: same.id, duplicate: true });
+    } else {
+      node.expertNames = [def.name];
+      node.expertOnly = true;
+      candidates.push(node);
+      keyIndex.set(pathwayKeyOf(node.stages), node);
+      expertReports.push({ name: def.name, problem: null, id: node.id, duplicate: false });
+    }
+  }
+
   // ---- Step 4: pathway metrics --------------------------------------------------
   const nameCount = outcomes.length;
   candidates.forEach((c) => {
@@ -7879,23 +7955,26 @@ function* pathwayEnumeration(concepts, edges, settings, config, phase = "") {
     }).length;
     c.final = Object.fromEntries(c.uOf);
     c.sig = c.stages.map((s) => s.leverId + (s.scaleUp ? "+" : "")).join(">");
-    c.key = c.stages.map((s) => `${s.leverId}${s.scaleUp ? "+" : ""}@${round2(s.u)}`).join(">");
+    c.key = pathwayKeyOf(c.stages);
     c.length = c.stages.length;
+    c.expertNames = c.expertNames || [];
+    c.expertOnly = !!c.expertOnly;
     delete c.li; delete c.lv; delete c.state; delete c.uOf; delete c.countOf; delete c.g;
   });
 
   return {
     engine: eng, simSettings: pathwaySimSettings(settings, config), B, N, eps, J, rule, strategy, scaleUpAllowed, outcomes, levers,
     bauConverged: bau.converged,
-    iso: [...iso.values()], candidates, blocked, truncated,
+    iso: [...iso.values()], candidates, blocked, truncated, expertReports,
     poolIds, outcomeCount: nameCount,
   };
 }
 
 // Step 5: admissibility, archetypes, primary archetype, efficient frontier,
 // and the rankings within each archetype.
-function classifyPathways(cands, outcomeCount, eps, minGainShare) {
+function classifyPathways(cands, outcomeCount, eps, minGainShare, thresholds = PATHWAY_THRESHOLD_DEFAULTS) {
   const tol = 1e-9;
+  const th = { ...PATHWAY_THRESHOLD_DEFAULTS, ...thresholds };
   const conv = cands.filter((c) => c.converged);
   const maxTog = conv.reduce((m, c) => Math.max(m, c.tog), -Infinity);
   const gMin = Math.max((Number.isFinite(Number(minGainShare)) ? Number(minGainShare) : 0.25) * Math.max(0, maxTog), eps * outcomeCount);
@@ -7912,12 +7991,12 @@ function classifyPathways(cands, outcomeCount, eps, minGainShare) {
   const ciiS = asc(adm.map((c) => c.cii)), togS = asc(adm.map((c) => c.tog));
   const peiS = asc(adm.map((c) => c.pei)), ebiS = asc(adm.map((c) => c.ebi));
   const q = {
-    cii25: pathwayQuantile(ciiS, 0.25), cii75: pathwayQuantile(ciiS, 0.75),
-    tog80: pathwayQuantile(togS, 0.8), pei80: pathwayQuantile(peiS, 0.8),
+    cii25: pathwayQuantile(ciiS, th.ciiLo), cii75: pathwayQuantile(ciiS, th.ciiHi),
+    tog80: pathwayQuantile(togS, th.top), pei80: pathwayQuantile(peiS, th.top),
   };
   adm.forEach((c) => {
     const aff = {};
-    if (c.cii <= q.cii25 + tol && c.avgTp !== null && c.avgTp <= 1 / 3 + tol && c.ebi !== null && c.ebi > 0.5) {
+    if (c.cii <= q.cii25 + tol && c.avgTp !== null && c.avgTp <= th.tpLo + tol && c.ebi !== null && c.ebi > th.ebiLhf) {
       c.memberships.push("lhf"); aff.lhf = 1 - pathwayPercentRank(ciiS, c.cii);
     }
     if (c.tog >= q.tog80 - tol && c.ss === outcomeCount) {
@@ -7926,7 +8005,7 @@ function classifyPathways(cands, outcomeCount, eps, minGainShare) {
     if (c.pei !== null && c.pei >= q.pei80 - tol && c.cii > q.cii25 + tol && c.cii < q.cii75 - tol) {
       c.memberships.push("ef"); aff.ef = pathwayPercentRank(peiS, c.pei);
     }
-    if (c.cii >= q.cii75 - tol && c.avgTp !== null && c.avgTp > 0.5 && c.ebi !== null && c.ebi < 0.5) {
+    if (c.cii >= q.cii75 - tol && c.avgTp !== null && c.avgTp > th.tpHi && c.ebi !== null && c.ebi < th.ebiDi) {
       c.memberships.push("di"); aff.di = 1 - pathwayPercentRank(ebiS, c.ebi);
     }
     c.primary = c.memberships.reduce((best, k) => (best === null || aff[k] > aff[best] ? k : best), null);
@@ -7939,10 +8018,10 @@ function classifyPathways(cands, outcomeCount, eps, minGainShare) {
   // For each archetype, how many admissible pathways meet each condition on
   // its own, so an empty archetype can say which condition nobody meets.
   const why = {
-    lhf: { "Effort in the lowest quarter": adm.filter((c) => c.cii <= q.cii25 + tol).length, "Average TP at most 1/3": adm.filter((c) => c.avgTp !== null && c.avgTp <= 1 / 3 + tol).length, "EBI above 0.5": adm.filter((c) => c.ebi !== null && c.ebi > 0.5).length },
+    lhf: { "Effort in the lowest quarter": adm.filter((c) => c.cii <= q.cii25 + tol).length, "Average TP at most 1/3": adm.filter((c) => c.avgTp !== null && c.avgTp <= th.tpLo + tol).length, "EBI above 0.5": adm.filter((c) => c.ebi !== null && c.ebi > th.ebiLhf).length },
     hi: { "Gain in the top fifth": adm.filter((c) => c.tog >= q.tog80 - tol).length, "Every outcome improved": adm.filter((c) => c.ss === outcomeCount).length },
     ef: { "Efficiency in the top fifth": adm.filter((c) => c.pei !== null && c.pei >= q.pei80 - tol).length, "Moderate effort (between the lowest and highest quarter)": adm.filter((c) => c.cii > q.cii25 + tol && c.cii < q.cii75 - tol).length, "Both together": adm.filter((c) => c.pei !== null && c.pei >= q.pei80 - tol && c.cii > q.cii25 + tol && c.cii < q.cii75 - tol).length },
-    di: { "Effort in the highest quarter": adm.filter((c) => c.cii >= q.cii75 - tol).length, "Average TP above 1/2": adm.filter((c) => c.avgTp !== null && c.avgTp > 0.5).length, "EBI below 0.5": adm.filter((c) => c.ebi !== null && c.ebi < 0.5).length },
+    di: { "Effort in the highest quarter": adm.filter((c) => c.cii >= q.cii75 - tol).length, "Average TP above 1/2": adm.filter((c) => c.avgTp !== null && c.avgTp > th.tpHi).length, "EBI below 0.5": adm.filter((c) => c.ebi !== null && c.ebi < th.ebiDi).length },
   };
   const tie = (a, b) => b.ss - a.ss || (b.ebi ?? -1) - (a.ebi ?? -1) || a.length - b.length;
   const order = {
@@ -8065,10 +8144,16 @@ function* pathwayInvarianceTest(base, summary, maxSets = 12) {
   return { tested: rows.length, pathDependent: rows.filter((r) => r.pathDependent).length, unresolved: rows.filter((r) => !r.allConverged).length, rows };
 }
 
-// Rank robustness (section 7.3): the whole analysis is repeated under
-// alternative simulation settings, and the top-ranked pathways (matched by
-// the order of their levers) are checked for keeping their archetype and
-// their place among the top pathways of that archetype.
+// Rank robustness (section 7.3), in three families of variants. Simulation
+// settings: the whole analysis is repeated under alternative steepness,
+// squashing function, and update rule. Outcome weights: repeated with each
+// outcome's weight doubled and the others at 1 (the transition points follow
+// the outcome gain, so the pathways are rebuilt). Archetype thresholds: the
+// main run's pathways are classified again under shifted decision rules (no
+// new simulations). The top-ranked pathways are matched by the order of
+// their levers (expert sequences by name) and checked for staying
+// admissible, keeping their archetype, and staying among the top pathways of
+// that archetype.
 function pathwayAlternativeSettings(settings) {
   const lam = settings.lambda > 0 ? settings.lambda : 1;
   const alts = [];
@@ -8088,29 +8173,84 @@ function pathwayAlternativeSettings(settings) {
   return alts;
 }
 
-function* pathwayRobustness(concepts, edges, settings, config, summary) {
+// Alternative archetype thresholds: each rule shifted on its own, both ways.
+// The average-TP cut-offs move by one step of the intensity grid.
+function pathwayThresholdVariants(N) {
+  const d = PATHWAY_THRESHOLD_DEFAULTS, step = 1 / Math.max(2, N);
+  return [
+    { label: "Effort quartiles at 20% and 80%", th: { ...d, ciiLo: 0.2, ciiHi: 0.8 } },
+    { label: "Effort quartiles at 30% and 70%", th: { ...d, ciiLo: 0.3, ciiHi: 0.7 } },
+    { label: "Top share of gain and efficiency from the 75th percentile", th: { ...d, top: 0.75 } },
+    { label: "Top share of gain and efficiency from the 85th percentile", th: { ...d, top: 0.85 } },
+    { label: `Average TP cut-offs one step lower (${round2(d.tpLo - step)} and ${round2(d.tpHi - step)})`, th: { ...d, tpLo: d.tpLo - step, tpHi: d.tpHi - step } },
+    { label: `Average TP cut-offs one step higher (${round2(d.tpLo + step)} and ${round2(d.tpHi + step)})`, th: { ...d, tpLo: d.tpLo + step, tpHi: d.tpHi + step } },
+    { label: "EBI cut-off 0.45", th: { ...d, ebiLhf: 0.45, ebiDi: 0.45 } },
+    { label: "EBI cut-off 0.55", th: { ...d, ebiLhf: 0.55, ebiDi: 0.55 } },
+  ];
+}
+const PATHWAY_ROBUSTNESS_FAMILIES = [
+  { key: "settings", label: "Simulation settings" },
+  { key: "weights", label: "Outcome weights" },
+  { key: "thresholds", label: "Archetype thresholds" },
+];
+
+function* pathwayRobustness(concepts, edges, settings, config, summary, base) {
   const tracked = [];
-  PATHWAY_ARCHETYPE_KEYS.forEach((k) => summary.ranked[k].slice(0, PATHWAY_TOP_N).forEach((c) => {
-    if (c.primary === k) tracked.push({ id: c.id, sig: c.sig, archetype: k, rank: c.ranks[k] });
-  }));
-  const alts = pathwayAlternativeSettings(settings);
+  const seen = new Set();
+  const track = (c, k) => {
+    if (seen.has(c.id)) return;
+    seen.add(c.id);
+    tracked.push({ id: c.id, sig: c.sig, expertName: c.expertOnly ? c.expertNames[0] : null, archetype: k, rank: c.ranks[k] });
+  };
+  PATHWAY_ARCHETYPE_KEYS.forEach((k) => summary.ranked[k].slice(0, PATHWAY_TOP_N).forEach((c) => { if (c.primary === k) track(c, k); }));
+  // expert sequences are followed too, whenever they were classified
+  base.candidates.forEach((c) => { if (c.expertNames.length && c.primary) track(c, c.primary); });
+  const empty = () => ({ admissible: 0, sameArchetype: 0, top: 0, of: 0 });
+  const hits = tracked.map(() => Object.fromEntries(PATHWAY_ROBUSTNESS_FAMILIES.map((f) => [f.key, empty()])));
   const configs = [];
-  const hits = tracked.map(() => ({ admissible: 0, sameArchetype: 0, top: 0 }));
-  for (let a = 0; a < alts.length; a++) {
-    const alt = alts[a];
-    const run = yield* pathwayEnumeration(concepts, edges, alt.settings, config, `Robustness ${a + 1} of ${alts.length}: ${alt.label}`);
-    const s = classifyPathways(run.candidates, run.outcomeCount, run.eps, config.minGainShare);
-    const bySig = new Map(run.candidates.map((c) => [c.sig, c]));
+  const score = (family, label, cands, s, byId) => {
+    const bySig = new Map(cands.filter((c) => !c.expertOnly).map((c) => [c.sig, c]));
     tracked.forEach((t, i) => {
-      const c = bySig.get(t.sig);
+      const h = hits[i][family];
+      h.of += 1;
+      const c = byId ? byId.get(t.id) : t.expertName ? cands.find((x) => x.expertNames.includes(t.expertName)) : bySig.get(t.sig);
       if (!c || !c.admissible) return;
-      hits[i].admissible += 1;
-      if (c.primary === t.archetype) hits[i].sameArchetype += 1;
-      if (c.ranks[t.archetype] && c.ranks[t.archetype] <= PATHWAY_TOP_N) hits[i].top += 1;
+      h.admissible += 1;
+      if (c.primary === t.archetype) h.sameArchetype += 1;
+      if (c.ranks[t.archetype] && c.ranks[t.archetype] <= PATHWAY_TOP_N) h.top += 1;
     });
-    configs.push({ label: alt.label, candidates: run.candidates.length, admissible: s.counts.admissible, counts: s.counts });
+    configs.push({ family, label, candidates: cands.length, admissible: s.counts.admissible, counts: s.counts });
+  };
+  const nameOf = (id) => concepts.find((c) => c.id === id)?.name || id;
+  const alts = pathwayAlternativeSettings(settings);
+  const outs = (config.outcomes || []).filter((o) => base.outcomes.some((b) => b.id === o.id));
+  const total = alts.length + outs.length;
+  let n = 0;
+  for (const alt of alts) {
+    n += 1;
+    const run = yield* pathwayEnumeration(concepts, edges, alt.settings, config, `Robustness ${n} of ${total}: ${alt.label}`);
+    score("settings", alt.label, run.candidates, classifyPathways(run.candidates, run.outcomeCount, run.eps, config.minGainShare));
   }
-  return { configs, rows: tracked.map((t, i) => ({ ...t, ...hits[i], of: alts.length })) };
+  for (let i = 0; i < outs.length; i++) {
+    n += 1;
+    const label = `${nameOf(outs[i].id)} weighted double`;
+    const cfg = { ...config, outcomes: outs.map((o, j) => ({ ...o, weight: j === i ? 2 : 1 })) };
+    const run = yield* pathwayEnumeration(concepts, edges, settings, cfg, `Robustness ${n} of ${total}: ${label}`);
+    score("weights", label, run.candidates, classifyPathways(run.candidates, run.outcomeCount, run.eps, config.minGainShare));
+  }
+  for (const v of pathwayThresholdVariants(base.N)) {
+    // copies, so the main run's own classification stays as it is
+    const copies = base.candidates.map((c) => ({ ...c }));
+    score("thresholds", v.label, copies, classifyPathways(copies, base.outcomeCount, base.eps, config.minGainShare, v.th), new Map(copies.map((c) => [c.id, c])));
+  }
+  return {
+    configs,
+    rows: tracked.map((t, i) => {
+      const f = hits[i];
+      const sum = (k) => PATHWAY_ROBUSTNESS_FAMILIES.reduce((a, fam) => a + f[fam.key][k], 0);
+      return { ...t, families: f, admissible: sum("admissible"), sameArchetype: sum("sameArchetype"), top: sum("top"), of: sum("of") };
+    }),
+  };
 }
 
 // The complete analysis, as one generator the tab runs in slices.
@@ -8121,7 +8261,7 @@ function* runPathwayAnalysis(concepts, edges, settings, config) {
   const invariance = yield* pathwayInvarianceTest(base, summary);
   const mainRuns = base.engine.runs();
   const mainImprecise = base.engine.imprecise();
-  const robustness = config.robustness ? yield* pathwayRobustness(concepts, edges, settings, config, summary) : null;
+  const robustness = config.robustness ? yield* pathwayRobustness(concepts, edges, settings, config, summary, base) : null;
   return {
     config: JSON.parse(JSON.stringify(config)),
     settingsUsed: pathwaySimSettings(settings, config),
@@ -8130,7 +8270,7 @@ function* runPathwayAnalysis(concepts, edges, settings, config) {
     levers: base.levers.map(({ id, decrease, effort }) => ({ id, decrease, effort })),
     bauConverged: base.bauConverged,
     bauOutcomes: Object.fromEntries(base.outcomes.map((o) => [o.id, base.B[o.idx]])),
-    iso: base.iso, candidates: base.candidates, blocked: base.blocked, truncated: base.truncated,
+    iso: base.iso, candidates: base.candidates, blocked: base.blocked, truncated: base.truncated, expert: base.expertReports,
     poolIds: base.poolIds, summary, portfolios, invariance, robustness,
     runs: mainRuns, imprecise: mainImprecise,
   };
@@ -8939,6 +9079,8 @@ async function buildAnalysisWorkbook({
       { item: "Stage intensity", value: pr.rule === "tp" ? `Up to the conditional transition point${pr.scaleUpAllowed ? ", scale-up stages allowed" : ""}` : "Full implementation (intensity 1)" },
       { item: "Pathway construction", value: pr.strategy === "exhaustive" ? "Every order (exhaustive)" : pr.strategy === "greedy" ? "Greedy (highest marginal benefit)" : `Beam search (width ${cfg.beamWidth}, by ${cfg.beamCriterion === "pei" ? "efficiency" : "outcome gain"})` },
       { item: "Order constraints", value: (cfg.precedence || []).map((p) => `${pn(p.after)} after ${pn(p.before)}`).join("; ") || "None" },
+      { item: "Expert-defined sequences", value: (pr.expert || []).map((e) => `${e.name}: ${e.problem ? `not simulated (${e.problem})` : e.duplicate ? "equal to an enumerated pathway" : "simulated"}`).join("; ") || "None" },
+      { item: "Expert sequences and archetype thresholds", value: "Expert pathways are candidates like the enumerated ones and count toward the quantile thresholds (methods Section 6.1)" },
       { item: "Intensity resolution (steps)", value: pr.N },
       { item: "Flat-response threshold", value: pr.eps },
       { item: "Minimum gain (share of best)", value: cfg.minGainShare },
@@ -8949,6 +9091,7 @@ async function buildAnalysisWorkbook({
       ...PATHWAY_ARCHETYPES.map((a) => ({ item: `${a.label} pathways`, value: pr.summary.counts[a.key] })),
       { item: "Pathways that did not converge", value: pr.summary.counts.nonConverged },
       { item: "Path dependence (invariance test)", value: `${pr.invariance.pathDependent} of ${pr.invariance.tested} lever sets` },
+      { item: "Regret and best gain (portfolios)", value: `Over converged pathways only; the ${pr.summary.counts.nonConverged} that did not converge have no defined end state and are excluded` },
       { item: "Simulation runs (main analysis)", value: pr.runs },
     ], usedNames);
     const rowOf = (c) => ({
@@ -8957,6 +9100,7 @@ async function buildAnalysisWorkbook({
       converged: c.converged ? "Yes" : "No", admissible: c.admissible ? "Yes" : "No",
       archetypes: c.memberships.map(arch).join("; "), primary: c.primary ? arch(c.primary) : pathwayStatus(c),
       frontier: c.frontier ? "Yes" : "", targets: c.targetsSet ? `${c.targetsMet} of ${c.targetsSet}` : "",
+      source: pathwaySource(c),
     });
     const metricCols = [
       { header: "Pathway", key: "pathway" }, { header: "Stages", key: "stages" },
@@ -8969,7 +9113,7 @@ async function buildAnalysisWorkbook({
       ...metricCols,
       { header: "Converged", key: "converged" }, { header: "Admissible", key: "admissible" },
       { header: "Archetypes", key: "archetypes" }, { header: "Primary Archetype / Status", key: "primary" },
-      { header: "Efficient Frontier", key: "frontier" }, { header: "Targets Met", key: "targets" },
+      { header: "Efficient Frontier", key: "frontier" }, { header: "Targets Met", key: "targets" }, { header: "Source", key: "source" },
     ], [...pr.candidates].sort((a, b) => b.tog - a.tog).slice(0, 5000).map(rowOf), usedNames);
     addDataSheet(workbook, "Pathway Rankings", [{ header: "Archetype", key: "archetype" }, { header: "Rank", key: "rank" }, ...metricCols],
       PATHWAY_ARCHETYPES.flatMap((a) => pr.summary.ranked[a.key].slice(0, 10).map((c, i) => ({ archetype: a.label, rank: i + 1, ...rowOf(c) }))), usedNames);
@@ -9000,8 +9144,8 @@ async function buildAnalysisWorkbook({
     })), usedNames);
     const byId = new Map(pr.candidates.map((c) => [c.id, c]));
     addDataSheet(workbook, "Pathway Portfolios", [
-      { header: "Opening", key: "opening" }, { header: "Pathways Starting This Way", key: "count" },
-      { header: "Top-ranked Pathways Opened", key: "opens" }, { header: "Best Total Outcome Gain", key: "best" }, { header: "Regret", key: "regret" },
+      { header: "Opening", key: "opening" }, { header: "Pathways Starting This Way (converged)", key: "count" },
+      { header: "Top-ranked Pathways Opened", key: "opens" }, { header: "Best Total Outcome Gain (converged)", key: "best" }, { header: "Regret (converged pathways only)", key: "regret" },
       ...PATHWAY_ARCHETYPES.map((a) => ({ header: `Best ${a.label} Pathway`, key: `b_${a.key}` })),
     ], [...pr.portfolios.firstMoves, ...pr.portfolios.openings].map((f) => ({
       opening: ptext(f.stages), count: f.count, opens: f.opens, best: num(f.bestTog), regret: num(f.regret),
@@ -9015,12 +9159,27 @@ async function buildAnalysisWorkbook({
       result: !r.allConverged ? "Not all orders converged: undecided" : r.pathDependent ? "Path dependent" : "Same end state in every order",
     })), usedNames);
     if (pr.robustness) {
+      const share = (h, k) => (h && h.of ? `${h[k]} of ${h.of}` : "not run");
       addDataSheet(workbook, "Pathway Robustness", [
-        { header: "Pathway", key: "pathway" }, { header: "Archetype", key: "arch" }, { header: "Rank", key: "rank" },
-        { header: "Admissible (of alternatives)", key: "adm" }, { header: "Same Archetype", key: "same" }, { header: "Still Top 5", key: "top" },
-      ], pr.robustness.rows.map((r) => ({
-        pathway: byId.get(r.id) ? ptext(byId.get(r.id).stages) : r.sig, arch: arch(r.archetype), rank: r.rank,
-        adm: `${r.admissible} of ${r.of}`, same: `${r.sameArchetype} of ${r.of}`, top: `${r.top} of ${r.of}`,
+        { header: "Pathway", key: "pathway" }, { header: "Source", key: "source" }, { header: "Archetype", key: "arch" }, { header: "Rank", key: "rank" },
+        ...PATHWAY_ROBUSTNESS_FAMILIES.flatMap((f) => [
+          { header: `${f.label}: Admissible`, key: `${f.key}_adm` }, { header: `${f.label}: Same Archetype`, key: `${f.key}_same` }, { header: `${f.label}: Still Top ${PATHWAY_TOP_N}`, key: `${f.key}_top` },
+        ]),
+        { header: "All Variants: Admissible", key: "adm" }, { header: "All Variants: Same Archetype", key: "same" }, { header: `All Variants: Still Top ${PATHWAY_TOP_N}`, key: "top" },
+      ], pr.robustness.rows.map((r) => {
+        const fams = r.families || { settings: r };
+        return {
+          pathway: byId.get(r.id) ? ptext(byId.get(r.id).stages) : r.sig, source: byId.get(r.id) ? pathwaySource(byId.get(r.id)) : "", arch: arch(r.archetype), rank: r.rank,
+          ...Object.fromEntries(PATHWAY_ROBUSTNESS_FAMILIES.flatMap((f) => [[`${f.key}_adm`, share(fams[f.key], "admissible")], [`${f.key}_same`, share(fams[f.key], "sameArchetype")], [`${f.key}_top`, share(fams[f.key], "top")]])),
+          adm: `${r.admissible} of ${r.of}`, same: `${r.sameArchetype} of ${r.of}`, top: `${r.top} of ${r.of}`,
+        };
+      }), usedNames);
+      addDataSheet(workbook, "Pathway Robustness Variants", [
+        { header: "Family", key: "family" }, { header: "Variant", key: "label" }, { header: "Pathways", key: "n" }, { header: "Admissible", key: "adm" }, { header: "Did Not Converge", key: "nc" },
+        ...PATHWAY_ARCHETYPES.map((a) => ({ header: a.label, key: `k_${a.key}` })),
+      ], pr.robustness.configs.map((c) => ({
+        family: PATHWAY_ROBUSTNESS_FAMILIES.find((f) => f.key === (c.family || "settings"))?.label || "", label: c.label, n: c.candidates, adm: c.admissible, nc: c.counts.nonConverged,
+        ...Object.fromEntries(PATHWAY_ARCHETYPES.map((a) => [`k_${a.key}`, c.counts[a.key]])),
       })), usedNames);
     }
   }
@@ -9835,6 +9994,21 @@ function pathwayStatus(c) {
   return "Below minimum gain";
 }
 
+// Where a pathway came from: the enumeration, an expert-defined sequence, or
+// both (an expert sequence that coincides with an enumerated pathway).
+function pathwaySource(c) {
+  if (!c.expertNames?.length) return "Enumerated";
+  return `${c.expertOnly ? "Expert" : "Enumerated and expert"}: ${c.expertNames.join("; ")}`;
+}
+
+function ExpertBadge({ c }) {
+  return (
+    <span title={pathwaySource(c)} className="ml-1.5 text-[11.5px] px-1.5 py-0.5 rounded-full border bg-amber-50 text-amber-900 border-amber-200 whitespace-nowrap">
+      Expert{c.expertNames.length === 1 ? `: ${c.expertNames[0]}` : ` (${c.expertNames.length})`}
+    </span>
+  );
+}
+
 function PathwayStagesText({ c, nameOf, compact = false }) {
   return (
     <span className="inline-flex flex-wrap items-center gap-x-1 gap-y-0.5">
@@ -9880,7 +10054,7 @@ function TransitionPathwaysGuide() {
         <ol className="list-decimal pl-5 space-y-0.5">
           <li>Choose the nexus outcomes, and for each whether higher or lower is better.</li>
           <li>Choose the intervention levers that may be combined into pathways.</li>
-          <li>Choose how long pathways may be and how they are built (every order, or a guided search for larger problems).</li>
+          <li>Choose how long pathways may be and how they are built (every order, or a guided search for larger problems). Optionally add order constraints, and sequences proposed by stakeholders to compare with the rest.</li>
           <li>Run the analysis. Every lever is first tested on its own (its transition point from Business-as-Usual), then pathways are built stage by stage.</li>
           <li>Read the effort-gain plane, the four pathway archetypes, the rankings, and the implementation portfolios.</li>
         </ol>
@@ -9950,7 +10124,11 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
   const removeOutcome = (id) => patch({ outcomes: config.outcomes.filter((o) => o.id !== id) });
   const addLever = (id) => { if (id && !leverIds.includes(id) && !outcomeIds.includes(id)) patch({ levers: [...config.levers, { id, direction: "increase", effort: 1 }] }); };
   const updateLever = (id, p) => patch({ levers: config.levers.map((l) => (l.id === id ? { ...l, ...p } : l)) });
-  const removeLever = (id) => patch({ levers: config.levers.filter((l) => l.id !== id), precedence: config.precedence.filter((p) => p.before !== id && p.after !== id) });
+  const removeLever = (id) => patch({
+    levers: config.levers.filter((l) => l.id !== id),
+    precedence: config.precedence.filter((p) => p.before !== id && p.after !== id),
+    expertSequences: (config.expertSequences || []).map((q) => ({ ...q, stages: q.stages.filter((st) => st.leverId !== id) })),
+  });
   const suggestLevers = () => {
     // Concepts nothing else acts on, that act on something: the usual shape
     // of a policy instrument. Only a suggestion; review before running.
@@ -9966,6 +10144,13 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
   };
 
   const scopedLevers = config.levers.filter((l) => inScope(l.id) && !outcomeIds.includes(l.id));
+  const expertSequences = config.expertSequences || [];
+  const setExpert = (i, q) => patch({ expertSequences: expertSequences.map((x, j) => (j === i ? { ...x, ...q } : x)) });
+  const setExpertStage = (i, k, st) => setExpert(i, { stages: expertSequences[i].stages.map((x, j) => (j === k ? { ...x, ...st } : x)) });
+  const addExpert = () => {
+    if (!scopedLevers.length) return;
+    patch({ expertSequences: [...expertSequences, { name: `Expert sequence ${expertSequences.length + 1}`, stages: [{ leverId: scopedLevers[0].id, mode: "tp", u: 0.5 }] }] });
+  };
   const scopedOutcomes = config.outcomes.filter((o) => inScope(o.id));
   const outOfScope = [...config.levers, ...config.outcomes].filter((x) => !inScope(x.id));
   const J = Math.max(1, Math.min(5, Number(config.maxLength) || 1));
@@ -9978,7 +10163,9 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
   const tooMany = config.strategy === "exhaustive" && exhaustiveCount > PATHWAY_EXHAUSTIVE_LIMIT;
   const estPathways = config.strategy === "exhaustive" ? Math.min(exhaustiveCount, PATHWAY_EXHAUSTIVE_LIMIT)
     : scopedLevers.length * (1 + (J - 1) * (config.strategy === "greedy" ? 1 : Math.max(1, Number(config.beamWidth) || 10)));
-  const estRuns = (scopedLevers.length + estPathways) * (N + 1) * (config.robustness ? 5 : 1);
+  const expertStageCount = expertSequences.reduce((a, q) => a + q.stages.length, 0);
+  const robustnessRuns = config.robustness ? pathwayAlternativeSettings(settings).length + scopedOutcomes.length : 0;
+  const estRuns = (scopedLevers.length + estPathways + expertStageCount) * (N + 1) * (1 + robustnessRuns);
   const canRun = scopedLevers.length > 0 && scopedOutcomes.length > 0 && !tooMany && !running;
 
   const run = () => {
@@ -10030,6 +10217,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
       : filter === "frontier" ? c.frontier
       : filter === "conditional" ? c.conditional
       : filter === "other" ? !c.admissible && !c.conditional
+      : filter === "expert" ? c.expertNames?.length > 0
       : c.memberships.includes(filter);
     return result.candidates.filter(keep).map((c) => ({
       id: c.id, c, label: c.stages.map((s) => `${nameOf(s.leverId)} ${round2(s.u)}`).join(" > "),
@@ -10105,9 +10293,9 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
     c.ebi === null ? "" : round3(c.ebi), round3(c.ig), c.meanShift === null ? "" : round3(c.meanShift),
     c.converged ? "Yes" : "No", c.admissible ? "Yes" : "No", c.memberships.map((k) => PATHWAY_ARCHETYPE_BY_KEY[k].label).join("; "),
     c.primary ? PATHWAY_ARCHETYPE_BY_KEY[c.primary].label : pathwayStatus(c), c.frontier ? "Yes" : "",
-    c.targetsSet ? `${c.targetsMet} of ${c.targetsSet}` : "",
+    c.targetsSet ? `${c.targetsMet} of ${c.targetsSet}` : "", pathwaySource(c),
   ];
-  const PATHWAY_CSV_HEADER = ["Pathway", "Stages", "Total Outcome Gain", "Cumulative Intervention Intensity", "Pathway Efficiency Index", "Average Transition Point", "Synergy Score", "Trade-offs", "Early Benefit Index", "Interaction Gain", "Mean TP Shift", "Converged", "Admissible", "Archetypes", "Primary Archetype / Status", "Efficient Frontier", "Targets Met"];
+  const PATHWAY_CSV_HEADER = ["Pathway", "Stages", "Total Outcome Gain", "Cumulative Intervention Intensity", "Pathway Efficiency Index", "Average Transition Point", "Synergy Score", "Trade-offs", "Early Benefit Index", "Interaction Gain", "Mean TP Shift", "Converged", "Admissible", "Archetypes", "Primary Archetype / Status", "Efficient Frontier", "Targets Met", "Source"];
   const exportPathwaysCSV = () => {
     if (!result) return;
     downloadCSV([PATHWAY_CSV_HEADER, ...[...result.candidates].sort((a, b) => b.tog - a.tog).map(pathwayCsvRow)], "transition-pathways.csv");
@@ -10136,7 +10324,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
   const exportPortfoliosCSV = () => {
     if (!result) return;
     const bestLabel = (id) => { const c = candById.get(id); return c ? c.stages.map((s) => `${nameOf(s.leverId)} (${round2(s.u)})`).join(" -> ") : ""; };
-    const header = ["Opening", "Pathways Starting This Way", "Top-ranked Pathways Opened", "Best Total Outcome Gain", "Regret", ...PATHWAY_ARCHETYPES.map((a) => `Best ${a.label} Continuation`)];
+    const header = ["Opening", "Pathways Starting This Way (converged)", "Top-ranked Pathways Opened", "Best Total Outcome Gain (converged)", "Regret (converged pathways only)", ...PATHWAY_ARCHETYPES.map((a) => `Best ${a.label} Continuation`)];
     const rows = [...result.portfolios.firstMoves, ...result.portfolios.openings].map((f) => [
       f.stages.map((s) => `${nameOf(s.leverId)} (${round2(s.u)})`).join(" -> "), f.count, f.opens, round3(f.bestTog), round3(f.regret),
       ...PATHWAY_ARCHETYPES.map((a) => bestLabel(f.bestBy[a.key])),
@@ -10305,9 +10493,9 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
               <input type="number" step={100} min={TP_MIN_ITERATIONS} value={config.maxIterations} onChange={(e) => patch({ maxIterations: e.target.value })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 font-mono" />
             </div>
             <div className="flex items-end">
-              <label className="flex items-center gap-1.5 text-[12.5px] text-neutral-900" title="Repeats the whole analysis with steepness halved and doubled, the other squash function, and the other update rule, and reports how often the top pathways keep their archetype and rank. About five times longer.">
+              <label className="flex items-center gap-1.5 text-[12.5px] text-neutral-900" title="Three families of variants. Simulation settings: the whole analysis repeated with steepness halved and doubled, the other squash function, and the other update rule. Outcome weights: repeated with each outcome's weight doubled and the others at 1. Archetype thresholds: the pathways classified again under shifted decision rules (no new simulations). Reports how often the top pathways stay admissible, keep their archetype, and stay in the top 5, per family. Several times longer.">
                 <input type="checkbox" checked={!!config.robustness} onChange={(e) => patch({ robustness: e.target.checked })} />
-                Also test robustness (4 alternative settings)
+                Also test robustness (settings, outcome weights, archetype thresholds)
               </label>
             </div>
           </div>
@@ -10332,6 +10520,41 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
               <button onClick={() => patch({ precedence: config.precedence.filter((_, j) => j !== i) })} className="text-neutral-600 hover:text-red-600"><X size={13} /></button>
             </div>
           ))}
+        </div>
+
+        <div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-neutral-700 font-medium">5. Expert-defined sequences (optional)</label>
+            <button onClick={addExpert} disabled={!scopedLevers.length} className="text-[12.5px] px-2 py-0.5 rounded border border-slate-200 text-neutral-900 hover:border-slate-400 disabled:opacity-40">Add a sequence</button>
+            <span className="text-[12.5px] text-neutral-600">Pathways proposed by stakeholders, for example a policy roadmap. Simulated stage by stage like the others, without the order constraints, and classified with them.</span>
+          </div>
+          {expertSequences.map((q, i) => (
+            <div key={i} className="mt-2 rounded border border-slate-200 p-2 space-y-1.5" data-expert-sequence={i}>
+              <div className="flex items-center gap-2 text-xs">
+                <input value={q.name} onChange={(e) => setExpert(i, { name: e.target.value })} placeholder={`Expert sequence ${i + 1}`} aria-label="Sequence name" className="border border-slate-200 rounded px-1.5 py-1 w-64" />
+                <button onClick={() => setExpert(i, { stages: [...q.stages, { leverId: scopedLevers[0]?.id || "", mode: "tp", u: 0.5 }] })} disabled={!scopedLevers.length || q.stages.length >= PATHWAY_EXPERT_MAX_STAGES} className="text-[12.5px] px-2 py-0.5 rounded border border-slate-200 text-neutral-900 hover:border-slate-400 disabled:opacity-40"><Plus size={11} className="inline" /> Stage</button>
+                <button onClick={() => patch({ expertSequences: expertSequences.filter((_, j) => j !== i) })} className="text-neutral-600 hover:text-red-600" title="Remove this sequence"><Trash2 size={13} /></button>
+              </div>
+              {q.stages.map((st, k) => (
+                <div key={k} className="flex items-center gap-2 text-xs pl-2">
+                  <span className="text-neutral-600 w-14">Stage {k + 1}</span>
+                  <select value={st.leverId} onChange={(e) => setExpertStage(i, k, { leverId: e.target.value })} aria-label={`Stage ${k + 1} lever`} className="border border-slate-200 rounded px-1.5 py-1">
+                    {!scopedLevers.some((l) => l.id === st.leverId) && <option value={st.leverId}>{st.leverId ? `${nameOf(st.leverId)} (not a chosen lever)` : "Choose a lever"}</option>}
+                    {scopedLevers.map((l) => <option key={l.id} value={l.id}>{nameOf(l.id)}</option>)}
+                  </select>
+                  <select value={st.mode} onChange={(e) => setExpertStage(i, k, { mode: e.target.value })} aria-label={`Stage ${k + 1} intensity`} className="border border-slate-200 rounded px-1.5 py-1">
+                    <option value="tp">up to its conditional transition point</option>
+                    <option value="fixed">to a fixed intensity</option>
+                  </select>
+                  {st.mode === "fixed" && (
+                    <input type="number" min={0} max={1} step={1 / N} value={st.u} onChange={(e) => setExpertStage(i, k, { u: e.target.value })} aria-label={`Stage ${k + 1} fixed intensity`} className="w-20 border border-slate-200 rounded px-1.5 py-1 font-mono" />
+                  )}
+                  <button onClick={() => setExpert(i, { stages: q.stages.filter((_, j) => j !== k) })} className="text-neutral-600 hover:text-red-600"><X size={13} /></button>
+                </div>
+              ))}
+            </div>
+          ))}
+          {expertSequences.length > 0 && <p className="text-[11.5px] text-neutral-600 mt-1">Fixed intensities are rounded to the intensity resolution (steps of {round2(1 / N)}). A lever can appear again later in a sequence only at a higher intensity (a scale-up); intensities are never lowered. Expert pathways count toward the archetype thresholds like every other candidate pathway (Section 6.1 of the methods).</p>}
         </div>
 
         {outOfScope.length > 0 && (
@@ -10427,6 +10650,42 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
               );
             })}
           </div>
+
+          {result.expert?.length > 0 && (
+            <div className="bg-white rounded-lg border border-slate-200 p-4" data-expert-results>
+              <h4 className="text-sm font-semibold mb-1">Expert-defined sequences</h4>
+              <p className="text-[12.5px] text-neutral-600 mb-2">Simulated stage by stage from Business-as-Usual with the same engine and classified with the enumerated pathways; they also count toward the archetype thresholds (Section 6.1 of the methods). A sequence equal to an enumerated pathway is not counted twice.</p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-left text-neutral-600 border-b border-slate-100">
+                      <th className="py-1 font-medium pr-3">Sequence</th>
+                      <th className="py-1 font-medium pr-3">Pathway as simulated</th>
+                      <th className="py-1 font-medium pr-3">TOG</th>
+                      <th className="py-1 font-medium pr-3">CII</th>
+                      <th className="py-1 font-medium pr-3">PEI</th>
+                      <th className="py-1 font-medium pr-3">Result</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.expert.map((e, i) => {
+                      const c = e.id !== null ? candById.get(e.id) : null;
+                      return (
+                        <tr key={i} className="border-b border-slate-50">
+                          <td className="py-1 pr-3 font-medium">{e.name}</td>
+                          <td className="py-1 pr-3">{c ? <button onClick={() => selectPathway(c.id)} className="text-left hover:text-cobalt-800"><PathwayStagesText c={c} nameOf={nameOf} compact /></button> : <span className="text-amber-700">{e.problem}</span>}</td>
+                          <td className="py-1 pr-3 font-mono">{c ? fmtNum(c.tog) : ""}</td>
+                          <td className="py-1 pr-3 font-mono">{c ? fmtNum(c.cii) : ""}</td>
+                          <td className="py-1 pr-3 font-mono">{c ? fmtNum(c.pei) : ""}</td>
+                          <td className="py-1 pr-3">{c ? <><ArchetypeBadges c={c} />{c.frontier && <span className="ml-1 text-[11.5px] text-cobalt-700">on the frontier</span>}{e.duplicate && <span className="ml-1 text-[11.5px] text-neutral-600">(also enumerated)</span>}</> : <span className="text-neutral-600">Not simulated</span>}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           <div className="bg-white rounded-lg border border-slate-200 p-4">
             <div className="flex items-center justify-between mb-1">
@@ -10703,6 +10962,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
                   {PATHWAY_ARCHETYPES.map((a) => <option key={a.key} value={a.key}>{a.label} ({s.counts[a.key]})</option>)}
                   <option value="conditional">Conditional, with trade-offs ({s.counts.conditional})</option>
                   <option value="other">Not admissible ({s.counts.total - s.counts.admissible - s.counts.conditional})</option>
+                  {result.candidates.some((c) => c.expertNames?.length) && <option value="expert">Expert-defined ({result.candidates.filter((c) => c.expertNames?.length).length})</option>}
                 </select>
                 <Btn variant="outline" onClick={exportPathwaysCSV}><Download size={13} />Export CSV</Btn>
               </div>
@@ -10717,7 +10977,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
                 <tbody>
                   {sorted.slice(0, showCount).map((r) => (
                     <tr key={r.id} onClick={() => selectPathway(r.id)} className={`border-b border-slate-50 cursor-pointer hover:bg-slate-50 ${selectedId === r.id ? "bg-cobalt-50/60" : ""}`}>
-                      <td className="py-1 pr-3"><PathwayStagesText c={r.c} nameOf={nameOf} compact /></td>
+                      <td className="py-1 pr-3"><PathwayStagesText c={r.c} nameOf={nameOf} compact />{r.c.expertNames?.length > 0 && <ExpertBadge c={r.c} />}</td>
                       <td className="py-1 pr-3 font-mono">{r.length}</td>
                       <td className="py-1 pr-3 font-mono">{fmtNum(r.tog)}</td>
                       <td className="py-1 pr-3 font-mono">{fmtNum(r.cii)}</td>
@@ -10743,7 +11003,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
               <h4 className="text-sm font-semibold">Implementation portfolios</h4>
               <Btn variant="outline" onClick={exportPortfoliosCSV}><Download size={13} />Export CSV</Btn>
             </div>
-            <p className="text-[12.5px] text-neutral-600 mb-2">Every pathway starts with one of these opening moves. <strong className="text-neutral-900">Regret</strong> is how much total outcome gain an opening gives up compared with the best pathway of all (0: the best outcome stays within reach). <strong className="text-neutral-900">Top pathways opened</strong> counts how many of the top {PATHWAY_TOP_N} pathways of each archetype start this way; a low-regret opening that opens many of them is a no-regret first move.</p>
+            <p className="text-[12.5px] text-neutral-600 mb-2">Every pathway starts with one of these opening moves. <strong className="text-neutral-900">Regret</strong> is how much total outcome gain an opening gives up compared with the best pathway of all (0: the best outcome stays within reach). The best gain, and the pathways counted per opening, are taken over the pathways that converged: the {s.counts.nonConverged} that did not have no defined end state and are left out. <strong className="text-neutral-900">Top pathways opened</strong> counts how many of the top {PATHWAY_TOP_N} pathways of each archetype start this way; a low-regret opening that opens many of them is a no-regret first move.</p>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
@@ -10842,34 +11102,61 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
           </div>
 
           {result.robustness && (
-            <div className="bg-white rounded-lg border border-slate-200 p-4">
+            <div className="bg-white rounded-lg border border-slate-200 p-4" data-robustness>
               <h4 className="text-sm font-semibold mb-1">Robustness of the top pathways</h4>
-              <p className="text-[12.5px] text-neutral-600 mb-2">The whole analysis was repeated under {result.robustness.configs.length} alternative simulation settings: {result.robustness.configs.map((c) => `${c.label} (${c.admissible} of ${c.candidates} admissible${c.counts.nonConverged ? `, ${c.counts.nonConverged} did not converge` : ""})`).join("; ")}. For each top pathway (matched by the order of its levers; intensities follow each setting's own transition points), how often it stayed admissible, kept its archetype, and stayed among the top {PATHWAY_TOP_N} of that archetype. A pathway that holds up across settings reflects the causal structure rather than a modelling choice.</p>
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-left text-neutral-600 border-b border-slate-100">
-                    <th className="py-1 font-medium pr-3">Pathway</th>
-                    <th className="py-1 font-medium pr-3">Archetype (rank)</th>
-                    <th className="py-1 font-medium pr-3">Admissible</th>
-                    <th className="py-1 font-medium pr-3">Same archetype</th>
-                    <th className="py-1 font-medium pr-3">Still top {PATHWAY_TOP_N}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {result.robustness.rows.map((r) => {
-                    const c = candById.get(r.id);
-                    return (
-                      <tr key={`${r.id}-${r.archetype}`} className="border-b border-slate-50">
-                        <td className="py-1 pr-3">{c ? <button onClick={() => selectPathway(c.id)} className="text-left hover:text-cobalt-800"><PathwayStagesText c={c} nameOf={nameOf} compact /></button> : r.sig}</td>
-                        <td className="py-1 pr-3"><span className={`text-[11.5px] px-1.5 py-0.5 rounded-full border ${PATHWAY_ARCHETYPE_BY_KEY[r.archetype].badge}`}>{PATHWAY_ARCHETYPE_BY_KEY[r.archetype].label}</span> <span className="font-mono text-neutral-700">#{r.rank}</span></td>
-                        <td className="py-1 pr-3 font-mono">{r.admissible} of {r.of}</td>
-                        <td className={`py-1 pr-3 font-mono ${r.sameArchetype === r.of ? "text-cobalt-700" : r.sameArchetype === 0 ? "text-orange-700" : ""}`}>{r.sameArchetype} of {r.of}</td>
-                        <td className="py-1 pr-3 font-mono">{r.top} of {r.of}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              <p className="text-[12.5px] text-neutral-600 mb-2">Three families of variants (Section 7.3 of the methods). For each top pathway, and each expert sequence that was classified, how often it stayed admissible, kept its archetype, and stayed among the top {PATHWAY_TOP_N} of that archetype. Pathways are matched by the order of their levers (expert sequences by name); intensities follow each variant's own transition points. A pathway that holds up across variants reflects the causal structure rather than a modelling choice.</p>
+              <ul className="text-[12.5px] text-neutral-700 mb-2 space-y-0.5">
+                {PATHWAY_ROBUSTNESS_FAMILIES.map((f) => {
+                  const cs = result.robustness.configs.filter((c) => (c.family || "settings") === f.key);
+                  if (!cs.length) return null;
+                  return (
+                    <li key={f.key}><strong className="text-neutral-900">{f.label}</strong> ({cs.length}{f.key === "thresholds" ? ", re-classifying this run's pathways" : ", each a full re-run"}): {cs.map((c) => `${c.label} (${c.admissible} of ${c.candidates} admissible${c.counts.nonConverged ? `, ${c.counts.nonConverged} did not converge` : ""})`).join("; ")}.</li>
+                  );
+                })}
+              </ul>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-left text-neutral-600 border-b border-slate-100">
+                      <th className="py-1 font-medium pr-3" rowSpan={2}>Pathway</th>
+                      <th className="py-1 font-medium pr-3" rowSpan={2}>Archetype (rank)</th>
+                      {PATHWAY_ROBUSTNESS_FAMILIES.map((f) => <th key={f.key} colSpan={3} className="py-1 font-medium pr-3 text-center border-l border-slate-100">{f.label}</th>)}
+                    </tr>
+                    <tr className="text-left text-neutral-600 border-b border-slate-100">
+                      {PATHWAY_ROBUSTNESS_FAMILIES.map((f) => (
+                        <React.Fragment key={f.key}>
+                          <th className="py-1 font-medium pr-2 border-l border-slate-100" title="Stayed admissible">Admissible</th>
+                          <th className="py-1 font-medium pr-2" title="Kept its archetype as primary archetype">Same archetype</th>
+                          <th className="py-1 font-medium pr-3" title={`Stayed among the top ${PATHWAY_TOP_N} of that archetype`}>Top {PATHWAY_TOP_N}</th>
+                        </React.Fragment>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.robustness.rows.map((r) => {
+                      const c = candById.get(r.id);
+                      const fams = r.families || { settings: { admissible: r.admissible, sameArchetype: r.sameArchetype, top: r.top, of: r.of } };
+                      return (
+                        <tr key={`${r.id}-${r.archetype}`} className="border-b border-slate-50">
+                          <td className="py-1 pr-3">{c ? <button onClick={() => selectPathway(c.id)} className="text-left hover:text-cobalt-800"><PathwayStagesText c={c} nameOf={nameOf} compact />{c.expertNames?.length > 0 && <ExpertBadge c={c} />}</button> : r.sig}</td>
+                          <td className="py-1 pr-3"><span className={`text-[11.5px] px-1.5 py-0.5 rounded-full border ${PATHWAY_ARCHETYPE_BY_KEY[r.archetype].badge}`}>{PATHWAY_ARCHETYPE_BY_KEY[r.archetype].label}</span> <span className="font-mono text-neutral-700">#{r.rank}</span></td>
+                          {PATHWAY_ROBUSTNESS_FAMILIES.map((f) => {
+                            const h = fams[f.key];
+                            if (!h || !h.of) return <td key={f.key} colSpan={3} className="py-1 pr-3 border-l border-slate-100 text-neutral-500">not run</td>;
+                            return (
+                              <React.Fragment key={f.key}>
+                                <td className="py-1 pr-2 font-mono border-l border-slate-100">{h.admissible}/{h.of}</td>
+                                <td className={`py-1 pr-2 font-mono ${h.sameArchetype === h.of ? "text-cobalt-700" : h.sameArchetype === 0 ? "text-orange-700" : ""}`}>{h.sameArchetype}/{h.of}</td>
+                                <td className="py-1 pr-3 font-mono">{h.top}/{h.of}</td>
+                              </React.Fragment>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
