@@ -160,7 +160,11 @@ export default function AboutTab({ onOpenTab }) {
       <section id="documentation" className="space-y-3 scroll-mt-4">
         <div className="flex items-end justify-between flex-wrap gap-2">
           <h2 className="text-base font-semibold text-neutral-900">Documentation</h2>
-          <span className="text-xs text-neutral-700">All three describe version {manifest.version}, the version you are using.</span>
+          <span className="text-xs text-neutral-700">
+            {manifest.version === APP_VERSION
+              ? `All three describe version ${manifest.version}, the version you are using.`
+              : `All three describe version ${manifest.version}. Version ${APP_VERSION} contains only fixes that do not change what they describe.`}
+          </span>
         </div>
         <div className="grid md:grid-cols-3 gap-4">
           {DOCS.map(({ key, icon: Icon, title, audience, blurb }) => {
