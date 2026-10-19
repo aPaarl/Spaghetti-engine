@@ -5,7 +5,7 @@ import {
   X, Lock, Unlock, Info, ClipboardPaste, Check,
   Undo2, Redo2, Copy, Maximize2, HelpCircle, SlidersHorizontal,
   BarChart3, LayoutGrid, GitBranch, Shuffle, MousePointer2, Activity, FlaskConical, TrendingUp,
-  Eye, EyeOff, Route, Layers, Waypoints, PanelLeftClose, Search, Dices,
+  Eye, EyeOff, Route, Layers, Waypoints, PanelLeftClose, Search, Dices, Sparkles,
 } from "lucide-react";
 import {
   LineChart, Line, BarChart, Bar, Cell, LabelList, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
@@ -15,9 +15,9 @@ import {
   ReactFlow, ReactFlowProvider, Background, Controls, MiniMap,
   Handle, Position, BaseEdge, EdgeLabelRenderer, getBezierPath, getSmoothStepPath,
   MarkerType, useReactFlow, useInternalNode, useViewport, useConnection,
-  useUpdateNodeInternals,
+  useUpdateNodeInternals, useNodesInitialized,
 } from "@xyflow/react";
-import { forceSimulation, forceManyBody, forceLink, forceCenter, forceCollide } from "d3-force";
+import { forceSimulation, forceManyBody, forceLink, forceCenter, forceCollide, forceX, forceY } from "d3-force";
 import ELK from "elkjs/lib/elk.bundled.js";
 import ExcelJS from "exceljs";
 // React Flow's Network tab renders nodes as HTML (not SVG) with edges as a
@@ -1495,14 +1495,14 @@ function layoutCircular(concepts) {
 // minimization scales far better than a hand-rolled layering pass once
 // networks get into the dozens-to-hundreds of concepts.
 const elk = new ELK();
-async function layoutHierarchical(concepts, edges, direction = "DOWN") {
+async function layoutHierarchical(concepts, edges, direction = "DOWN", figure = false) {
   const graph = {
     id: "root",
     layoutOptions: {
       "elk.algorithm": "layered",
       "elk.direction": direction,
-      "elk.layered.spacing.nodeNodeBetweenLayers": "100",
-      "elk.spacing.nodeNode": "80",
+      "elk.layered.spacing.nodeNodeBetweenLayers": figure ? "130" : "100",
+      "elk.spacing.nodeNode": figure ? "60" : "80",
       "elk.layered.crossingMinimization.strategy": "LAYER_SWEEP",
       "elk.layered.cycleBreaking.strategy": "GREEDY",
     },
@@ -1511,7 +1511,13 @@ async function layoutHierarchical(concepts, edges, direction = "DOWN") {
     // Every card is now the same compact shape (category shows as a
     // background tint, not an extra pill row), so there's no more
     // category-conditional height like before.
-    children: concepts.map((c) => ({ id: c.id, width: 175, height: 86 })),
+    // In figure style cards are name-only and narrower, so each is sized
+    // from its own name instead.
+    children: concepts.map((c) => {
+      if (!figure) return { id: c.id, width: 175, height: 86 };
+      const { w, h } = estimateNodeSize(c.name, true);
+      return { id: c.id, width: w + 10, height: h + 8 };
+    }),
     edges: edges.map((e) => ({ id: e.id, sources: [e.source], targets: [e.target] })),
   };
   const result = await elk.layout(graph);
@@ -2391,6 +2397,268 @@ function nearestAnchorOnNode(nodeInternal, px, py) {
   return best;
 }
 
+// ============================================================================
+// Network tab: figure style (a clean map that can serve as a paper figure)
+// ============================================================================
+const FIGURE_NODE_MAX_W = 150;
+
+// A concept card's size before React Flow has measured it, from the length
+// of its name. Used by the layouts (to keep cards apart) and as a fallback
+// by the figure routing below.
+function estimateNodeSize(name, figure) {
+  const maxW = figure ? FIGURE_NODE_MAX_W : 185;
+  const pad = figure ? 20 : 26;
+  const text = (name || "").length * (figure ? 7.2 : 7.6);
+  const w = Math.max(figure ? 70 : 135, Math.min(maxW, text + pad));
+  const lines = Math.max(1, Math.ceil(text / (maxW - pad)));
+  return { w, h: figure ? lines * 16 + 12 : lines * 20 + 34 };
+}
+
+// Pushes overlapping boxes apart until every pair is at least gapX/gapY
+// apart, moving each pair along whichever axis needs the smaller shift.
+// items are { x, y, w, h } with x/y the box CENTRE, and are moved in place.
+function removeOverlaps(items, gapX = 36, gapY = 28, iterations = 300) {
+  for (let it = 0; it < iterations; it++) {
+    let moved = false;
+    for (let i = 0; i < items.length; i++) {
+      for (let j = i + 1; j < items.length; j++) {
+        const a = items[i], b = items[j];
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const ox = (a.w + b.w) / 2 + gapX - Math.abs(dx);
+        const oy = (a.h + b.h) / 2 + gapY - Math.abs(dy);
+        if (ox <= 0 || oy <= 0) continue;
+        moved = true;
+        if (ox < oy) {
+          const s = dx === 0 ? (i % 2 ? 1 : -1) : Math.sign(dx);
+          a.x -= (s * ox) / 2; b.x += (s * ox) / 2;
+        } else {
+          const s = dy === 0 ? (j % 2 ? 1 : -1) : Math.sign(dy);
+          a.y -= (s * oy) / 2; b.y += (s * oy) / 2;
+        }
+      }
+    }
+    if (!moved) break;
+  }
+  return items;
+}
+
+// Where the line from a box's centre toward a point leaves the box.
+function rectExitPoint(r, px, py) {
+  const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+  const dx = px - cx, dy = py - cy;
+  if (!dx && !dy) return { x: cx, y: cy };
+  const t = Math.min(dx ? (r.w / 2) / Math.abs(dx) : Infinity, dy ? (r.h / 2) / Math.abs(dy) : Infinity);
+  return { x: cx + dx * t, y: cy + dy * t };
+}
+
+// Point at fraction t along a relationship drawn from s to e: a straight
+// line, or a quadratic curve through control point m when it is bowed.
+function figurePathPoint(s, e, m, t) {
+  if (!m) return { x: s.x + (e.x - s.x) * t, y: s.y + (e.y - s.y) * t };
+  const u = 1 - t;
+  return { x: u * u * s.x + 2 * u * t * m.x + t * t * e.x, y: u * u * s.y + 2 * u * t * m.y + t * t * e.y };
+}
+
+// Same control point InfluenceEdge uses for a bowed relationship.
+function bowControlPoint(s, e, offset) {
+  if (!offset) return null;
+  const dx = e.x - s.x, dy = e.y - s.y;
+  const len = Math.hypot(dx, dy) || 1;
+  return { x: (s.x + e.x) / 2 + (-dy / len) * offset, y: (s.y + e.y) / 2 + (dx / len) * offset };
+}
+
+const FIGURE_BEND_CANDIDATES = [0, 40, -40, 80, -80, 130, -130, 190, -190];
+const FIGURE_LABEL_T = [0.5, 0.42, 0.58, 0.34, 0.66, 0.27, 0.73];
+const FIGURE_LABEL_W = 38, FIGURE_LABEL_H = 16;
+
+// For figure style: per relationship, an extra bow that steers it around
+// concept boxes it would otherwise run straight through, and the position
+// along it (as a fraction) where its weight label sits clear of boxes and
+// of labels already placed. Stronger relationships pick their label spot
+// first. Pure and top-level; rects maps node id -> { x, y, w, h } (top-left).
+function computeFigureRouting(rects, edges, parallelSlots) {
+  const boxes = [...rects.entries()];
+  const inBox = (p, r, pad) => p.x > r.x - pad && p.x < r.x + r.w + pad && p.y > r.y - pad && p.y < r.y + r.h + pad;
+  const geometry = {};
+  edges.forEach((e) => {
+    const a = rects.get(e.source), b = rects.get(e.target);
+    if (!a || !b) return;
+    const ac = { x: a.x + a.w / 2, y: a.y + a.h / 2 }, bc = { x: b.x + b.w / 2, y: b.y + b.h / 2 };
+    const s = rectExitPoint(a, bc.x, bc.y), t = rectExitPoint(b, ac.x, ac.y);
+    if (Math.hypot(t.x - s.x, t.y - s.y) < 1) return;
+    const base = (parallelSlots[e.id] || 0) * 24 + (e.bend || 0);
+    const order = base < 0 ? FIGURE_BEND_CANDIDATES.map((c) => -c) : FIGURE_BEND_CANDIDATES;
+    let best = 0, bestCost = Infinity;
+    for (const extra of order) {
+      const m = bowControlPoint(s, t, base + extra);
+      let hits = 0;
+      for (let k = 1; k < 20; k++) {
+        const p = figurePathPoint(s, t, m, k / 20);
+        for (const [id, r] of boxes) if (id !== e.source && id !== e.target && inBox(p, r, 8)) hits++;
+      }
+      const cost = hits * 1000 + Math.abs(extra);
+      if (cost < bestCost) { bestCost = cost; best = extra; }
+      if (hits === 0) break;
+    }
+    geometry[e.id] = { s, t, m: bowControlPoint(s, t, base + best), autoBend: best };
+  });
+
+  const placed = [];
+  const overlap = (p, q) => Math.max(0, Math.min(p.x + p.w, q.x + q.w) - Math.max(p.x, q.x)) * Math.max(0, Math.min(p.y + p.h, q.y + q.h) - Math.max(p.y, q.y));
+  const routing = {};
+  [...edges].sort((x, y) => Math.abs(y.weight) - Math.abs(x.weight) || x.id.localeCompare(y.id)).forEach((e) => {
+    const g = geometry[e.id];
+    if (!g) return;
+    let bestT = 0.5, bestCost = Infinity, bestBox = null;
+    for (const T of FIGURE_LABEL_T) {
+      const p = figurePathPoint(g.s, g.t, g.m, T);
+      const box = { x: p.x - FIGURE_LABEL_W / 2, y: p.y - FIGURE_LABEL_H / 2, w: FIGURE_LABEL_W, h: FIGURE_LABEL_H };
+      let cost = Math.abs(T - 0.5) * 40;
+      for (const [, r] of boxes) cost += overlap(box, { x: r.x - 3, y: r.y - 3, w: r.w + 6, h: r.h + 6 }) * 4;
+      for (const q of placed) cost += overlap(box, q) * 3;
+      if (cost < bestCost) { bestCost = cost; bestT = T; bestBox = box; }
+      if (cost === 0) break;
+    }
+    if (bestBox) placed.push(bestBox);
+    routing[e.id] = { autoBend: g.autoBend, labelT: bestT };
+  });
+  return routing;
+}
+
+// "Figure layout", in four deterministic steps (the same model always gives
+// the same picture):
+//   1. each module is laid out on its own by a force simulation over its
+//      internal relationships, seeded on a circle;
+//   2. the module groups are placed on a ring, ordered so that strongly
+//      coupled modules sit next to each other, and pushed apart until no
+//      two groups overlap;
+//   3. each group is turned to the rotation that brings its concepts
+//      closest to the concepts they are linked to in other modules;
+//   4. a short global pass lets concepts drift towards their cross-module
+//      partners while staying in their module's area, and a final pass
+//      removes any overlap, leaving room for arrows and weight labels.
+function layoutFigure(concepts, edges) {
+  const moduleOf = new Map(concepts.map((c) => [c.id, moduleKey(c.category)]));
+  const keys = [...new Set(moduleOf.values())].sort((a, b) => (a === UNCATEGORIZED_MODULE) - (b === UNCATEGORIZED_MODULE) || a.localeCompare(b));
+  const ids = new Set(concepts.map((c) => c.id));
+  const valid = edges.filter((e) => ids.has(e.source) && ids.has(e.target) && e.source !== e.target);
+  const nodeById = new Map();
+
+  // 1. each module on its own
+  const groups = keys.map((k) => {
+    const members = concepts.filter((c) => moduleOf.get(c.id) === k);
+    const nodes = members.map((c, i) => {
+      const { w, h } = estimateNodeSize(c.name, true);
+      const a = (2 * Math.PI * i) / members.length, r = 30 + 22 * members.length;
+      const d = { id: c.id, x: r * Math.cos(a), y: r * Math.sin(a), w, h };
+      nodeById.set(c.id, d);
+      return d;
+    });
+    const links = valid.filter((e) => moduleOf.get(e.source) === k && moduleOf.get(e.target) === k).map((e) => ({ source: e.source, target: e.target }));
+    if (nodes.length > 1) {
+      const sim = forceSimulation(nodes)
+        .force("charge", forceManyBody().strength(-300))
+        .force("link", forceLink(links).id((d) => d.id).distance(120).strength(0.4))
+        .force("x", forceX(0).strength(0.09))
+        .force("y", forceY(0).strength(0.09))
+        .force("collide", forceCollide((d) => Math.hypot(d.w, d.h) / 2 + 12).iterations(2))
+        .stop();
+      for (let i = 0; i < 400; i++) sim.tick();
+      removeOverlaps(nodes, 36, 30);
+    }
+    const cx = nodes.reduce((s, d) => s + d.x, 0) / nodes.length, cy = nodes.reduce((s, d) => s + d.y, 0) / nodes.length;
+    nodes.forEach((d) => { d.x -= cx; d.y -= cy; d.rx = d.x; d.ry = d.y; });
+    const halfW = Math.max(...nodes.map((d) => Math.abs(d.x) + d.w / 2)), halfH = Math.max(...nodes.map((d) => Math.abs(d.y) + d.h / 2));
+    return { key: k, nodes, x: 0, y: 0, w: 2 * halfW, h: 2 * halfH };
+  });
+
+  // 2. modules on a ring, coupled modules adjacent
+  const coupling = new Map();
+  const pairKey = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+  valid.forEach((e) => {
+    const a = moduleOf.get(e.source), b = moduleOf.get(e.target);
+    if (a !== b) coupling.set(pairKey(a, b), (coupling.get(pairKey(a, b)) || 0) + 1);
+  });
+  const couple = (a, b) => coupling.get(pairKey(a, b)) || 0;
+  const remaining = [...groups];
+  const total = (g) => groups.reduce((s, o) => s + (o === g ? 0 : couple(g.key, o.key)), 0);
+  remaining.sort((a, b) => total(b) - total(a) || a.key.localeCompare(b.key));
+  const ordered = [remaining.shift()];
+  while (remaining.length) {
+    const last = ordered[ordered.length - 1];
+    remaining.sort((a, b) => couple(last.key, b.key) - couple(last.key, a.key) || a.key.localeCompare(b.key));
+    ordered.push(remaining.shift());
+  }
+  if (ordered.length > 1) {
+    const span = Math.max(...ordered.map((g) => Math.hypot(g.w, g.h)));
+    const ringR = Math.max(span * 0.6, (ordered.length * span) / (2 * Math.PI));
+    ordered.forEach((g, i) => {
+      const a = (2 * Math.PI * i) / ordered.length - Math.PI / 2;
+      g.x = ringR * Math.cos(a); g.y = ringR * Math.sin(a);
+    });
+    removeOverlaps(ordered, 80, 60);
+  }
+
+  // 3. turn each module towards its partners
+  const place = (g, angle) => {
+    const cos = Math.cos(angle), sin = Math.sin(angle);
+    g.nodes.forEach((d) => { d.x = g.x + d.rx * cos - d.ry * sin; d.y = g.y + d.rx * sin + d.ry * cos; });
+  };
+  ordered.forEach((g) => place(g, 0));
+  const crossLength = (g) => valid.reduce((s, e) => {
+    const ms = moduleOf.get(e.source), mt = moduleOf.get(e.target);
+    if (ms === mt || (ms !== g.key && mt !== g.key)) return s;
+    const a = nodeById.get(e.source), b = nodeById.get(e.target);
+    return s + Math.hypot(a.x - b.x, a.y - b.y);
+  }, 0);
+  for (let pass = 0; pass < 2; pass++) {
+    ordered.forEach((g) => {
+      if (g.nodes.length < 2) return;
+      let bestA = 0, bestL = Infinity;
+      for (let r = 0; r < 12; r++) {
+        const a = (2 * Math.PI * r) / 12;
+        place(g, a);
+        const L = crossLength(g);
+        if (L < bestL - 1e-6) { bestL = L; bestA = a; }
+      }
+      place(g, bestA);
+    });
+  }
+
+  // 4. gentle global refinement, then a final overlap pass
+  const all = ordered.flatMap((g) => g.nodes);
+  all.forEach((d) => { d.tx = d.x; d.ty = d.y; });
+  const crossLinks = valid.filter((e) => moduleOf.get(e.source) !== moduleOf.get(e.target)).map((e) => ({ source: e.source, target: e.target }));
+  const sim = forceSimulation(all)
+    .force("home-x", forceX((d) => d.tx).strength(0.3))
+    .force("home-y", forceY((d) => d.ty).strength(0.3))
+    .force("link", forceLink(crossLinks).id((d) => d.id).distance(200).strength(0.03))
+    .force("collide", forceCollide((d) => Math.hypot(d.w, d.h) / 2 + 16).iterations(2))
+    .stop();
+  for (let i = 0; i < 150; i++) sim.tick();
+  removeOverlaps(all, 36, 30);
+  const minX = Math.min(...all.map((d) => d.x - d.w / 2)), minY = Math.min(...all.map((d) => d.y - d.h / 2));
+  return concepts.map((c) => {
+    const d = nodeById.get(c.id);
+    return { ...c, position: { x: Math.round(d.x - d.w / 2 - minX + 100), y: Math.round(d.y - d.h / 2 - minY + 100) } };
+  });
+}
+
+// Spreads any cards a layout left overlapping, using each card's estimated
+// size in the current style. Positions are top-left, as stored on concepts.
+function spreadOverlappingCards(concepts, figure) {
+  const items = concepts.map((c) => {
+    const { w, h } = estimateNodeSize(c.name, figure);
+    return { id: c.id, x: (c.position?.x ?? 0) + w / 2, y: (c.position?.y ?? 0) + h / 2, w, h };
+  });
+  removeOverlaps(items, figure ? 44 : 36, figure ? 36 : 28);
+  const byId = new Map(items.map((d) => [d.id, d]));
+  return concepts.map((c) => {
+    const d = byId.get(c.id);
+    return { ...c, position: { x: Math.round(d.x - d.w / 2), y: Math.round(d.y - d.h / 2) } };
+  });
+}
+
 function ConceptNode({ data, selected }) {
   const c = data.concept;
   // Before any simulation has been run, `currentValue` is just a stale
@@ -2438,18 +2706,29 @@ function ConceptNode({ data, selected }) {
   // "reveal anchor points" never depends on the pointer happening to
   // already be over this exact node.
   const anchorsProminent = selected || isConnecting || data.showAnchors || data.reconnectDragActive;
+  // Figure style: the card shrinks to the concept name alone and the anchor
+  // dots stay invisible until the card is hovered or being connected, so a
+  // resting map reads as a clean diagram rather than an editing surface.
+  const figure = !!data.figure;
   const dot = (anchorId) => {
     const isLive = anchorId === liveTargetAnchorId;
+    const resting = figure ? "opacity-0 group-hover:opacity-60" : "opacity-25 group-hover:opacity-60";
     return `!border !border-white transition-all hover:!scale-125 hover:!opacity-100 ${
-      isLive ? "!bg-cobalt-500 !scale-150 !opacity-100" : `!bg-slate-500 ${anchorsProminent ? "opacity-80" : "opacity-25 group-hover:opacity-60"}`
+      isLive ? "!bg-cobalt-500 !scale-150 !opacity-100" : `!bg-slate-500 ${anchorsProminent ? "opacity-80" : resting}`
     }`;
   };
+  const valueText = `${displayValue >= 0 ? "+" : ""}${round2(displayValue).toFixed(2)}`;
   return (
     <div
       // Focus mode: a concept outside the analysis scope stays on the canvas
       // for context but recedes, unless it is the one being worked on.
-      style={{ background: cat.bg, color: "#1e293b", minWidth: 135, maxWidth: 185, borderColor, opacity: selected ? 1 : data.faded ? 0.15 : data.dimmedByHover ? 0.35 : 1 }}
-      className={`group rounded-xl border-2 px-2.5 py-1.5 shadow-sm transition-[box-shadow,opacity] ${selected ? "shadow-md ring-2 ring-cobalt-300" : ""} ${isLiveTarget ? "ring-2 ring-cobalt-500 shadow-md" : isConnecting ? "ring-1 ring-cobalt-300" : ""}`}
+      style={figure
+        ? { background: cat.bg, color: "#0f172a", minWidth: 70, maxWidth: FIGURE_NODE_MAX_W, borderColor: selected ? "#2456d6" : cat.border, opacity: selected ? 1 : data.faded ? 0.15 : data.dimmedByHover ? 0.35 : 1 }
+        : { background: cat.bg, color: "#1e293b", minWidth: 135, maxWidth: 185, borderColor, opacity: selected ? 1 : data.faded ? 0.15 : data.dimmedByHover ? 0.35 : 1 }}
+      title={figure ? `${c.name}\n${data.hasRun ? "Current activation" : "Initial activation"}: ${valueText}` : undefined}
+      className={figure
+        ? `group rounded-lg border-[1.5px] px-2 py-1 text-center transition-[box-shadow,opacity] ${selected ? "ring-2 ring-cobalt-300" : ""} ${isLiveTarget ? "ring-2 ring-cobalt-500" : isConnecting ? "ring-1 ring-cobalt-300" : ""}`
+        : `group rounded-xl border-2 px-2.5 py-1.5 shadow-sm transition-[box-shadow,opacity] ${selected ? "shadow-md ring-2 ring-cobalt-300" : ""} ${isLiveTarget ? "ring-2 ring-cobalt-500 shadow-md" : isConnecting ? "ring-1 ring-cobalt-300" : ""}`}
     >
       {/* 12 discrete anchors (3 per side) instead of one point per side, so
           a user can pick exactly where a relationship attaches. Each has a
@@ -2489,13 +2768,17 @@ function ConceptNode({ data, selected }) {
           </React.Fragment>
         );
       })}
-      <div className="text-sm font-semibold leading-snug break-words" style={{ wordBreak: "break-word" }}>{c.name}</div>
-      <div className="text-[11.5px] mt-1 leading-tight whitespace-nowrap overflow-hidden text-ellipsis">
-        <span className="opacity-60">{data.hasRun ? "Current activation" : "Initial activation"}:</span>{" "}
-        <span className="font-mono font-semibold" style={{ color: valueColor }}>
-          {displayValue >= 0 ? "+" : ""}{round2(displayValue).toFixed(2)}
-        </span>
-      </div>
+      {figure ? (
+        <div className="text-[13px] font-semibold leading-tight break-words" style={{ wordBreak: "break-word" }}>{c.name}</div>
+      ) : (
+        <>
+          <div className="text-sm font-semibold leading-snug break-words" style={{ wordBreak: "break-word" }}>{c.name}</div>
+          <div className="text-[11.5px] mt-1 leading-tight whitespace-nowrap overflow-hidden text-ellipsis">
+            <span className="opacity-60">{data.hasRun ? "Current activation" : "Initial activation"}:</span>{" "}
+            <span className="font-mono font-semibold" style={{ color: valueColor }}>{valueText}</span>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -2672,11 +2955,19 @@ function InfluenceEdge({
   // Thicker base + steeper weight scaling than before, so relationships read
   // as the dominant visual element against the now-smaller, pastel-category
   // nodes rather than being visually secondary to them.
-  const strokeWidth = agg
-    ? 2.5 + Math.min(agg.count, 8) * 0.9 + (selected ? 1.5 : 0)
-    : 2.25 + Math.abs(w) * 5.5 + (selected ? 1.5 : 0);
+  // Figure style draws thin, print-weight lines (width still grows with
+  // strength) and dashes decreasing relationships, so the sign survives a
+  // greyscale print as well as colour.
+  const figure = !!data?.figure;
+  const strokeWidth = figure
+    ? (agg ? 1.4 + Math.min(agg.count, 8) * 0.45 : 1.1 + Math.abs(w) * 2.2) + (selected ? 1 : 0)
+    : agg
+      ? 2.5 + Math.min(agg.count, 8) * 0.9 + (selected ? 1.5 : 0)
+      : 2.25 + Math.abs(w) * 5.5 + (selected ? 1.5 : 0);
+  const dashed = figure && (agg ? agg.positive === 0 : w < 0);
   const isOrthogonal = data?.edgeStyle === "orthogonal";
   const parallelSlot = data?.parallelSlot || 0;
+  const autoBend = figure && !isOrthogonal ? (data?.autoBend || 0) : 0;
 
   // Pull the target end back from the true boundary point so the arrowhead
   // has room to render in the open instead of landing exactly on (and
@@ -2739,8 +3030,17 @@ function InfluenceEdge({
   // pairs are now separated by bowing only the curve's MIDPOINT sideways (a
   // quadratic Bezier), leaving the true attachment points untouched.
   let path, labelX, labelY;
-  const bowOffset = parallelSlot * 24 + manualBend;
-  if (isOrthogonal) {
+  const bowOffset = parallelSlot * 24 + manualBend + autoBend;
+  if (figure && !isOrthogonal) {
+    // Figure style: a straight line, or a single smooth bow where it has to
+    // clear a box or a reciprocal partner. The label sits at the fraction
+    // along it chosen by computeFigureRouting, clear of boxes and labels.
+    const s = { x: sx, y: sy }, e = { x: tx, y: ty };
+    const m = bowControlPoint(s, e, bowOffset);
+    path = m ? `M ${sx},${sy} Q ${m.x},${m.y} ${tx},${ty}` : `M ${sx},${sy} L ${tx},${ty}`;
+    const lp = figurePathPoint(s, e, m, data?.labelT ?? 0.5);
+    labelX = lp.x; labelY = lp.y;
+  } else if (isOrthogonal) {
     [path, labelX, labelY] = getSmoothStepPath({ sourceX: sx, sourceY: sy, sourcePosition: sourcePos, targetX: tx, targetY: ty, targetPosition: targetPos, borderRadius: 8 });
   } else if (bowOffset !== 0) {
     const dx = tx - sx, dy = ty - sy;
@@ -2772,7 +3072,7 @@ function InfluenceEdge({
     if (!canBend || !data?.onBendDragStart) return;
     ev.stopPropagation();
     ev.preventDefault();
-    data.onBendDragStart(id, sx, sy, tx, ty, parallelSlot * 24);
+    data.onBendDragStart(id, sx, sy, tx, ty, parallelSlot * 24 + autoBend);
   };
 
   return (
@@ -2792,7 +3092,7 @@ function InfluenceEdge({
       <BaseEdge
         id={id} path={path} markerEnd={markerEnd}
         interactionWidth={isBeingDraggedByUser ? 0 : 20}
-        style={{ stroke: color, strokeWidth, opacity: selected ? 1 : data?.faded ? 0.12 : data?.dimmedByHover ? 0.07 : (data?.baseOpacity ?? 0.92), pointerEvents: isBeingDraggedByUser ? "none" : undefined, transition: "opacity 150ms ease" }}
+        style={{ stroke: color, strokeWidth, strokeDasharray: dashed ? `${3 + strokeWidth * 1.5} ${2 + strokeWidth}` : undefined, opacity: selected ? 1 : data?.faded ? 0.12 : data?.dimmedByHover ? 0.07 : (data?.baseOpacity ?? 0.92), pointerEvents: isBeingDraggedByUser ? "none" : undefined, transition: "opacity 150ms ease" }}
       />
       {/* Labels off still needs a way to grab and bow the line, so a small
           handle takes the label's place once this relationship is selected
@@ -2819,7 +3119,22 @@ function InfluenceEdge({
           level instead of shrinking to unreadable at a zoomed-out fit. */
       <EdgeLabelRenderer>
         <div style={{ position: "absolute", transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`, zIndex: selected ? 20 : data?.faded ? 1 : 5, opacity: selected ? 1 : data?.faded ? 0.15 : data?.dimmedByHover ? 0.08 : 1 }}>
-          {!data?.hideLabel ? (
+          {!data?.hideLabel && figure ? (
+          /* Figure style: a small plain number on a white halo, sized in
+             flow space so it scales with the boxes like the rest of the
+             figure instead of staying a fixed screen size. */
+          <div
+            onMouseDown={canBend ? beginBend : undefined}
+            onDoubleClick={canBend && manualBend ? (ev) => { ev.stopPropagation(); data.onBendReset?.(id); } : undefined}
+            style={{ pointerEvents: isBeingDraggedByUser ? "none" : "all", cursor: canBend ? "grab" : undefined, background: "rgba(255,255,255,0.9)", color: agg ? (agg.negative === 0 ? "#166534" : agg.positive === 0 ? "#9a3412" : "#5b21b6") : w >= 0 ? "#166534" : "#9a3412" }}
+            className={`px-[3px] rounded-sm text-[10.5px] leading-[14px] font-mono font-semibold select-none whitespace-nowrap ${selected ? "ring-1 ring-cobalt-400" : ""}`}
+            title={agg ? `${agg.count} relationship${agg.count === 1 ? "" : "s"}: ${agg.positive} increasing, ${agg.negative} decreasing; net weight ${agg.sum >= 0 ? "+" : ""}${agg.sum}` : canBend ? `Drag to bend this relationship's line${manualBend ? "; double-click to straighten it back out" : ""}` : undefined}
+          >
+            {agg
+              ? `${agg.count}× ${agg.sum >= 0 ? "+" : ""}${round2(agg.sum).toFixed(2)}`
+              : `${w >= 0 ? "+" : ""}${round2(w).toFixed(2)}`}
+          </div>
+          ) : !data?.hideLabel ? (
           <div
             onMouseDown={canBend ? beginBend : undefined}
             onDoubleClick={canBend && manualBend ? (ev) => { ev.stopPropagation(); data.onBendReset?.(id); } : undefined}
@@ -3306,6 +3621,18 @@ function NetworkTabInner({
   // (increase/decrease) and width (strength) carry that information — a
   // less cluttered read of a large, dense model.
   const [hideEdgeLabels, setHideEdgeLabels] = useState(false);
+  // Figure style (default) draws the map as a clean diagram fit for a paper:
+  // name-only cards, thin lines, dashed decreases, lines routed around
+  // cards and weight labels kept clear of each other. Editing style is the
+  // earlier, roomier look with each concept's activation on its card.
+  // Remembered per browser.
+  const [figureStyle, setFigureStyleState] = useState(() => {
+    try { return localStorage.getItem("se.network.style") !== "editing"; } catch { return true; }
+  });
+  const setFigureStyle = useCallback((on) => {
+    setFigureStyleState(on);
+    try { localStorage.setItem("se.network.style", on ? "figure" : "editing"); } catch { /* storage unavailable */ }
+  }, []);
   const rf = useReactFlow();
 
   // Hovering a node highlights only its own connections and recedes
@@ -3470,7 +3797,7 @@ function NetworkTabInner({
   // without dominating the visual. Enlarged alongside the thicker edge
   // strokes so arrowheads stay a clearly visible, deliberate focal point
   // against the smaller, pastel-category nodes.
-  const markerSize = 9;
+  const markerSize = figureStyle ? 5.5 : 9;
 
   // Nodes touched by the currently-selected edge — passed into their
   // ConceptNode as data.showAnchors so selecting an edge reveals both its
@@ -3648,7 +3975,7 @@ function NetworkTabInner({
   const conceptRfNodes = useMemo(() => displayConcepts.map((c) => ({
     id: c.id, type: "concept", position: c.position || { x: 0, y: 0 },
     data: {
-      concept: c, hasRun,
+      concept: c, hasRun, figure: figureStyle,
       showAnchors: !!selectedEdgeNodeIds?.has(c.id),
       pinnedTargets: pinnedTargetsByNode[c.id] || EMPTY_ARRAY,
       faded: !!fadedNodeIds?.has(c.id),
@@ -3663,7 +3990,7 @@ function NetworkTabInner({
       reconnectDragActive: !!dragReconnect,
     },
     selected: selected?.kind === "concept" && selected.id === c.id,
-  })), [displayConcepts, selected, hasRun, selectedEdgeNodeIds, pinnedTargetsByNode, fadedNodeIds, hoverConnected, dragReconnect]);
+  })), [displayConcepts, selected, hasRun, figureStyle, selectedEdgeNodeIds, pinnedTargetsByNode, fadedNodeIds, hoverConnected, dragReconnect]);
 
   const rfNodes = useMemo(() => [
     ...frames.map((f) => ({
@@ -3760,6 +4087,34 @@ function NetworkTabInner({
     });
     return slots;
   }, [displayEdges]);
+
+  // Figure style routing (see computeFigureRouting): which relationships
+  // bow around a card in their way, and where along each one its weight
+  // label sits. Uses React Flow's measured card sizes where it has them,
+  // re-read once cards are measured and shortly after the style changes,
+  // and is frozen during a drag like the fan-out slots above.
+  const nodesInitialized = useNodesInitialized();
+  const [measureTick, setMeasureTick] = useState(0);
+  useEffect(() => {
+    const t = setTimeout(() => setMeasureTick((v) => v + 1), 250);
+    return () => clearTimeout(t);
+  }, [figureStyle, nodesInitialized, displayConcepts.length]);
+  const figureRoutingRef = useRef({});
+  const figureRouting = useMemo(() => {
+    if (!figureStyle || edgeStyle === "orthogonal") return {};
+    if (isDragging) return figureRoutingRef.current;
+    const rects = new Map();
+    displayConcepts.forEach((c) => {
+      const m = rf.getInternalNode?.(c.id)?.measured;
+      const est = m?.width && m?.height ? { w: m.width, h: m.height } : estimateNodeSize(c.name, true);
+      const p = c.position || { x: 0, y: 0 };
+      rects.set(c.id, { x: p.x, y: p.y, w: est.w, h: est.h });
+    });
+    moduleBlocks.forEach((m) => rects.set(m.id, { x: m.position.x, y: m.position.y, w: MODULE_NODE_W, h: MODULE_NODE_H }));
+    figureRoutingRef.current = computeFigureRouting(rects, displayEdges, parallelSlots);
+    return figureRoutingRef.current;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [figureStyle, edgeStyle, isDragging, displayConcepts, moduleBlocks, displayEdges, parallelSlots, measureTick, rf]);
 
   // Lets a relationship's own label (or, with labels hidden, its selected
   // handle — see InfluenceEdge) be grabbed and dragged to bow the line out
@@ -3901,6 +4256,7 @@ function NetworkTabInner({
       sourceHandle: h.sourceHandle, targetHandle: h.targetHandle,
       data: {
         edge: e, aggregate: agg, edgeStyle, parallelSlot: parallelSlots[e.id] || 0,
+        figure: figureStyle, autoBend: figureRouting[e.id]?.autoBend || 0, labelT: figureRouting[e.id]?.labelT ?? 0.5,
         sourceSlot: slot.sourceSlot ?? 0, sourceCount: slot.sourceCount ?? 1,
         targetSlot: slot.targetSlot ?? 0, targetCount: slot.targetCount ?? 1,
         faded, dimmedByHover, baseOpacity: edgeBaseOpacity, hideLabel: hideEdgeLabels,
@@ -3927,7 +4283,7 @@ function NetworkTabInner({
       selected: agg ? selected?.kind === "aggregate" && selected.id === e.id : selected?.kind === "edge" && selected.id === e.id,
       markerEnd: { type: MarkerType.ArrowClosed, color: agg ? aggregateColor(agg) : e.weight >= 0 ? "#16a34a" : "#ea580c", width: markerSize, height: markerSize },
     };
-  }), [displayEdges, selected, edgeStyle, parallelSlots, markerSize, resolvedHandles, edgeSlots, fadedEdgeIds, hoverConnected, edgeBaseOpacity, hideEdgeLabels, startBendDrag, resetBend, dragBend, dragReconnect, startReconnectDrag]);
+  }), [displayEdges, selected, edgeStyle, parallelSlots, figureStyle, figureRouting, markerSize, resolvedHandles, edgeSlots, fadedEdgeIds, hoverConnected, edgeBaseOpacity, hideEdgeLabels, startBendDrag, resetBend, dragBend, dragReconnect, startReconnectDrag]);
 
   const onNodesChange = useCallback((changes) => {
     changes.forEach((ch) => {
@@ -4125,11 +4481,12 @@ function NetworkTabInner({
     setLayoutBusy(true);
     try {
       let next;
-      if (kind === "circular") next = layoutCircular(concepts);
-      else if (kind === "hier-td") next = await layoutHierarchical(concepts, edges, "DOWN");
-      else if (kind === "hier-lr") next = await layoutHierarchical(concepts, edges, "RIGHT");
-      else if (kind === "force") next = layoutForceDirected(concepts, edges);
-      else if (kind === "modules") next = layoutByModule(concepts);
+      if (kind === "figure") next = layoutFigure(concepts, edges);
+      else if (kind === "circular") next = spreadOverlappingCards(layoutCircular(concepts), figureStyle);
+      else if (kind === "hier-td") next = await layoutHierarchical(concepts, edges, "DOWN", figureStyle);
+      else if (kind === "hier-lr") next = await layoutHierarchical(concepts, edges, "RIGHT", figureStyle);
+      else if (kind === "force") next = spreadOverlappingCards(layoutForceDirected(concepts, edges), figureStyle);
+      else if (kind === "modules") next = spreadOverlappingCards(layoutByModule(concepts), figureStyle);
       else return;
       // Auto-layout only assigns positions once, the same way dragging a
       // node does. Nothing is locked afterward, so manual dragging keeps
@@ -4152,10 +4509,23 @@ function NetworkTabInner({
     }
   };
 
+  // In figure style the export is the figure itself: the whole network at
+  // its own scale (whatever the current zoom or pan), cropped to the map
+  // with a small margin, without anchor dots, at 3x resolution.
   const exportDiagram = async () => {
     setExportingPng(true);
     try {
-      await exportNetworkDiagramAsPng(wrapperRef.current, "spaghetti-engine-network-diagram.png");
+      if (figureStyle) {
+        setHoverNodeIdNow(null);
+        await new Promise((r) => setTimeout(r, 50));
+        await exportNetworkFigurePng(
+          wrapperRef.current?.querySelector(".react-flow__viewport"),
+          rf.getNodesBounds(rf.getNodes()),
+          "spaghetti-engine-network-figure.png",
+        );
+      } else {
+        await exportNetworkDiagramAsPng(wrapperRef.current, "spaghetti-engine-network-diagram.png");
+      }
     } finally {
       setExportingPng(false);
     }
@@ -4180,6 +4550,7 @@ function NetworkTabInner({
             </Btn>
             {layoutMenuOpen && (
               <div className="absolute z-30 mt-1 w-56 bg-white border border-slate-200 rounded-md shadow-lg py-1">
+                <button onClick={() => runLayout("figure")} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center gap-2" title="Spread concepts evenly with each module in its own area and room between cards for arrows and labels: a good starting point for a paper figure"><Sparkles size={13} />Figure layout (spaced, by module)</button>
                 <button onClick={() => runLayout("hier-td")} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center gap-2"><GitBranch size={13} />Hierarchical (top-down)</button>
                 <button onClick={() => runLayout("hier-lr")} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center gap-2"><GitBranch size={13} className="rotate-90" />Left-to-right causal chain</button>
                 <button onClick={() => runLayout("circular")} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center gap-2"><LayoutGrid size={13} />Circular</button>
@@ -4188,8 +4559,20 @@ function NetworkTabInner({
               </div>
             )}
           </div>
+          <div className="flex items-center border border-slate-300 rounded-md overflow-hidden text-xs" role="group" aria-label="Map style">
+            <button
+              onClick={() => setFigureStyle(true)}
+              title="Figure style: name-only cards, thin lines (dashed for decreasing), lines routed around cards and weight labels kept clear of each other, ready to export as a paper figure"
+              className={`px-2.5 py-1.5 ${figureStyle ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}
+            >Figure</button>
+            <button
+              onClick={() => setFigureStyle(false)}
+              title="Editing style: larger cards that also show each concept's activation"
+              className={`px-2.5 py-1.5 border-l border-slate-300 ${!figureStyle ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}
+            >Editing</button>
+          </div>
           <div className="flex items-center border border-slate-300 rounded-md overflow-hidden text-xs">
-            <button onClick={() => setEdgeStyle("curved")} className={`px-2.5 py-1.5 ${edgeStyle === "curved" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}>Curved</button>
+            <button onClick={() => setEdgeStyle("curved")} title={figureStyle ? "Straight lines, bowed only where they would cross a card or overlap a reciprocal relationship" : undefined} className={`px-2.5 py-1.5 ${edgeStyle === "curved" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}>{figureStyle ? "Direct" : "Curved"}</button>
             <button onClick={() => setEdgeStyle("orthogonal")} className={`px-2.5 py-1.5 border-l border-slate-300 ${edgeStyle === "orthogonal" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}>Orthogonal</button>
           </div>
           <button
@@ -4372,7 +4755,7 @@ function NetworkTabInner({
               fitViewOptions={{ padding: 0.2, maxZoom: FIT_MAX_ZOOM }}
               proOptions={{ hideAttribution: true }}
             >
-              <Background gap={18} size={1} />
+              {!figureStyle && <Background gap={18} size={1} />}
               <Controls showInteractive={false} />
               <MiniMap pannable zoomable nodeColor={(n) => (n.type === "moduleFrame" ? "transparent" : n.type === "module" ? categoryStyle(n.data?.categoryValue).border : categoryStyle(n.data?.concept?.category).bg)} className="!bg-white" />
             </ReactFlow>
@@ -8617,6 +9000,31 @@ async function exportFigure(containerEl, filename, settings, { title, subtitle }
 // between the two. Returns a Promise<boolean> (true on a real download) so
 // the toolbar button can show a brief busy state and silently no-op if
 // nothing is mounted to capture yet.
+// Figure-style export: renders React Flow's viewport layer (cards, lines and
+// weight labels) at scale 1, shifted so the map's bounds plus a margin fill
+// the image exactly. Lines bowed around cards can reach past the cards'
+// own bounds, hence the generous margin.
+async function exportNetworkFigurePng(viewportEl, bounds, filename) {
+  if (!viewportEl || !bounds?.width || !bounds?.height) return false;
+  const pad = 60;
+  const width = Math.ceil(bounds.width + 2 * pad), height = Math.ceil(bounds.height + 2 * pad);
+  try {
+    const blob = await domNodeToPngBlob(viewportEl, {
+      backgroundColor: "#ffffff", skipFonts: true, pixelRatio: 3, width, height,
+      style: { width: `${width}px`, height: `${height}px`, transform: `translate(${pad - bounds.x}px, ${pad - bounds.y}px) scale(1)` },
+      filter: (node) => !(node.classList && node.classList.contains("react-flow__handle")),
+    });
+    if (!blob) return false;
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = scopedFilename(filename);
+    a.click();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function exportNetworkDiagramAsPng(containerEl, filename) {
   if (!containerEl) return false;
   const rect = containerEl.getBoundingClientRect();
