@@ -17,7 +17,8 @@ import {
   MarkerType, useReactFlow, useInternalNode, useViewport, useConnection,
   useUpdateNodeInternals, useNodesInitialized,
 } from "@xyflow/react";
-import { forceSimulation, forceManyBody, forceLink, forceCenter, forceCollide, forceX, forceY } from "d3-force";
+import { forceSimulation, forceManyBody, forceLink, forceCenter, forceCollide } from "d3-force";
+import { FCM_LAYOUT_MODES, runFcmLayout } from "./layout/fcmLayout.js";
 import ELK from "elkjs/lib/elk.bundled.js";
 import ExcelJS from "exceljs";
 // React Flow's Network tab renders nodes as HTML (not SVG) with edges as a
@@ -2525,122 +2526,36 @@ function computeFigureRouting(rects, edges, parallelSlots) {
   return routing;
 }
 
-// "Figure layout", in four deterministic steps (the same model always gives
-// the same picture):
-//   1. each module is laid out on its own by a force simulation over its
-//      internal relationships, seeded on a circle;
-//   2. the module groups are placed on a ring, ordered so that strongly
-//      coupled modules sit next to each other, and pushed apart until no
-//      two groups overlap;
-//   3. each group is turned to the rotation that brings its concepts
-//      closest to the concepts they are linked to in other modules;
-//   4. a short global pass lets concepts drift towards their cross-module
-//      partners while staying in their module's area, and a final pass
-//      removes any overlap, leaving room for arrows and weight labels.
-function layoutFigure(concepts, edges) {
-  const moduleOf = new Map(concepts.map((c) => [c.id, moduleKey(c.category)]));
-  const keys = [...new Set(moduleOf.values())].sort((a, b) => (a === UNCATEGORIZED_MODULE) - (b === UNCATEGORIZED_MODULE) || a.localeCompare(b));
-  const ids = new Set(concepts.map((c) => c.id));
-  const valid = edges.filter((e) => ids.has(e.source) && ids.has(e.target) && e.source !== e.target);
-  const nodeById = new Map();
-
-  // 1. each module on its own
-  const groups = keys.map((k) => {
-    const members = concepts.filter((c) => moduleOf.get(c.id) === k);
-    const nodes = members.map((c, i) => {
-      const { w, h } = estimateNodeSize(c.name, true);
-      const a = (2 * Math.PI * i) / members.length, r = 30 + 22 * members.length;
-      const d = { id: c.id, x: r * Math.cos(a), y: r * Math.sin(a), w, h };
-      nodeById.set(c.id, d);
-      return d;
-    });
-    const links = valid.filter((e) => moduleOf.get(e.source) === k && moduleOf.get(e.target) === k).map((e) => ({ source: e.source, target: e.target }));
-    if (nodes.length > 1) {
-      const sim = forceSimulation(nodes)
-        .force("charge", forceManyBody().strength(-300))
-        .force("link", forceLink(links).id((d) => d.id).distance(120).strength(0.4))
-        .force("x", forceX(0).strength(0.09))
-        .force("y", forceY(0).strength(0.09))
-        .force("collide", forceCollide((d) => Math.hypot(d.w, d.h) / 2 + 12).iterations(2))
-        .stop();
-      for (let i = 0; i < 400; i++) sim.tick();
-      removeOverlaps(nodes, 36, 30);
+// Smart Auto Arrange (src/layout/fcmLayout.js) runs in one long-lived Web
+// Worker, so arranging a large model never freezes the map and the engine
+// stays warmed up between runs. If a worker can't be started (an old
+// browser, a locked-down page) the same engine simply runs here instead.
+let fcmLayoutWorker = null, fcmLayoutSeq = 0;
+function runFcmLayoutOffThread(input) {
+  return new Promise((resolve, reject) => {
+    const fallback = () => runFcmLayout(input).then(resolve, reject);
+    try {
+      fcmLayoutWorker = fcmLayoutWorker || new Worker(new URL("./layout/fcmLayout.worker.js", import.meta.url), { type: "module" });
+    } catch {
+      fallback();
+      return;
     }
-    const cx = nodes.reduce((s, d) => s + d.x, 0) / nodes.length, cy = nodes.reduce((s, d) => s + d.y, 0) / nodes.length;
-    nodes.forEach((d) => { d.x -= cx; d.y -= cy; d.rx = d.x; d.ry = d.y; });
-    const halfW = Math.max(...nodes.map((d) => Math.abs(d.x) + d.w / 2)), halfH = Math.max(...nodes.map((d) => Math.abs(d.y) + d.h / 2));
-    return { key: k, nodes, x: 0, y: 0, w: 2 * halfW, h: 2 * halfH };
-  });
-
-  // 2. modules on a ring, coupled modules adjacent
-  const coupling = new Map();
-  const pairKey = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
-  valid.forEach((e) => {
-    const a = moduleOf.get(e.source), b = moduleOf.get(e.target);
-    if (a !== b) coupling.set(pairKey(a, b), (coupling.get(pairKey(a, b)) || 0) + 1);
-  });
-  const couple = (a, b) => coupling.get(pairKey(a, b)) || 0;
-  const remaining = [...groups];
-  const total = (g) => groups.reduce((s, o) => s + (o === g ? 0 : couple(g.key, o.key)), 0);
-  remaining.sort((a, b) => total(b) - total(a) || a.key.localeCompare(b.key));
-  const ordered = [remaining.shift()];
-  while (remaining.length) {
-    const last = ordered[ordered.length - 1];
-    remaining.sort((a, b) => couple(last.key, b.key) - couple(last.key, a.key) || a.key.localeCompare(b.key));
-    ordered.push(remaining.shift());
-  }
-  if (ordered.length > 1) {
-    const span = Math.max(...ordered.map((g) => Math.hypot(g.w, g.h)));
-    const ringR = Math.max(span * 0.6, (ordered.length * span) / (2 * Math.PI));
-    ordered.forEach((g, i) => {
-      const a = (2 * Math.PI * i) / ordered.length - Math.PI / 2;
-      g.x = ringR * Math.cos(a); g.y = ringR * Math.sin(a);
-    });
-    removeOverlaps(ordered, 80, 60);
-  }
-
-  // 3. turn each module towards its partners
-  const place = (g, angle) => {
-    const cos = Math.cos(angle), sin = Math.sin(angle);
-    g.nodes.forEach((d) => { d.x = g.x + d.rx * cos - d.ry * sin; d.y = g.y + d.rx * sin + d.ry * cos; });
-  };
-  ordered.forEach((g) => place(g, 0));
-  const crossLength = (g) => valid.reduce((s, e) => {
-    const ms = moduleOf.get(e.source), mt = moduleOf.get(e.target);
-    if (ms === mt || (ms !== g.key && mt !== g.key)) return s;
-    const a = nodeById.get(e.source), b = nodeById.get(e.target);
-    return s + Math.hypot(a.x - b.x, a.y - b.y);
-  }, 0);
-  for (let pass = 0; pass < 2; pass++) {
-    ordered.forEach((g) => {
-      if (g.nodes.length < 2) return;
-      let bestA = 0, bestL = Infinity;
-      for (let r = 0; r < 12; r++) {
-        const a = (2 * Math.PI * r) / 12;
-        place(g, a);
-        const L = crossLength(g);
-        if (L < bestL - 1e-6) { bestL = L; bestA = a; }
-      }
-      place(g, bestA);
-    });
-  }
-
-  // 4. gentle global refinement, then a final overlap pass
-  const all = ordered.flatMap((g) => g.nodes);
-  all.forEach((d) => { d.tx = d.x; d.ty = d.y; });
-  const crossLinks = valid.filter((e) => moduleOf.get(e.source) !== moduleOf.get(e.target)).map((e) => ({ source: e.source, target: e.target }));
-  const sim = forceSimulation(all)
-    .force("home-x", forceX((d) => d.tx).strength(0.3))
-    .force("home-y", forceY((d) => d.ty).strength(0.3))
-    .force("link", forceLink(crossLinks).id((d) => d.id).distance(200).strength(0.03))
-    .force("collide", forceCollide((d) => Math.hypot(d.w, d.h) / 2 + 16).iterations(2))
-    .stop();
-  for (let i = 0; i < 150; i++) sim.tick();
-  removeOverlaps(all, 36, 30);
-  const minX = Math.min(...all.map((d) => d.x - d.w / 2)), minY = Math.min(...all.map((d) => d.y - d.h / 2));
-  return concepts.map((c) => {
-    const d = nodeById.get(c.id);
-    return { ...c, position: { x: Math.round(d.x - d.w / 2 - minX + 100), y: Math.round(d.y - d.h / 2 - minY + 100) } };
+    const worker = fcmLayoutWorker, id = ++fcmLayoutSeq;
+    const cleanup = () => { worker.removeEventListener("message", onMessage); worker.removeEventListener("error", onError); };
+    const onMessage = (e) => {
+      if (e.data?.id !== id) return;
+      cleanup();
+      if (e.data.ok) resolve(e.data.result); else fallback();
+    };
+    const onError = () => {
+      cleanup();
+      worker.terminate();
+      if (fcmLayoutWorker === worker) fcmLayoutWorker = null;
+      fallback();
+    };
+    worker.addEventListener("message", onMessage);
+    worker.addEventListener("error", onError);
+    worker.postMessage({ id, input });
   });
 }
 
@@ -3611,6 +3526,14 @@ function NetworkTabInner({
   const [spaceHeld, setSpaceHeld] = useState(false);
   const [layoutMenuOpen, setLayoutMenuOpen] = useState(false);
   const [layoutBusy, setLayoutBusy] = useState(false);
+  // What the last smart Auto Arrange achieved (crossings, overlaps, groups,
+  // feedback loops, time), shown under the toolbar until dismissed.
+  const [layoutReport, setLayoutReport] = useState(null);
+  // While an arrangement animates, the cards are drawn from these in-between
+  // positions; the model itself changes once, at the end (one undo step).
+  const [animPositions, setAnimPositions] = useState(null);
+  const animFrameRef = useRef(0);
+  useEffect(() => () => cancelAnimationFrame(animFrameRef.current), []);
   const [exportingPng, setExportingPng] = useState(false);
   // True only between a drag starting and ending — not per frame — so it can
   // gate per-frame work without itself causing per-frame renders.
@@ -3973,7 +3896,7 @@ function NetworkTabInner({
   }, [moduleBlocks]);
 
   const conceptRfNodes = useMemo(() => displayConcepts.map((c) => ({
-    id: c.id, type: "concept", position: c.position || { x: 0, y: 0 },
+    id: c.id, type: "concept", position: animPositions?.get(c.id) || c.position || { x: 0, y: 0 },
     data: {
       concept: c, hasRun, figure: figureStyle,
       showAnchors: !!selectedEdgeNodeIds?.has(c.id),
@@ -3990,7 +3913,7 @@ function NetworkTabInner({
       reconnectDragActive: !!dragReconnect,
     },
     selected: selected?.kind === "concept" && selected.id === c.id,
-  })), [displayConcepts, selected, hasRun, figureStyle, selectedEdgeNodeIds, pinnedTargetsByNode, fadedNodeIds, hoverConnected, dragReconnect]);
+  })), [displayConcepts, animPositions, selected, hasRun, figureStyle, selectedEdgeNodeIds, pinnedTargetsByNode, fadedNodeIds, hoverConnected, dragReconnect]);
 
   const rfNodes = useMemo(() => [
     ...frames.map((f) => ({
@@ -4476,22 +4399,81 @@ function NetworkTabInner({
     rf.setViewport({ x: vp.x - e.deltaY, y: vp.y, zoom: vp.zoom });
   }, [rf]);
 
+  // Glides every card from where it is to where the new arrangement puts it
+  // (650 ms, ease in-out), skipped for anyone who asked their system for
+  // reduced motion. Edge fan-out and label placement are frozen meanwhile,
+  // the same as during a drag, and recomputed once the cards land.
+  const animateTo = (next) => new Promise((resolve) => {
+    const reduce = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (reduce || !concepts.length) { resolve(); return; }
+    const from = new Map(concepts.map((c) => [c.id, c.position || { x: 0, y: 0 }]));
+    const to = new Map(next.map((c) => [c.id, c.position]));
+    cancelAnimationFrame(animFrameRef.current);
+    setIsDragging(true);
+    const start = performance.now(), duration = 650;
+    const frame = (now) => {
+      const t = Math.min(1, (now - start) / duration);
+      const k = t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
+      const m = new Map();
+      from.forEach((p, id) => {
+        const q = to.get(id) || p;
+        m.set(id, { x: p.x + (q.x - p.x) * k, y: p.y + (q.y - p.y) * k });
+      });
+      setAnimPositions(m);
+      if (t < 1) animFrameRef.current = requestAnimationFrame(frame);
+      else resolve();
+    };
+    animFrameRef.current = requestAnimationFrame(frame);
+  });
+
+  // Smart Auto Arrange: the hybrid FCM layout engine in one of its four
+  // modes. Card sizes follow the current map style, and the result is
+  // centred on the current arrangement so the transition reads as the same
+  // map rearranging itself rather than jumping somewhere else.
+  const smartLayout = async (mode) => {
+    const res = await runFcmLayoutOffThread({
+      mode,
+      nodes: concepts.map((c) => {
+        const { w, h } = estimateNodeSize(c.name, figureStyle);
+        return { id: c.id, w, h, group: c.category || "" };
+      }),
+      edges: edges.map((e) => ({ source: e.source, target: e.target, weight: e.weight })),
+    });
+    const centre = (pts) => {
+      if (!pts.length) return { x: 0, y: 0 };
+      const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+      return { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2 };
+    };
+    const was = centre(concepts.map((c) => c.position || { x: 0, y: 0 }));
+    const now = centre(Object.values(res.positions));
+    const dx = Math.round(was.x - now.x), dy = Math.round(was.y - now.y);
+    setLayoutReport(res.report);
+    return concepts.map((c) => {
+      const p = res.positions[c.id];
+      return p ? { ...c, position: { x: p.x + dx, y: p.y + dy } } : c;
+    });
+  };
+
   const runLayout = async (kind) => {
     setLayoutMenuOpen(false);
     setLayoutBusy(true);
     try {
       let next;
-      if (kind === "figure") next = layoutFigure(concepts, edges);
+      if (kind.startsWith("fcm:")) next = await smartLayout(kind.slice(4));
       else if (kind === "circular") next = spreadOverlappingCards(layoutCircular(concepts), figureStyle);
       else if (kind === "hier-td") next = await layoutHierarchical(concepts, edges, "DOWN", figureStyle);
       else if (kind === "hier-lr") next = await layoutHierarchical(concepts, edges, "RIGHT", figureStyle);
       else if (kind === "force") next = spreadOverlappingCards(layoutForceDirected(concepts, edges), figureStyle);
       else if (kind === "modules") next = spreadOverlappingCards(layoutByModule(concepts), figureStyle);
       else return;
+      if (!kind.startsWith("fcm:")) setLayoutReport(null);
+      await animateTo(next);
       // Auto-layout only assigns positions once, the same way dragging a
       // node does. Nothing is locked afterward, so manual dragging keeps
       // working immediately.
       applyBulkPositions(next);
+      setAnimPositions(null);
+      setIsDragging(false);
       // Moving every node at once makes React Flow discard its per-node
       // measurements, and it does not reliably take them again on its own:
       // left alone, an Auto Arrange on a large model ends with every node
@@ -4504,6 +4486,11 @@ function NetworkTabInner({
         rf.fitView({ padding: 0.2, duration: 300, maxZoom: FIT_MAX_ZOOM });
       }, 50);
       setTimeout(healUnmeasuredNodes, 400);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("Auto Arrange failed:", err);
+      setAnimPositions(null);
+      setIsDragging(false);
     } finally {
       setLayoutBusy(false);
     }
@@ -4550,7 +4537,14 @@ function NetworkTabInner({
             </Btn>
             {layoutMenuOpen && (
               <div className="absolute z-30 mt-1 w-56 bg-white border border-slate-200 rounded-md shadow-lg py-1">
-                <button onClick={() => runLayout("figure")} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center gap-2" title="Spread concepts evenly with each module in its own area and room between cards for arrows and labels: a good starting point for a paper figure"><Sparkles size={13} />Figure layout (spaced, by module)</button>
+                <p className="px-3 pt-1 pb-0.5 text-[11.5px] font-semibold uppercase tracking-wide text-neutral-600">Smart layouts</p>
+                {FCM_LAYOUT_MODES.map((m) => (
+                  <button key={m.id} onClick={() => runLayout(`fcm:${m.id}`)} title={m.hint} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center gap-2">
+                    <Sparkles size={13} />{m.label}{m.id === "readable" ? <span className="ml-auto text-[11.5px] text-neutral-600">default</span> : null}
+                  </button>
+                ))}
+                <div className="my-1 border-t border-slate-200" />
+                <p className="px-3 pt-0.5 pb-0.5 text-[11.5px] font-semibold uppercase tracking-wide text-neutral-600">Classic</p>
                 <button onClick={() => runLayout("hier-td")} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center gap-2"><GitBranch size={13} />Hierarchical (top-down)</button>
                 <button onClick={() => runLayout("hier-lr")} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center gap-2"><GitBranch size={13} className="rotate-90" />Left-to-right causal chain</button>
                 <button onClick={() => runLayout("circular")} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center gap-2"><LayoutGrid size={13} />Circular</button>
@@ -4681,6 +4675,15 @@ function NetworkTabInner({
           </span>
         </div>
 
+        {layoutReport && (
+          <p className="mb-2 text-[12.5px] text-neutral-900 bg-slate-50 border border-slate-200 rounded px-2 py-1 flex items-center gap-2" title={`Layout score ${layoutReport.score} (higher is better): -10 x crossings, -5 x overlapping cards, -5 x label clashes, -2 x mean edge length, +3 x cluster separation (${layoutReport.clusterSeparation}), +3 x centrality visibility (${layoutReport.centralityVisibility}), +2 x hierarchy visibility (${layoutReport.hierarchyVisibility}). Crossings include lines running through a card.`}>
+            <Sparkles size={13} className="text-cobalt-700 shrink-0" />
+            <span className="flex-1">
+              {FCM_LAYOUT_MODES.find((m) => m.id === layoutReport.mode)?.label} layout: {layoutReport.crossings} crossing{layoutReport.crossings === 1 ? "" : "s"}, {layoutReport.nodeOverlaps} overlapping card{layoutReport.nodeOverlaps === 1 ? "" : "s"}, {layoutReport.communities} group{layoutReport.communities === 1 ? "" : "s"}, {layoutReport.feedbackLoops} feedback structure{layoutReport.feedbackLoops === 1 ? "" : "s"} &middot; {(layoutReport.ms / 1000).toFixed(1)} s. Undo (Ctrl+Z) restores the previous arrangement.
+            </span>
+            <button onClick={() => setLayoutReport(null)} className="text-neutral-600 hover:text-neutral-900" title="Dismiss"><X size={12} /></button>
+          </p>
+        )}
         {networkView.mode === "nexus" && (
           <p className="mb-2 text-[12.5px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1">
             {displayMode === "focus"
