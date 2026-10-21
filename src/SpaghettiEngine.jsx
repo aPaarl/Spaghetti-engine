@@ -14,10 +14,9 @@ import {
 import {
   ReactFlow, ReactFlowProvider, Background, Controls, MiniMap,
   Handle, Position, BaseEdge, EdgeLabelRenderer, getBezierPath, getSmoothStepPath,
-  MarkerType, useReactFlow, useInternalNode, useViewport, useConnection,
+  MarkerType, useReactFlow, useInternalNode, useStore, useConnection,
   useUpdateNodeInternals, useNodesInitialized,
 } from "@xyflow/react";
-import { forceSimulation, forceManyBody, forceLink, forceCenter, forceCollide } from "d3-force";
 import { FCM_LAYOUT_MODES, runFcmLayout } from "./layout/fcmLayout.js";
 import ELK from "elkjs/lib/elk.bundled.js";
 import ExcelJS from "exceljs";
@@ -1527,21 +1526,6 @@ async function layoutHierarchical(concepts, edges, direction = "DOWN", figure = 
   return concepts.map((c) => ({ ...c, position: positions[c.id] || c.position }));
 }
 
-function layoutForceDirected(concepts, edges) {
-  const nodes = concepts.map((c) => ({ id: c.id, x: c.position?.x ?? Math.random() * 700, y: c.position?.y ?? Math.random() * 500 }));
-  const links = edges.map((e) => ({ source: e.source, target: e.target }));
-  const sim = forceSimulation(nodes)
-    .force("charge", forceManyBody().strength(-900))
-    .force("link", forceLink(links).id((d) => d.id).distance(170))
-    .force("center", forceCenter(420, 320))
-    .force("collide", forceCollide(65))
-    .stop();
-  for (let i = 0; i < 300; i++) sim.tick();
-  const byId = {};
-  nodes.forEach((n) => (byId[n.id] = { x: n.x, y: n.y }));
-  return concepts.map((c) => ({ ...c, position: byId[c.id] || c.position }));
-}
-
 // ============================================================================
 // Small shared UI bits
 // ============================================================================
@@ -2638,8 +2622,8 @@ function ConceptNode({ data, selected }) {
       // Focus mode: a concept outside the analysis scope stays on the canvas
       // for context but recedes, unless it is the one being worked on.
       style={figure
-        ? { background: cat.bg, color: "#0f172a", minWidth: 70, maxWidth: FIGURE_NODE_MAX_W, borderColor: selected ? "#2456d6" : cat.border, opacity: selected ? 1 : data.faded ? 0.15 : data.dimmedByHover ? 0.35 : 1 }
-        : { background: cat.bg, color: "#1e293b", minWidth: 135, maxWidth: 185, borderColor, opacity: selected ? 1 : data.faded ? 0.15 : data.dimmedByHover ? 0.35 : 1 }}
+        ? { background: cat.bg, color: "#0f172a", minWidth: 70, maxWidth: FIGURE_NODE_MAX_W, borderColor: selected ? "#2456d6" : cat.border, opacity: selected ? 1 : data.faded ? 0.15 : 1 }
+        : { background: cat.bg, color: "#1e293b", minWidth: 135, maxWidth: 185, borderColor, opacity: selected ? 1 : data.faded ? 0.15 : 1 }}
       title={figure ? `${c.name}\n${data.hasRun ? "Current activation" : "Initial activation"}: ${valueText}` : undefined}
       className={figure
         ? `group rounded-lg border-[1.5px] px-2 py-1 text-center transition-[box-shadow,opacity] ${selected ? "ring-2 ring-cobalt-300" : ""} ${isLiveTarget ? "ring-2 ring-cobalt-500" : isConnecting ? "ring-1 ring-cobalt-300" : ""}`
@@ -2740,11 +2724,14 @@ function boundaryPoint(node, otherNode) {
 // separate points. Stays inset from the corners so the arrow still visibly
 // touches the box rather than clipping its edge.
 function spreadAlongSide(pt, slot, count) {
-  if (!pt || count <= 1 || !slot) return pt;
+  if (!pt) return pt;
   const horizontal = pt.side === "t" || pt.side === "b";
   const extent = (horizontal ? pt.w : pt.h) - 24; // keep clear of the corners
   if (extent <= 0) return pt;
-  const spacing = Math.min(26, extent / count);
+  // Even a lone endpoint is kept off the rounded corners: a line whose
+  // straight path happens to hit a corner would otherwise end on the curve
+  // of the corner (or just outside it), so its arrow looked detached.
+  const spacing = count > 1 && slot ? Math.min(26, extent / count) : 0;
   // Clamp against the BOX, not against the starting point. The boundary
   // point is wherever the line to the other node crosses this face, which
   // for a diagonal approach is already close to a corner — offsetting from
@@ -2755,6 +2742,112 @@ function spreadAlongSide(pt, slot, count) {
   const moved = (horizontal ? pt.x : pt.y) + slot * spacing;
   const clamped = Math.max(lo, Math.min(hi, moved));
   return horizontal ? { ...pt, x: clamped } : { ...pt, y: clamped };
+}
+
+// Where the ray from a node's centre towards (px, py) leaves its box, kept
+// off the rounded corners like spreadAlongSide, and pushed `gap` outwards
+// along that side (the arrowhead's room). Null while the node is unmeasured.
+function exitTowards(node, px, py, gap) {
+  const w = node?.measured?.width ?? 0, h = node?.measured?.height ?? 0;
+  if (!w || !h) return null;
+  const p = safeNodePos(node);
+  const cx = p.x + w / 2, cy = p.y + h / 2;
+  const dx = px - cx, dy = py - cy;
+  if (!dx && !dy) return null;
+  const tX = dx ? (w / 2) / Math.abs(dx) : Infinity, tY = dy ? (h / 2) / Math.abs(dy) : Infinity;
+  const vertical = tY < tX;
+  const t = Math.min(tX, tY);
+  const side = vertical ? (dy >= 0 ? "b" : "t") : (dx >= 0 ? "r" : "l");
+  const pt = spreadAlongSide({ x: cx + dx * t, y: cy + dy * t, side, w, h, cx, cy }, 0, 1);
+  const out = { t: [0, -1], b: [0, 1], l: [-1, 0], r: [1, 0] }[side];
+  return { x: pt.x + out[0] * gap, y: pt.y + out[1] * gap, side };
+}
+
+function shallowEqual(a, b) {
+  if (a === b) return true;
+  if (!a || !b || typeof a !== "object" || typeof b !== "object") return false;
+  const ka = Object.keys(a), kb = Object.keys(b);
+  if (ka.length !== kb.length) return false;
+  for (const k of ka) if (a[k] !== b[k]) return false;
+  return true;
+}
+
+// Two React Flow node or edge objects that would draw the same: equal at the
+// top level, with their small nested objects (data, position, marker, style)
+// compared one level deep.
+function sameFlowItem(a, b) {
+  const ka = Object.keys(a), kb = Object.keys(b);
+  if (ka.length !== kb.length) return false;
+  for (const k of ka) {
+    const x = a[k], y = b[k];
+    if (x === y) continue;
+    if ((k === "data" || k === "position" || k === "markerEnd" || k === "style") && shallowEqual(x, y)) continue;
+    return false;
+  }
+  return true;
+}
+
+// Returns `items` with every entry that is unchanged since the last render
+// replaced by the previous render's object, keyed by id.
+function useStableItems(items) {
+  const cache = useRef(new Map());
+  return useMemo(() => {
+    const prev = cache.current, next = new Map();
+    const out = items.map((it) => {
+      const old = prev.get(it.id);
+      const keep = old && sameFlowItem(old, it) ? old : it;
+      next.set(it.id, keep);
+      return keep;
+    });
+    cache.current = next;
+    return out;
+  }, [items]);
+}
+
+// Closes a popup menu on a click outside it or on Escape.
+function useDismiss(ref, open, close) {
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e) => { if (ref.current && !ref.current.contains(e.target)) close(); };
+    const onKey = (e) => { if (e.key === "Escape") close(); };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
+  }, [ref, open, close]);
+}
+
+// One choice in a popup menu: a radio dot (or a tick box), a label and a
+// one-line explanation.
+function MenuChoice({ checked, onClick, label, hint, checkbox = false }) {
+  return (
+    <button onClick={onClick} className="w-full text-left px-3 py-1.5 hover:bg-slate-50 flex items-start gap-2" role={checkbox ? "menuitemcheckbox" : "menuitemradio"} aria-checked={checked}>
+      <span className={`mt-0.5 w-3.5 h-3.5 shrink-0 border flex items-center justify-center ${checkbox ? "rounded-sm" : "rounded-full"} ${checked ? "border-cobalt-700 bg-cobalt-700" : "border-slate-400 bg-white"}`}>
+        {checked && (checkbox ? <Check size={10} className="text-white" /> : <span className="w-1.5 h-1.5 rounded-full bg-white" />)}
+      </span>
+      <span className="min-w-0">
+        <span className="block text-xs font-medium text-neutral-900">{label}</span>
+        {hint && <span className="block text-[11.5px] leading-snug text-neutral-600">{hint}</span>}
+      </span>
+    </button>
+  );
+}
+
+// Fades for the hover highlight (see hoverCss in NetworkTabInner).
+const HOVER_FADE_BASE_CSS = ".se-canvas .react-flow__node,.se-canvas .react-flow__edge,.se-canvas [data-se-edge]{transition:opacity 120ms ease}";
+
+// Line width of a relationship: thin, print-weight lines in Figure style,
+// bolder ones in Editing style; wider for stronger weights (or, for a bundled
+// link between folded modules, for more relationships).
+function edgeStrokeWidth(figure, agg, w, selected) {
+  if (figure) return (agg ? 1.4 + Math.min(agg.count, 8) * 0.45 : 1.1 + Math.abs(w) * 2.2) + (selected ? 1 : 0);
+  return agg ? 2.5 + Math.min(agg.count, 8) * 0.9 + (selected ? 1.5 : 0) : 2.25 + Math.abs(w) * 5.5 + (selected ? 1.5 : 0);
+}
+
+// Length of a relationship's arrowhead in map pixels: clearly visible on a
+// thin line, a little longer for a stronger relationship.
+function arrowHeadLength(figure, agg, w) {
+  if (agg) return figure ? 12 : 15;
+  return figure ? 9 + 3 * Math.abs(w) : 11 + 5 * Math.abs(w);
 }
 
 const SIDE_TO_POSITION = { t: Position.Top, r: Position.Right, b: Position.Bottom, l: Position.Left };
@@ -2818,6 +2911,18 @@ function computeEdgeSlots(concepts, edges) {
   return result;
 }
 
+// Publishes the canvas zoom as a CSS variable (--se-inv-zoom = 1 / zoom) on
+// the canvas wrapper. Labels and handles that must keep a constant on-screen
+// size scale by it in CSS, so zooming and panning no longer re-render every
+// relationship on the map: only this one tiny component follows the zoom.
+function ZoomCssVar({ targetRef }) {
+  const zoom = useStore((st) => st.transform[2]);
+  useEffect(() => {
+    targetRef.current?.style.setProperty("--se-inv-zoom", String(1 / Math.max(zoom, 0.05)));
+  }, [zoom, targetRef]);
+  return null;
+}
+
 function InfluenceEdge({
   id, source, target,
   sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition,
@@ -2825,7 +2930,6 @@ function InfluenceEdge({
 }) {
   const sourceNode = useInternalNode(source);
   const targetNode = useInternalNode(target);
-  const { zoom } = useViewport();
 
   // Deliberately no `if (!sourceNode) return null` here. Returning null is
   // literally "delete this relationship from the screen", and React Flow's
@@ -2874,27 +2978,20 @@ function InfluenceEdge({
   // strength) and dashes decreasing relationships, so the sign survives a
   // greyscale print as well as colour.
   const figure = !!data?.figure;
-  const strokeWidth = figure
-    ? (agg ? 1.4 + Math.min(agg.count, 8) * 0.45 : 1.1 + Math.abs(w) * 2.2) + (selected ? 1 : 0)
-    : agg
-      ? 2.5 + Math.min(agg.count, 8) * 0.9 + (selected ? 1.5 : 0)
-      : 2.25 + Math.abs(w) * 5.5 + (selected ? 1.5 : 0);
+  const strokeWidth = edgeStrokeWidth(figure, agg, w, selected);
   const dashed = figure && (agg ? agg.positive === 0 : w < 0);
   const isOrthogonal = data?.edgeStyle === "orthogonal";
   const parallelSlot = data?.parallelSlot || 0;
   const autoBend = figure && !isOrthogonal ? (data?.autoBend || 0) : 0;
 
-  // Pull the target end back from the true boundary point so the arrowhead
-  // has room to render in the open instead of landing exactly on (and
-  // getting visually swallowed by) the node's border/background. This has
-  // to be a constant number of *screen* pixels, not flow-space units;
-  // flow-space coordinates get scaled by the viewport's zoom, so a fixed
-  // flow-space gap shrinks to sub-pixel at any zoom below ~1 (which is most
-  // of the time: fitView routinely lands well under 1x for anything but a
-  // tiny network), letting the arrow tip land back inside the node's
-  // border. Dividing by the live zoom keeps the visible gap constant.
-  const ARROW_GAP_PX = 8;
-  const ARROW_GAP = ARROW_GAP_PX / Math.max(zoom, 0.1);
+  // Pull the target end back from the true boundary point by just enough
+  // that the arrowhead ends on the node's border instead of inside it.
+  // The gap is just the arrowhead's own overshoot (its outline is stroked,
+  // so the tip pokes out by about a third of the line width), so the tip
+  // touches the box's border rather than hovering in front of it. Both the
+  // line and its arrowhead live in map space and scale together with the
+  // zoom, so this needs no zoom term.
+  const ARROW_GAP = arrowHeadLength(figure, agg, w) / 10 + 0.3;
   if (dragThis?.end !== "target") {
     // Retreat straight out of the face the arrow actually lands on. An
     // earlier version pulled back toward the source node's centre instead,
@@ -2950,8 +3047,23 @@ function InfluenceEdge({
     // Figure style: a straight line, or a single smooth bow where it has to
     // clear a box or a reciprocal partner. The label sits at the fraction
     // along it chosen by computeFigureRouting, clear of boxes and labels.
-    const s = { x: sx, y: sy }, e = { x: tx, y: ty };
-    const m = bowControlPoint(s, e, bowOffset);
+    let s = { x: sx, y: sy }, e = { x: tx, y: ty };
+    let m = bowControlPoint(s, e, bowOffset);
+    // A bowed line leaves its box heading for the curve's control point,
+    // not for the other box, so its free ends are re-aimed at that point:
+    // the line then meets each box square on its own path, and the arrowhead
+    // (which follows the curve) lands flat against the border instead of
+    // clipping a corner or floating beside it.
+    if (m && !dragThis) {
+      const sNew = !pinnedSource ? exitTowards(sourceNode, m.x, m.y, 0) : null;
+      const tNew = !pinnedTarget ? exitTowards(targetNode, m.x, m.y, ARROW_GAP) : null;
+      if (sNew || tNew) {
+        if (sNew) { sx = sNew.x; sy = sNew.y; }
+        if (tNew) { tx = tNew.x; ty = tNew.y; }
+        s = { x: sx, y: sy }; e = { x: tx, y: ty };
+        m = bowControlPoint(s, e, bowOffset);
+      }
+    }
     path = m ? `M ${sx},${sy} Q ${m.x},${m.y} ${tx},${ty}` : `M ${sx},${sy} L ${tx},${ty}`;
     const lp = figurePathPoint(s, e, m, data?.labelT ?? 0.5);
     labelX = lp.x; labelY = lp.y;
@@ -3007,7 +3119,7 @@ function InfluenceEdge({
       <BaseEdge
         id={id} path={path} markerEnd={markerEnd}
         interactionWidth={isBeingDraggedByUser ? 0 : 20}
-        style={{ stroke: color, strokeWidth, strokeDasharray: dashed ? `${3 + strokeWidth * 1.5} ${2 + strokeWidth}` : undefined, opacity: selected ? 1 : data?.faded ? 0.12 : data?.dimmedByHover ? 0.07 : (data?.baseOpacity ?? 0.92), pointerEvents: isBeingDraggedByUser ? "none" : undefined, transition: "opacity 150ms ease" }}
+        style={{ stroke: color, strokeWidth, strokeDasharray: dashed ? `${3 + strokeWidth * 1.5} ${2 + strokeWidth}` : undefined, opacity: selected ? 1 : data?.faded ? 0.12 : (data?.baseOpacity ?? 0.92), pointerEvents: isBeingDraggedByUser ? "none" : undefined, transition: "opacity 150ms ease" }}
       />
       {/* Labels off still needs a way to grab and bow the line, so a small
           handle takes the label's place once this relationship is selected
@@ -3033,7 +3145,7 @@ function InfluenceEdge({
           stays a constant, always-readable size on screen at every zoom
           level instead of shrinking to unreadable at a zoomed-out fit. */
       <EdgeLabelRenderer>
-        <div style={{ position: "absolute", transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`, zIndex: selected ? 20 : data?.faded ? 1 : 5, opacity: selected ? 1 : data?.faded ? 0.15 : data?.dimmedByHover ? 0.08 : 1 }}>
+        <div data-se-edge={id} style={{ position: "absolute", transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`, zIndex: selected ? 20 : data?.faded ? 1 : 5, opacity: selected ? 1 : data?.faded ? 0.15 : 1 }}>
           {!data?.hideLabel && figure ? (
           /* Figure style: a small plain number on a white halo, sized in
              flow space so it scales with the boxes like the rest of the
@@ -3053,7 +3165,7 @@ function InfluenceEdge({
           <div
             onMouseDown={canBend ? beginBend : undefined}
             onDoubleClick={canBend && manualBend ? (ev) => { ev.stopPropagation(); data.onBendReset?.(id); } : undefined}
-            style={{ transform: `scale(${1 / Math.max(zoom, 0.05)})`, pointerEvents: isBeingDraggedByUser ? "none" : "all", cursor: canBend ? "grab" : undefined }}
+            style={{ transform: "scale(var(--se-inv-zoom, 1))", pointerEvents: isBeingDraggedByUser ? "none" : "all", cursor: canBend ? "grab" : undefined }}
             className={`px-2 py-1 rounded text-[12.5px] font-mono font-semibold border shadow-sm ring-2 ring-white select-none ${
               agg
                 ? (agg.negative === 0 ? "bg-green-50 border-green-300 text-green-800" : agg.positive === 0 ? "bg-orange-50 border-orange-300 text-orange-800" : "bg-violet-50 border-violet-300 text-violet-800")
@@ -3070,7 +3182,7 @@ function InfluenceEdge({
             onMouseDown={beginBend}
             onDoubleClick={manualBend ? (ev) => { ev.stopPropagation(); data.onBendReset?.(id); } : undefined}
             title={`Drag to bend this relationship's line, so it clears whatever it currently overlaps${manualBend ? "; double-click to straighten it back out" : ""}`}
-            style={{ transform: `scale(${1 / Math.max(zoom, 0.05)})`, pointerEvents: isBeingDraggedByUser ? "none" : "all", cursor: "grab" }}
+            style={{ transform: "scale(var(--se-inv-zoom, 1))", pointerEvents: isBeingDraggedByUser ? "none" : "all", cursor: "grab" }}
             className="w-3.5 h-3.5 rounded-full border-2 border-white shadow ring-2 ring-white"
           >
             <div className="w-full h-full rounded-full" style={{ background: color }} />
@@ -3102,7 +3214,7 @@ function InfluenceEdge({
               // "none" is what lets the drop logic's elementFromPoint see
               // the real node/anchor beneath instead of finding a handle of
               // its own relationship.
-              style={{ transform: `scale(${1 / Math.max(zoom, 0.05)})`, pointerEvents: isBeingDraggedByUser ? "none" : "all", cursor: "crosshair" }}
+              style={{ transform: "scale(var(--se-inv-zoom, 1))", pointerEvents: isBeingDraggedByUser ? "none" : "all", cursor: "crosshair" }}
               className="w-3.5 h-3.5 rounded-full bg-white border-2 border-slate-500 shadow hover:border-slate-800"
             />
           </div>
@@ -3220,7 +3332,7 @@ function ModuleNode({ data, selected }) {
   const st = categoryStyle(data.categoryValue);
   const hidden = { width: 10, height: 10, opacity: 0, pointerEvents: "none" };
   return (
-    <div style={{ width: MODULE_NODE_W, opacity: selected ? 1 : data.faded ? 0.2 : data.dimmedByHover ? 0.35 : 1, transition: "opacity 150ms ease" }} className="relative" title="Double-click to unfold this module">
+    <div style={{ width: MODULE_NODE_W, opacity: selected ? 1 : data.faded ? 0.2 : 1, transition: "opacity 150ms ease" }} className="relative" title="Double-click to unfold this module">
       {/* stacked-card look: this block contains a whole sub-model */}
       <div className="absolute inset-0 rounded-xl border-2 translate-x-[6px] translate-y-[6px]" style={{ background: st.bg, borderColor: st.border, opacity: 0.55 }} />
       <div
@@ -3525,6 +3637,10 @@ function NetworkTabInner({
   );
   const [spaceHeld, setSpaceHeld] = useState(false);
   const [layoutMenuOpen, setLayoutMenuOpen] = useState(false);
+  const [viewMenuOpen, setViewMenuOpen] = useState(false);
+  const layoutMenuRef = useRef(null), viewMenuRef = useRef(null);
+  useDismiss(layoutMenuRef, layoutMenuOpen, () => setLayoutMenuOpen(false));
+  useDismiss(viewMenuRef, viewMenuOpen, () => setViewMenuOpen(false));
   const [layoutBusy, setLayoutBusy] = useState(false);
   // What the last smart Auto Arrange achieved (crossings, overlaps, groups,
   // feedback loops, time), shown under the toolbar until dismissed.
@@ -3594,7 +3710,8 @@ function NetworkTabInner({
   // Hides the Inspector column so the canvas takes the full width — the
   // Inspector is column, not chart, so its own state is remembered only for
   // this browser session (a fresh visit starts with it open, guide visible).
-  const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
+  // Starts hidden on a narrow window, where the map needs the width more.
+  const [inspectorCollapsed, setInspectorCollapsed] = useState(() => typeof window !== "undefined" && window.innerWidth < 1100);
   // Quick "find a concept by name" for a large model (state only here;
   // collapsedSet isn't computed until further down, so the function that
   // uses it — focusOnConceptId — is defined there too).
@@ -3706,21 +3823,6 @@ function NetworkTabInner({
       window.removeEventListener("resize", healUnmeasuredNodes);
     };
   }, [healUnmeasuredNodes]);
-  // Arrowhead size: React Flow's built-in ArrowClosed marker uses
-  // markerUnits="strokeWidth" (confirmed by inspecting the rendered SVG),
-  // meaning its on-screen size is markerSize x the edge's own strokeWidth,
-  // NOT an absolute pixel size. strokeWidth is flow-space and already scales
-  // correctly with viewport zoom through the normal SVG transform, the same
-  // way the edge lines themselves do, so this needs no zoom term of its own
-  // (an earlier version divided this by zoom too, double-compensating on
-  // top of the marker's own strokeWidth-relative scaling, which combined
-  // with weight-driven strokeWidth 1.5-7.5 to make strong/selected edges'
-  // arrowheads render many times too large). A small constant here lets the
-  // marker scale proportionally with edge weight/thickness as intended,
-  // without dominating the visual. Enlarged alongside the thicker edge
-  // strokes so arrowheads stay a clearly visible, deliberate focal point
-  // against the smaller, pastel-category nodes.
-  const markerSize = figureStyle ? 5.5 : 9;
 
   // Nodes touched by the currently-selected edge — passed into their
   // ConceptNode as data.showAnchors so selecting an edge reveals both its
@@ -3860,8 +3962,7 @@ function NetworkTabInner({
 
   // Which nodes/edges to highlight while a node is hovered: the node itself
   // and every edge (plain or bundled) touching it, plus the neighbours those
-  // edges lead to. Everything else recedes (see the faded/dimmedByHover
-  // handling on the node and edge components below).
+  // edges lead to. Everything else recedes (see hoverCss below).
   const hoverConnected = useMemo(() => {
     if (!hoverNodeId) return null;
     const nodeIds = new Set([hoverNodeId]);
@@ -3875,6 +3976,19 @@ function NetworkTabInner({
     });
     return { nodeIds, edgeIds };
   }, [hoverNodeId, displayEdges]);
+  // The highlight itself is pure CSS: one small style rule that fades every
+  // card and line except the hovered card's own neighbourhood. Nothing on
+  // the map re-renders when the pointer moves from card to card.
+  const hoverCss = useMemo(() => {
+    if (!hoverConnected) return "";
+    const q = (id) => String(id).replace(/["\\]/g, "\\$&");
+    const keepNodes = [...hoverConnected.nodeIds].map((id) => `:not([data-id="${q(id)}"])`).join("");
+    const keepEdges = [...hoverConnected.edgeIds].map((id) => `:not([data-id="${q(id)}"])`).join("");
+    const keepLabels = [...hoverConnected.edgeIds].map((id) => `:not([data-se-edge="${q(id)}"])`).join("");
+    return `.se-canvas .react-flow__node:not(.react-flow__node-moduleFrame):not(.selected)${keepNodes}{opacity:.35}` +
+      `.se-canvas .react-flow__edge:not(.selected)${keepEdges}{opacity:.08}` +
+      `.se-canvas [data-se-edge]${keepLabels}{opacity:.1}`;
+  }, [hoverConnected]);
   // Past a point, hundreds of relationships at the default opacity read as a
   // solid mass rather than individual lines; easing the baseline back once a
   // model is this dense keeps overlapping arrows legible as a wash of
@@ -3902,7 +4016,6 @@ function NetworkTabInner({
       showAnchors: !!selectedEdgeNodeIds?.has(c.id),
       pinnedTargets: pinnedTargetsByNode[c.id] || EMPTY_ARRAY,
       faded: !!fadedNodeIds?.has(c.id),
-      dimmedByHover: !!hoverConnected && !hoverConnected.nodeIds.has(c.id),
       // Which of THIS concept's own 12 anchors a relationship end being
       // dragged (see startReconnectDrag) would snap to if let go right now.
       snapAnchorId: dragReconnect?.snapNodeId === c.id ? dragReconnect.snapHandleId : null,
@@ -3913,9 +4026,9 @@ function NetworkTabInner({
       reconnectDragActive: !!dragReconnect,
     },
     selected: selected?.kind === "concept" && selected.id === c.id,
-  })), [displayConcepts, animPositions, selected, hasRun, figureStyle, selectedEdgeNodeIds, pinnedTargetsByNode, fadedNodeIds, hoverConnected, dragReconnect]);
+  })), [displayConcepts, animPositions, selected, hasRun, figureStyle, selectedEdgeNodeIds, pinnedTargetsByNode, fadedNodeIds, dragReconnect]);
 
-  const rfNodes = useMemo(() => [
+  const rfNodesRaw = useMemo(() => [
     ...frames.map((f) => ({
       id: f.id, type: "moduleFrame", position: { x: f.x, y: f.y },
       data: { ...f, faded: !!fadedNodeIds && f.memberIds.every((id) => fadedNodeIds.has(id)), onCollapse: () => collapseModule(f.key), onOpen: () => openModuleAsModel(f.key) },
@@ -3927,13 +4040,12 @@ function NetworkTabInner({
       id: m.id, type: "module", position: m.position,
       data: {
         ...m, faded: !!fadedNodeIds && m.memberIds.every((id) => fadedNodeIds.has(id)),
-        dimmedByHover: !!hoverConnected && !m.memberIds.some((id) => hoverConnected.nodeIds.has(id)) && !hoverConnected.nodeIds.has(m.id),
         onExpand: () => expandModule(m.key), onOpen: () => openModuleAsModel(m.key),
       },
       selected: selected?.kind === "module" && selected.id === m.key,
       deletable: false, connectable: false,
     })),
-  ], [frames, conceptRfNodes, moduleBlocks, fadedNodeIds, selected, collapseModule, expandModule, openModuleAsModel, hoverConnected]);
+  ], [frames, conceptRfNodes, moduleBlocks, fadedNodeIds, selected, collapseModule, expandModule, openModuleAsModel]);
 
   // Distinct categories actually in use, for the color-coding legend below
   // the canvas — only categories someone has actually set are listed, same
@@ -4168,12 +4280,11 @@ function NetworkTabInner({
     window.addEventListener("mouseup", onUp);
   }, [commitHistory, updateEdge, rf, beginEdgeDragUX, endEdgeDragUX]);
 
-  const rfEdges = useMemo(() => displayEdges.map((e) => {
+  const rfEdgesRaw = useMemo(() => displayEdges.map((e) => {
     const h = resolvedHandles[e.id];
     const slot = edgeSlots[e.id] || {};
     const agg = e.aggregate || null;
     const faded = agg ? !!fadedEdgeIds && agg.edgeIds.every((id) => fadedEdgeIds.has(id)) : !!fadedEdgeIds?.has(e.id);
-    const dimmedByHover = !!hoverConnected && !hoverConnected.edgeIds.has(e.id);
     return {
       id: e.id, source: e.source, target: e.target, type: "influence",
       sourceHandle: h.sourceHandle, targetHandle: h.targetHandle,
@@ -4182,9 +4293,14 @@ function NetworkTabInner({
         figure: figureStyle, autoBend: figureRouting[e.id]?.autoBend || 0, labelT: figureRouting[e.id]?.labelT ?? 0.5,
         sourceSlot: slot.sourceSlot ?? 0, sourceCount: slot.sourceCount ?? 1,
         targetSlot: slot.targetSlot ?? 0, targetCount: slot.targetCount ?? 1,
-        faded, dimmedByHover, baseOpacity: edgeBaseOpacity, hideLabel: hideEdgeLabels,
-        onBendDragStart: startBendDrag, onBendReset: resetBend, dragBend,
-        dragReconnect, onReconnectDragStart: startReconnectDrag,
+        faded, baseOpacity: edgeBaseOpacity, hideLabel: hideEdgeLabels,
+        onBendDragStart: startBendDrag, onBendReset: resetBend,
+        // only the relationship actually being dragged gets the live drag
+        // state, so every other relationship keeps identical props and is
+        // not re-rendered on each frame of the gesture
+        dragBend: dragBend?.edgeId === e.id ? dragBend : null,
+        dragReconnect: dragReconnect?.edgeId === e.id ? dragReconnect : null,
+        onReconnectDragStart: startReconnectDrag,
       },
       // Every one of these tiers stays BELOW a concept box's own resting
       // zIndex (0 unselected, higher once selected — React Flow's, not
@@ -4202,11 +4318,25 @@ function NetworkTabInner({
       // all *and* goes click-through (see isBeingDraggedByUser above) —
       // raised only for its own visibility while aimed, never competing
       // with the node it's being dropped onto.
-      zIndex: dragReconnect?.edgeId === e.id || dragBend?.edgeId === e.id ? 10 : faded ? -4 : dimmedByHover ? -4 : hoverConnected ? -2 : -3,
+      zIndex: dragReconnect?.edgeId === e.id || dragBend?.edgeId === e.id ? 10 : faded ? -4 : -3,
       selected: agg ? selected?.kind === "aggregate" && selected.id === e.id : selected?.kind === "edge" && selected.id === e.id,
-      markerEnd: { type: MarkerType.ArrowClosed, color: agg ? aggregateColor(agg) : e.weight >= 0 ? "#16a34a" : "#ea580c", width: markerSize, height: markerSize },
+      markerEnd: (() => {
+        // React Flow sizes an arrowhead as a multiple of its line's width, so
+        // a thin line got a tiny, barely visible head. The multiple is chosen
+        // per relationship to give a head of a set length instead.
+        const isSel = agg ? selected?.kind === "aggregate" && selected.id === e.id : selected?.kind === "edge" && selected.id === e.id;
+        const size = (4 * arrowHeadLength(figureStyle, agg, e.weight)) / edgeStrokeWidth(figureStyle, agg, e.weight, isSel);
+        return { type: MarkerType.ArrowClosed, color: agg ? aggregateColor(agg) : e.weight >= 0 ? "#16a34a" : "#ea580c", width: size, height: size };
+      })(),
     };
-  }), [displayEdges, selected, edgeStyle, parallelSlots, figureStyle, figureRouting, markerSize, resolvedHandles, edgeSlots, fadedEdgeIds, hoverConnected, edgeBaseOpacity, hideEdgeLabels, startBendDrag, resetBend, dragBend, dragReconnect, startReconnectDrag]);
+  }), [displayEdges, selected, edgeStyle, parallelSlots, figureStyle, figureRouting, resolvedHandles, edgeSlots, fadedEdgeIds, edgeBaseOpacity, hideEdgeLabels, startBendDrag, resetBend, dragBend, dragReconnect, startReconnectDrag]);
+
+  // Hand React Flow the very same node and relationship objects whenever
+  // nothing about them changed, so hovering, selecting or dragging one card
+  // re-renders only the cards and lines it actually affects instead of the
+  // whole map (React Flow skips any node or edge whose object is unchanged).
+  const rfNodes = useStableItems(rfNodesRaw);
+  const rfEdges = useStableItems(rfEdgesRaw);
 
   const onNodesChange = useCallback((changes) => {
     changes.forEach((ch) => {
@@ -4323,6 +4453,10 @@ function NetworkTabInner({
   // A concept that was just created gets its name field focused and selected,
   // so the user can simply start typing its name.
   const selectedConceptId = selected?.kind === "concept" ? selected.id : null;
+  useEffect(() => {
+    if (focusNameId && inspectorCollapsed) setInspectorCollapsed(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusNameId]);
   useEffect(() => {
     if (!focusNameId || selectedConceptId !== focusNameId) return;
     const el = nameInputRef.current;
@@ -4463,7 +4597,6 @@ function NetworkTabInner({
       else if (kind === "circular") next = spreadOverlappingCards(layoutCircular(concepts), figureStyle);
       else if (kind === "hier-td") next = await layoutHierarchical(concepts, edges, "DOWN", figureStyle);
       else if (kind === "hier-lr") next = await layoutHierarchical(concepts, edges, "RIGHT", figureStyle);
-      else if (kind === "force") next = spreadOverlappingCards(layoutForceDirected(concepts, edges), figureStyle);
       else if (kind === "modules") next = spreadOverlappingCards(layoutByModule(concepts), figureStyle);
       else return;
       if (!kind.startsWith("fcm:")) setLayoutReport(null);
@@ -4524,101 +4657,84 @@ function NetworkTabInner({
   return (
     <div className="grid gap-4 h-[calc(100vh-260px)] min-h-[640px]" style={{ gridTemplateColumns: inspectorCollapsed ? "1fr" : "1fr 280px" }}>
       <div className="bg-white rounded-lg border border-slate-200 p-3 flex flex-col relative">
+        {/* One row, grouped by what you are doing: build (add, undo, redo),
+            tidy (Arrange), look (View, and which part of a modular model is
+            unfolded), find, and export. Every switch that only changes how
+            the map is drawn lives in the View menu instead of its own row of
+            buttons. */}
         <div className="flex items-center gap-2 mb-2 flex-wrap">
-          <Btn variant="outline" onClick={() => addVisibleConcept({ x: 200 + Math.random() * 200, y: 150 + Math.random() * 150 })}>
+          <Btn variant="outline" onClick={() => addVisibleConcept({ x: 200 + Math.random() * 200, y: 150 + Math.random() * 150 })} title="Add a concept (or double-click empty space on the map)">
             <Plus size={14} />Add concept
           </Btn>
           <Btn variant="outline" onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)"><Undo2 size={14} /></Btn>
           <Btn variant="outline" onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Y)"><Redo2 size={14} /></Btn>
           <div className="w-px h-5 bg-slate-200 mx-0.5" />
-          <div className="relative">
-            <Btn variant="outline" onClick={() => setLayoutMenuOpen((v) => !v)} disabled={layoutBusy}>
-              <Maximize2 size={14} />{layoutBusy ? "Arranging..." : "Auto Arrange"}<ChevronDown size={12} />
+          <div className="relative" ref={layoutMenuRef}>
+            <Btn variant="outline" onClick={() => { setViewMenuOpen(false); setLayoutMenuOpen((v) => !v); }} disabled={layoutBusy} title="Arrange the concepts automatically">
+              <Maximize2 size={14} />{layoutBusy ? "Arranging..." : "Arrange"}<ChevronDown size={12} />
             </Btn>
             {layoutMenuOpen && (
-              <div className="absolute z-30 mt-1 w-56 bg-white border border-slate-200 rounded-md shadow-lg py-1">
+              <div className="absolute z-30 mt-1 w-72 bg-white border border-slate-200 rounded-md shadow-lg py-1">
                 <p className="px-3 pt-1 pb-0.5 text-[11.5px] font-semibold uppercase tracking-wide text-neutral-600">Smart layouts</p>
                 {FCM_LAYOUT_MODES.map((m) => (
-                  <button key={m.id} onClick={() => runLayout(`fcm:${m.id}`)} title={m.hint} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center gap-2">
-                    <Sparkles size={13} />{m.label}{m.id === "readable" ? <span className="ml-auto text-[11.5px] text-neutral-600">default</span> : null}
+                  <button key={m.id} onClick={() => runLayout(`fcm:${m.id}`)} className="w-full text-left px-3 py-1.5 hover:bg-slate-50 flex items-start gap-2">
+                    <Sparkles size={13} className="mt-0.5 shrink-0 text-cobalt-700" />
+                    <span className="min-w-0">
+                      <span className="block text-xs font-medium text-neutral-900">{m.label}{m.id === "readable" ? <span className="ml-1.5 text-[11.5px] font-normal text-neutral-600">(recommended)</span> : null}</span>
+                      <span className="block text-[11.5px] leading-snug text-neutral-600">{m.hint}</span>
+                    </span>
                   </button>
                 ))}
                 <div className="my-1 border-t border-slate-200" />
                 <p className="px-3 pt-0.5 pb-0.5 text-[11.5px] font-semibold uppercase tracking-wide text-neutral-600">Classic</p>
-                <button onClick={() => runLayout("hier-td")} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center gap-2"><GitBranch size={13} />Hierarchical (top-down)</button>
-                <button onClick={() => runLayout("hier-lr")} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center gap-2"><GitBranch size={13} className="rotate-90" />Left-to-right causal chain</button>
-                <button onClick={() => runLayout("circular")} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center gap-2"><LayoutGrid size={13} />Circular</button>
-                <button onClick={() => runLayout("force")} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center gap-2"><Shuffle size={13} />Force-directed</button>
-                <button onClick={() => runLayout("modules")} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center gap-2" title="Give every module its own area, so modules read as separate sub-models"><Layers size={13} />Grouped by module</button>
+                <button onClick={() => runLayout("hier-td")} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center gap-2"><GitBranch size={13} />Layered, top to bottom</button>
+                <button onClick={() => runLayout("hier-lr")} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center gap-2"><GitBranch size={13} className="rotate-90" />Layered, left to right</button>
+                <button onClick={() => runLayout("circular")} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center gap-2"><LayoutGrid size={13} />Circle</button>
+                <button onClick={() => runLayout("modules")} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center gap-2" title="Give every module its own area, so modules read as separate sub-models"><Layers size={13} />One area per module</button>
               </div>
             )}
           </div>
-          <div className="flex items-center border border-slate-300 rounded-md overflow-hidden text-xs" role="group" aria-label="Map style">
-            <button
-              onClick={() => setFigureStyle(true)}
-              title="Figure style: name-only cards, thin lines (dashed for decreasing), lines routed around cards and weight labels kept clear of each other, ready to export as a paper figure"
-              className={`px-2.5 py-1.5 ${figureStyle ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}
-            >Figure</button>
-            <button
-              onClick={() => setFigureStyle(false)}
-              title="Editing style: larger cards that also show each concept's activation"
-              className={`px-2.5 py-1.5 border-l border-slate-300 ${!figureStyle ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}
-            >Editing</button>
+          <div className="relative" ref={viewMenuRef}>
+            <Btn variant="outline" onClick={() => { setLayoutMenuOpen(false); setViewMenuOpen((v) => !v); }} title="How the map is drawn">
+              <Eye size={14} />View<ChevronDown size={12} />
+            </Btn>
+            {viewMenuOpen && (
+              <div className="absolute z-30 mt-1 w-72 bg-white border border-slate-200 rounded-md shadow-lg py-1 text-xs">
+                <p className="px-3 pt-1 pb-0.5 text-[11.5px] font-semibold uppercase tracking-wide text-neutral-600">Style</p>
+                <MenuChoice checked={figureStyle} onClick={() => setFigureStyle(true)} label="Figure" hint="Clean, name-only cards; ready for a paper or slide" />
+                <MenuChoice checked={!figureStyle} onClick={() => setFigureStyle(false)} label="Editing" hint="Larger cards that also show each concept's value" />
+                <p className="px-3 pt-1.5 pb-0.5 text-[11.5px] font-semibold uppercase tracking-wide text-neutral-600">Lines</p>
+                <MenuChoice checked={edgeStyle === "curved"} onClick={() => setEdgeStyle("curved")} label={figureStyle ? "Direct" : "Curved"} hint={figureStyle ? "Straight, bending only around cards in the way" : "Gently curved"} />
+                <MenuChoice checked={edgeStyle === "orthogonal"} onClick={() => setEdgeStyle("orthogonal")} label="Right angles" hint="Horizontal and vertical segments" />
+                <MenuChoice checkbox checked={!hideEdgeLabels} onClick={() => setHideEdgeLabels((v) => !v)} label="Show weights" hint="The number on each relationship" />
+                {setDisplayMode && (
+                  <>
+                    <p className="px-3 pt-1.5 pb-0.5 text-[11.5px] font-semibold uppercase tracking-wide text-neutral-600">Outside the analysis scope</p>
+                    <MenuChoice checked={displayMode === "hide"} onClick={() => setDisplayMode("hide")} label="Hide" hint="Show only the concepts being analysed" />
+                    <MenuChoice checked={displayMode === "focus"} onClick={() => setDisplayMode("focus")} label="Fade" hint="Keep everything, fade what is not analysed" />
+                  </>
+                )}
+              </div>
+            )}
           </div>
-          <div className="flex items-center border border-slate-300 rounded-md overflow-hidden text-xs">
-            <button onClick={() => setEdgeStyle("curved")} title={figureStyle ? "Straight lines, bowed only where they would cross a card or overlap a reciprocal relationship" : undefined} className={`px-2.5 py-1.5 ${edgeStyle === "curved" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}>{figureStyle ? "Direct" : "Curved"}</button>
-            <button onClick={() => setEdgeStyle("orthogonal")} className={`px-2.5 py-1.5 border-l border-slate-300 ${edgeStyle === "orthogonal" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}>Orthogonal</button>
-          </div>
-          <button
-            onClick={() => setHideEdgeLabels((v) => !v)}
-            title={hideEdgeLabels ? "Show each relationship's numeric weight as a label again" : "Hide the numeric weight labels, so each relationship is shown only by its arrow's color (increase/decrease) and width (strength)"}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border text-xs ${hideEdgeLabels ? "bg-slate-900 text-white border-slate-900" : "bg-white text-neutral-900 border-slate-300 hover:bg-slate-50"}`}
-          >
-            {hideEdgeLabels ? <EyeOff size={13} /> : <Eye size={13} />}Labels
-          </button>
-          {(setCollapsedModules && moduleKeysInView.length >= 2) || setDisplayMode ? <div className="w-px h-5 bg-slate-200 mx-0.5" /> : null}
           {setCollapsedModules && moduleKeysInView.length >= 2 && (
-            <div className="flex items-center border border-slate-300 rounded-md overflow-hidden text-xs" role="group" aria-label="Model structure">
-              <button
-                onClick={() => showStructure("full")}
-                title="Full model: every module unfolded, every concept shown"
-                className={`px-2.5 py-1.5 ${structure === "full" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}
-              >Full model</button>
-              <button
-                onClick={() => showStructure("overview")}
-                title="Module overview: every module folded into one block, showing how the modules are linked"
-                className={`px-2.5 py-1.5 border-l border-slate-300 flex items-center gap-1 ${structure === "overview" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}
-              ><Layers size={12} />Module overview</button>
+            <label className="flex items-center gap-1.5 border border-slate-300 rounded-md pl-2 bg-white text-xs" title="Show the full model, every module folded into one block, or one module opened inside the others">
+              <Layers size={13} className="text-neutral-700 shrink-0" />
               <select
-                value={structure.startsWith("m:") ? structure : ""}
-                onChange={(e) => e.target.value && showStructure(e.target.value)}
-                title="Module view: open one module as its own sub-model, with the other modules folded around it"
-                className={`px-1.5 py-1.5 border-l border-slate-300 text-xs ${structure.startsWith("m:") ? "bg-slate-900 text-white" : "bg-white text-neutral-900"}`}
+                value={structure === "custom" ? "custom" : structure}
+                onChange={(e) => e.target.value !== "custom" && showStructure(e.target.value)}
+                className="py-1.5 pr-1.5 bg-transparent text-xs text-neutral-900 outline-none"
               >
-                <option value="">{structure === "custom" ? "Custom folding" : "Module view\u2026"}</option>
-                {folded.modules.map((m) => <option key={m.key} value={`m:${m.key}`}>{m.label}</option>)}
+                <option value="full">Full model</option>
+                <option value="overview">Module overview</option>
+                <optgroup label="Open one module">
+                  {folded.modules.map((m) => <option key={m.key} value={`m:${m.key}`}>{m.label}</option>)}
+                </optgroup>
+                {structure === "custom" && <option value="custom" disabled>Custom folding</option>}
               </select>
-            </div>
+            </label>
           )}
-          {setDisplayMode && (
-            <div className="flex items-center border border-slate-300 rounded-md overflow-hidden text-xs" role="group" aria-label="Out-of-scope display">
-              <button
-                onClick={() => setDisplayMode("hide")}
-                title="Hide mode: concepts and relationships outside the analysis scope are removed from the canvas"
-                className={`px-2.5 py-1.5 flex items-center gap-1 ${displayMode === "hide" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}
-              ><EyeOff size={12} />Hide</button>
-              <button
-                onClick={() => setDisplayMode("focus")}
-                title="Focus mode: everything stays on the canvas; concepts and relationships outside the analysis scope are faded for context"
-                className={`px-2.5 py-1.5 border-l border-slate-300 flex items-center gap-1 ${displayMode === "focus" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}
-              ><Eye size={12} />Focus</button>
-            </div>
-          )}
-          <Btn variant="outline" onClick={exportDiagram} disabled={exportingPng} title="Download the current diagram exactly as shown (layout, colors, zoom/pan) as a PNG image">
-            <Download size={14} />{exportingPng ? "Exporting..." : "Export PNG"}
-          </Btn>
-          <div className="w-px h-5 bg-slate-200 mx-0.5" />
-          <div className="relative">
+          <div className="relative flex-1 min-w-[140px] max-w-[260px]">
             <div className="flex items-center gap-1 border border-slate-300 rounded-md px-2 py-1 bg-white">
               <Search size={13} className="text-neutral-600 shrink-0" />
               <input
@@ -4631,7 +4747,7 @@ function NetworkTabInner({
                   if (e.key === "Escape") { setSearchOpen(false); e.currentTarget.blur(); }
                 }}
                 placeholder="Find a concept..."
-                className="text-xs outline-none w-36 placeholder:text-neutral-500"
+                className="text-xs outline-none w-full min-w-0 placeholder:text-neutral-500"
               />
               {searchQuery && (
                 <button onClick={() => setSearchQuery("")} className="text-neutral-500 hover:text-neutral-900" title="Clear search">
@@ -4661,16 +4777,11 @@ function NetworkTabInner({
           </div>
           <span className="ml-auto flex items-center gap-2">
             {spaceHeld && <span className="text-[12.5px] text-cobalt-700 font-medium">Pan mode (space held)</span>}
-            <Info size={13} className="text-neutral-500 shrink-0" title="Drag any side of a node to connect it (top, right, bottom, or left); double-click empty space to add a concept. Hover a node to trace only its own connections." />
-            {/* "Collapse"/"Expand", not "Hide"/"Show" — this toolbar already
-                has a "Hide" for out-of-scope display mode and a "Hide X"
-                per module chip above; a third, unrelated "Hide" button
-                right next to them read as one more of the same choice
-                instead of the distinct "close the side panel" action it
-                actually is. */}
-            <Btn variant="outline" onClick={() => setInspectorCollapsed((v) => !v)} title={inspectorCollapsed ? "Expand the Inspector panel" : "Collapse the Inspector panel, so the map fills the width"}>
-              {inspectorCollapsed ? <PanelLeftClose size={14} className="rotate-180" /> : <PanelLeftClose size={14} />}
-              {inspectorCollapsed ? "Expand panel" : "Collapse panel"}
+            <Btn variant="outline" onClick={exportDiagram} disabled={exportingPng} title={figureStyle ? "Download the whole map as a high-resolution PNG image" : "Download the map exactly as shown (layout, colors, zoom) as a PNG image"}>
+              <Download size={14} />{exportingPng ? "Exporting..." : "Export PNG"}
+            </Btn>
+            <Btn variant="outline" onClick={() => setInspectorCollapsed((v) => !v)} title={inspectorCollapsed ? "Show the Inspector panel" : "Hide the Inspector panel, so the map fills the width"}>
+              <PanelLeftClose size={14} className={inspectorCollapsed ? "rotate-180" : ""} />
             </Btn>
           </span>
         </div>
@@ -4710,7 +4821,7 @@ function NetworkTabInner({
         )}
 
         <div
-          ref={wrapperRef} data-chart="network-graph" className="relative flex-1 rounded-lg overflow-hidden border border-slate-200" onWheelCapture={onWheelCapture}
+          ref={wrapperRef} data-chart="network-graph" className="se-canvas relative flex-1 rounded-lg overflow-hidden border border-slate-200" onWheelCapture={onWheelCapture}
           onDoubleClick={(e) => {
             // Only add a concept when the double-click lands on empty canvas:
             // not on a node, edge, handle, or a UI control like the minimap.
@@ -4729,6 +4840,7 @@ function NetworkTabInner({
               </div>
             </div>
           )}
+          <style>{HOVER_FADE_BASE_CSS + hoverCss}</style>
           <ErrorBoundary label="the network canvas">
             <ReactFlow
               nodes={rfNodes}
@@ -4760,6 +4872,7 @@ function NetworkTabInner({
             >
               {!figureStyle && <Background gap={18} size={1} />}
               <Controls showInteractive={false} />
+              <ZoomCssVar targetRef={wrapperRef} />
               <MiniMap pannable zoomable nodeColor={(n) => (n.type === "moduleFrame" ? "transparent" : n.type === "module" ? categoryStyle(n.data?.categoryValue).border : categoryStyle(n.data?.concept?.category).bg)} className="!bg-white" />
             </ReactFlow>
           </ErrorBoundary>
