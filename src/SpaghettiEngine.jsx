@@ -2461,8 +2461,35 @@ const FIGURE_LABEL_W = 38, FIGURE_LABEL_H = 16;
 // along it (as a fraction) where its weight label sits clear of boxes and
 // of labels already placed. Stronger relationships pick their label spot
 // first. Pure and top-level; rects maps node id -> { x, y, w, h } (top-left).
+// A uniform grid over boxes, so "which boxes are near this point or this
+// rectangle" looks at a handful of boxes instead of all of them.
+function makeBoxGrid(cell = 120) {
+  const cells = new Map();
+  const key = (i, j) => i * 1e6 + j;
+  const range = (lo, hi) => [Math.floor(lo / cell), Math.floor(hi / cell)];
+  return {
+    add(item, x, y, w, h) {
+      const [i0, i1] = range(x, x + w), [j0, j1] = range(y, y + h);
+      for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
+        const k = key(i, j);
+        if (!cells.has(k)) cells.set(k, []);
+        cells.get(k).push(item);
+      }
+    },
+    at(x, y) { return cells.get(key(Math.floor(x / cell), Math.floor(y / cell))) || EMPTY_ARRAY; },
+    near(x, y, w, h) {
+      const [i0, i1] = range(x, x + w), [j0, j1] = range(y, y + h);
+      const out = new Set();
+      for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) (cells.get(key(i, j)) || EMPTY_ARRAY).forEach((it) => out.add(it));
+      return out;
+    },
+  };
+}
+
 function computeFigureRouting(rects, edges, parallelSlots) {
-  const boxes = [...rects.entries()];
+  const PAD = 8;
+  const grid = makeBoxGrid();
+  rects.forEach((r, id) => grid.add({ id, r }, r.x - PAD, r.y - PAD, r.w + 2 * PAD, r.h + 2 * PAD));
   const inBox = (p, r, pad) => p.x > r.x - pad && p.x < r.x + r.w + pad && p.y > r.y - pad && p.y < r.y + r.h + pad;
   const geometry = {};
   edges.forEach((e) => {
@@ -2479,7 +2506,7 @@ function computeFigureRouting(rects, edges, parallelSlots) {
       let hits = 0;
       for (let k = 1; k < 20; k++) {
         const p = figurePathPoint(s, t, m, k / 20);
-        for (const [id, r] of boxes) if (id !== e.source && id !== e.target && inBox(p, r, 8)) hits++;
+        for (const { id, r } of grid.at(p.x, p.y)) if (id !== e.source && id !== e.target && inBox(p, r, PAD)) hits++;
       }
       const cost = hits * 1000 + Math.abs(extra);
       if (cost < bestCost) { bestCost = cost; best = extra; }
@@ -2488,7 +2515,7 @@ function computeFigureRouting(rects, edges, parallelSlots) {
     geometry[e.id] = { s, t, m: bowControlPoint(s, t, base + best), autoBend: best };
   });
 
-  const placed = [];
+  const placed = makeBoxGrid(60);
   const overlap = (p, q) => Math.max(0, Math.min(p.x + p.w, q.x + q.w) - Math.max(p.x, q.x)) * Math.max(0, Math.min(p.y + p.h, q.y + q.h) - Math.max(p.y, q.y));
   const routing = {};
   [...edges].sort((x, y) => Math.abs(y.weight) - Math.abs(x.weight) || x.id.localeCompare(y.id)).forEach((e) => {
@@ -2499,12 +2526,12 @@ function computeFigureRouting(rects, edges, parallelSlots) {
       const p = figurePathPoint(g.s, g.t, g.m, T);
       const box = { x: p.x - FIGURE_LABEL_W / 2, y: p.y - FIGURE_LABEL_H / 2, w: FIGURE_LABEL_W, h: FIGURE_LABEL_H };
       let cost = Math.abs(T - 0.5) * 40;
-      for (const [, r] of boxes) cost += overlap(box, { x: r.x - 3, y: r.y - 3, w: r.w + 6, h: r.h + 6 }) * 4;
-      for (const q of placed) cost += overlap(box, q) * 3;
+      grid.near(box.x, box.y, box.w, box.h).forEach(({ r }) => { cost += overlap(box, { x: r.x - 3, y: r.y - 3, w: r.w + 6, h: r.h + 6 }) * 4; });
+      placed.near(box.x, box.y, box.w, box.h).forEach((q) => { cost += overlap(box, q) * 3; });
       if (cost < bestCost) { bestCost = cost; bestT = T; bestBox = box; }
       if (cost === 0) break;
     }
-    if (bestBox) placed.push(bestBox);
+    if (bestBox) placed.add(bestBox, bestBox.x, bestBox.y, bestBox.w, bestBox.h);
     routing[e.id] = { autoBend: g.autoBend, labelT: bestT };
   });
   return routing;
@@ -2576,10 +2603,30 @@ function ConceptNode({ data, selected }) {
   // discovered by trial and error. Selectors (not the whole connection
   // object) so a node only re-renders on the frames where ITS OWN read of
   // that state actually changes, not every pointer move of the drag.
-  const isConnecting = useConnection((s) => s.inProgress);
-  const isConnectTarget = useConnection((s) => s.inProgress && s.toNode?.id === c.id);
-  const connectTargetHandleId = useConnection((s) => (s.inProgress && s.toNode?.id === c.id) ? (s.toHandle?.id ?? null) : null);
+  // One selector, folded into a short string, instead of three: every
+  // subscription runs on every change in React Flow's store (each frame of
+  // any drag), so on a large map fewer of them is a measurable saving.
+  const conn = useConnection((s) => (!s.inProgress ? "" : s.toNode?.id === c.id ? `T:${s.toHandle?.id ?? ""}` : "C"));
+  const isConnecting = conn !== "";
+  const isConnectTarget = conn.startsWith("T:");
+  const connectTargetHandleId = isConnectTarget ? (conn.slice(2) || null) : null;
   const pinnedTargets = data.pinnedTargets || EMPTY_ARRAY;
+  const pinnedSources = data.pinnedSources || EMPTY_ARRAY;
+  // The twelve connection dots are mounted only while they can be used: the
+  // card is hovered or selected, one of its relationships is selected, or a
+  // relationship is being drawn or re-attached. Every mounted dot is a React
+  // Flow handle with its own store subscriptions, and 13 per card made up
+  // most of the work in each frame of a drag on a large map. At rest a card
+  // keeps only the few invisible handles its relationships are attached to.
+  const [hovered, setHovered] = useState(false);
+  const live = hovered || selected || isConnecting || !!data.showAnchors || !!data.reconnectDragActive;
+  const updateNodeInternals = useUpdateNodeInternals();
+  const firstLive = useRef(true);
+  useEffect(() => {
+    if (firstLive.current) { firstLive.current = false; if (!live) return; }
+    updateNodeInternals(c.id); // let React Flow measure the dots that just (un)mounted
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live]);
   // Selection ring color overrides the category border; both are applied via
   // inline style (not a Tailwind border-color class) since the unselected
   // color is data-driven and inline style always wins over a class anyway,
@@ -2605,13 +2652,14 @@ function ConceptNode({ data, selected }) {
   // "reveal anchor points" never depends on the pointer happening to
   // already be over this exact node.
   const anchorsProminent = selected || isConnecting || data.showAnchors || data.reconnectDragActive;
+  const hide = { opacity: 0, pointerEvents: "none" };
   // Figure style: the card shrinks to the concept name alone and the anchor
   // dots stay invisible until the card is hovered or being connected, so a
   // resting map reads as a clean diagram rather than an editing surface.
   const figure = !!data.figure;
   const dot = (anchorId) => {
     const isLive = anchorId === liveTargetAnchorId;
-    const resting = figure ? "opacity-0 group-hover:opacity-60" : "opacity-25 group-hover:opacity-60";
+    const resting = "opacity-60";
     return `!border !border-white transition-all hover:!scale-125 hover:!opacity-100 ${
       isLive ? "!bg-cobalt-500 !scale-150 !opacity-100" : `!bg-slate-500 ${anchorsProminent ? "opacity-80" : resting}`
     }`;
@@ -2625,6 +2673,8 @@ function ConceptNode({ data, selected }) {
         ? { background: cat.bg, color: "#0f172a", minWidth: 70, maxWidth: FIGURE_NODE_MAX_W, borderColor: selected ? "#2456d6" : cat.border, opacity: selected ? 1 : data.faded ? 0.15 : 1 }
         : { background: cat.bg, color: "#1e293b", minWidth: 135, maxWidth: 185, borderColor, opacity: selected ? 1 : data.faded ? 0.15 : 1 }}
       title={figure ? `${c.name}\n${data.hasRun ? "Current activation" : "Initial activation"}: ${valueText}` : undefined}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       className={figure
         ? `group rounded-lg border-[1.5px] px-2 py-1 text-center transition-[box-shadow,opacity] ${selected ? "ring-2 ring-cobalt-300" : ""} ${isLiveTarget ? "ring-2 ring-cobalt-500" : isConnecting ? "ring-1 ring-cobalt-300" : ""}`
         : `group rounded-xl border-2 px-2.5 py-1.5 shadow-sm transition-[box-shadow,opacity] ${selected ? "shadow-md ring-2 ring-cobalt-300" : ""} ${isLiveTarget ? "ring-2 ring-cobalt-500 shadow-md" : isConnecting ? "ring-1 ring-cobalt-300" : ""}`}
@@ -2653,6 +2703,9 @@ function ConceptNode({ data, selected }) {
         // single edge, which is most of the blank-canvas delay on a large
         // model.
         const needsTarget = a.id === DEFAULT_TARGET_ANCHOR || pinnedTargets.includes(a.id);
+        // a source handle some relationship starts from must always exist
+        const needsSource = a.id === DEFAULT_SOURCE_ANCHOR || pinnedSources.includes(a.id);
+        if (!live && !needsSource && !needsTarget) return null;
         return (
           <React.Fragment key={a.id}>
             {/* 12px, up from an earlier 9px: React Flow's own centering
@@ -2660,7 +2713,9 @@ function ConceptNode({ data, selected }) {
                 keeps a bigger box centred on exactly the same point, so
                 this is purely a bigger target to aim a drag at, not a
                 reflow of where the 12 points actually sit. */}
-            <Handle type="source" position={ANCHOR_POSITION[a.side]} id={a.id} style={{ width: 12, height: 12, borderRadius: 9999, ...posStyle }} className={dot(a.id)} />
+            {(live || needsSource) && (
+              <Handle type="source" position={ANCHOR_POSITION[a.side]} id={a.id} style={{ width: 12, height: 12, borderRadius: 9999, ...posStyle, ...(live ? null : hide) }} className={live ? dot(a.id) : ""} />
+            )}
             {needsTarget && (
               <Handle type="target" position={ANCHOR_POSITION[a.side]} id={a.id} style={{ width: 12, height: 12, borderRadius: 9999, opacity: 0, pointerEvents: "none", ...posStyle }} />
             )}
@@ -2860,6 +2915,8 @@ const FIT_MAX_ZOOM = 1;
 // points every unpinned edge end at it, so React Flow always has something
 // to resolve even before any geometry is computed.
 const DEFAULT_TARGET_ANCHOR = "l-c";
+// Likewise the one source-type anchor every unpinned start resolves to.
+const DEFAULT_SOURCE_ANCHOR = "r-c";
 
 // A rough, constant node footprint, used only to decide which SIDE of a box
 // an edge leaves from when grouping edges for fan-out. The rendered geometry
@@ -2912,13 +2969,16 @@ function computeEdgeSlots(concepts, edges) {
 }
 
 // Publishes the canvas zoom as a CSS variable (--se-inv-zoom = 1 / zoom) on
-// the canvas wrapper. Labels and handles that must keep a constant on-screen
-// size scale by it in CSS, so zooming and panning no longer re-render every
-// relationship on the map: only this one tiny component follows the zoom.
+// React Flow's edge-label layer. Labels and handles that must keep a constant
+// on-screen size scale by it in CSS, so zooming and panning no longer
+// re-render every relationship on the map: only this one tiny component
+// follows the zoom. It is set on the label layer, not the whole canvas, so
+// a zoom step restyles only the labels rather than every card and line.
 function ZoomCssVar({ targetRef }) {
   const zoom = useStore((st) => st.transform[2]);
   useEffect(() => {
-    targetRef.current?.style.setProperty("--se-inv-zoom", String(1 / Math.max(zoom, 0.05)));
+    const layer = targetRef.current?.querySelector(".react-flow__edgelabel-renderer");
+    layer?.style.setProperty("--se-inv-zoom", String(1 / Math.max(zoom, 0.05)));
   }, [zoom, targetRef]);
   return null;
 }
@@ -3638,6 +3698,15 @@ function NetworkTabInner({
   const [spaceHeld, setSpaceHeld] = useState(false);
   const [layoutMenuOpen, setLayoutMenuOpen] = useState(false);
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
+  // The small overview map in the corner redraws every card on every pan,
+  // zoom, and drag step, so it is off unless asked for (View menu).
+  const [showMiniMap, setShowMiniMapState] = useState(() => {
+    try { return localStorage.getItem("se.network.minimap") === "1"; } catch { return false; }
+  });
+  const setShowMiniMap = useCallback((on) => {
+    setShowMiniMapState(on);
+    try { localStorage.setItem("se.network.minimap", on ? "1" : "0"); } catch { /* storage unavailable */ }
+  }, []);
   const layoutMenuRef = useRef(null), viewMenuRef = useRef(null);
   useDismiss(layoutMenuRef, layoutMenuOpen, () => setLayoutMenuOpen(false));
   useDismiss(viewMenuRef, viewMenuOpen, () => setViewMenuOpen(false));
@@ -3648,6 +3717,8 @@ function NetworkTabInner({
   // While an arrangement animates, the cards are drawn from these in-between
   // positions; the model itself changes once, at the end (one undo step).
   const [animPositions, setAnimPositions] = useState(null);
+  // Positions of the cards being dragged right now (see onNodesChange).
+  const [dragPos, setDragPos] = useState(null);
   const animFrameRef = useRef(0);
   useEffect(() => () => cancelAnimationFrame(animFrameRef.current), []);
   const [exportingPng, setExportingPng] = useState(false);
@@ -3848,6 +3919,17 @@ function NetworkTabInner({
     });
     return map;
   }, [edges]);
+  // Same for the anchors relationships start from (see ConceptNode).
+  const pinnedSourcesByNode = useMemo(() => {
+    const map = {};
+    edges.forEach((e) => {
+      const h = normalizeHandleId(e.sourceHandle);
+      if (!h || h === DEFAULT_SOURCE_ANCHOR) return;
+      if (!map[e.source]) map[e.source] = [];
+      if (!map[e.source].includes(h)) map[e.source].push(h);
+    });
+    return map;
+  }, [edges]);
 
   // ==== folding ==================================================================
   // Only modules present in the current view can be folded; folds of modules
@@ -4011,11 +4093,12 @@ function NetworkTabInner({
   }, [moduleBlocks]);
 
   const conceptRfNodes = useMemo(() => displayConcepts.map((c) => ({
-    id: c.id, type: "concept", position: animPositions?.get(c.id) || c.position || { x: 0, y: 0 },
+    id: c.id, type: "concept", position: dragPos?.get(c.id) || animPositions?.get(c.id) || c.position || { x: 0, y: 0 },
     data: {
       concept: c, hasRun, figure: figureStyle,
       showAnchors: !!selectedEdgeNodeIds?.has(c.id),
       pinnedTargets: pinnedTargetsByNode[c.id] || EMPTY_ARRAY,
+      pinnedSources: pinnedSourcesByNode[c.id] || EMPTY_ARRAY,
       faded: !!fadedNodeIds?.has(c.id),
       // Which of THIS concept's own 12 anchors a relationship end being
       // dragged (see startReconnectDrag) would snap to if let go right now.
@@ -4027,7 +4110,7 @@ function NetworkTabInner({
       reconnectDragActive: !!dragReconnect,
     },
     selected: selected?.kind === "concept" && selected.id === c.id,
-  })), [displayConcepts, animPositions, selected, hasRun, figureStyle, selectedEdgeNodeIds, pinnedTargetsByNode, fadedNodeIds, dragReconnect]);
+  })), [displayConcepts, dragPos, animPositions, selected, hasRun, figureStyle, selectedEdgeNodeIds, pinnedTargetsByNode, pinnedSourcesByNode, fadedNodeIds, dragReconnect]);
 
   const rfNodesRaw = useMemo(() => [
     ...frames.map((f) => ({
@@ -4094,7 +4177,7 @@ function NetworkTabInner({
     const map = {};
     displayEdges.forEach((e) => {
       map[e.id] = {
-        sourceHandle: normalizeHandleId(e.sourceHandle) || "r-c",
+        sourceHandle: normalizeHandleId(e.sourceHandle) || DEFAULT_SOURCE_ANCHOR,
         targetHandle: normalizeHandleId(e.targetHandle) || "l-c",
       };
     });
@@ -4339,20 +4422,22 @@ function NetworkTabInner({
   const rfNodes = useStableItems(rfNodesRaw);
   const rfEdges = useStableItems(rfEdgesRaw);
 
+  // While a card is being dragged its position lives only here, in the
+  // canvas (dragPosRef, mirrored into dragPos for rendering), and the model
+  // itself changes once, when the card is let go. Writing every frame of the
+  // drag into the model made the whole app (its model signatures, the Model
+  // check, the module summary, the folding and every relationship) redo its
+  // work 60 times a second; on a 150-concept map one drag step took about
+  // 0.2 s. It also makes the drag a proper single undo step: history is
+  // committed with the position from before the drag.
+  const dragPosRef = useRef(null);
   const onNodesChange = useCallback((changes) => {
+    let dragMoved = false;
+    const dropped = [];
     changes.forEach((ch) => {
-      if (ch.type === "position" && ch.position) {
-        // Tried deferring this to drag-end only (ch.dragging === false), on
-        // the theory that React Flow tracks an active drag's visual position
-        // entirely internally: verified live that it does NOT, at least
-        // not in this controlled-nodes setup; skipping the intermediate
-        // dragging:true updates left the node completely frozen in place
-        // for the whole gesture. Reverted; every "position" change is
-        // applied immediately, same as before. The actual crash mechanism
-        // (getNodeIntersection's unguarded .measured destructure, fixed
-        // below) and the missing error boundary (also added) are the real
-        // fix for the disappearing-canvas bug; see the plan file.
+      if (ch.type === "position") {
         if (isModuleNodeId(ch.id)) {
+          if (!ch.position) return;
           // Dragging a folded module moves every concept inside it by the same
           // amount, so the module keeps its internal layout.
           const mn = moduleNodesRef.current.get(ch.id);
@@ -4362,13 +4447,23 @@ function NetworkTabInner({
             if (dx || dy) translateConcepts(mn.memberIds, dx, dy);
           }
         } else if (!isFrameNodeId(ch.id)) {
-          moveConcept(ch.id, ch.position);
+          if (ch.dragging === true && ch.position) {
+            if (!dragPosRef.current) dragPosRef.current = new Map();
+            dragPosRef.current.set(ch.id, ch.position);
+            dragMoved = true;
+          } else if (ch.dragging === false) {
+            const pos = ch.position || dragPosRef.current?.get(ch.id);
+            if (pos) dropped.push([ch.id, pos]);
+          } else if (ch.position) {
+            // moved without a drag (arrow keys): straight into the model
+            moveConcept(ch.id, ch.position);
+          }
         }
         // Drag start/end only — setIsDragging is a no-op when the value is
         // unchanged, so this doesn't add a render per frame; it just lets the
-        // per-frame work above (edgeSlots) be skipped for the gesture.
+        // per-frame work (edge fan-out, figure routing) be skipped for the gesture.
         if (ch.dragging === true) setIsDragging(true);
-        if (ch.dragging === false) { setIsDragging(false); commitHistory(); }
+        if (ch.dragging === false) setIsDragging(false);
       } else if (ch.type === "select") {
         if (isFrameNodeId(ch.id)) return;
         const kind = isModuleNodeId(ch.id) ? "module" : "concept";
@@ -4379,6 +4474,15 @@ function NetworkTabInner({
         if (!isModuleNodeId(ch.id) && !isFrameNodeId(ch.id)) removeConcept(ch.id);
       }
     });
+    if (dropped.length) {
+      commitHistory(); // the model still holds the positions from before the drag
+      dropped.forEach(([id, pos]) => moveConcept(id, pos));
+      dropped.forEach(([id]) => dragPosRef.current?.delete(id));
+      if (!dragPosRef.current?.size) dragPosRef.current = null;
+      setDragPos(dragPosRef.current ? new Map(dragPosRef.current) : null);
+    } else if (dragMoved) {
+      setDragPos(new Map(dragPosRef.current));
+    }
   }, [moveConcept, commitHistory, setSelected, removeConcept, translateConcepts]);
 
   const onEdgesChange = useCallback((changes) => {
@@ -4655,250 +4759,10 @@ function NetworkTabInner({
   const selectedConcept = selected?.kind === "concept" ? displayConcepts.find((c) => c.id === selected.id) : null;
   const selectedEdge = selected?.kind === "edge" ? folded.plainEdges.find((e) => e.id === selected.id) : null;
 
-  return (
-    <div className="grid gap-4 h-[calc(100vh-260px)] min-h-[640px]" style={{ gridTemplateColumns: inspectorCollapsed ? "1fr" : "1fr 280px" }}>
-      <div className="bg-white rounded-lg border border-slate-200 p-3 flex flex-col relative">
-        {/* One row, grouped by what you are doing: build (add, undo, redo),
-            tidy (Arrange), look (View, and which part of a modular model is
-            unfolded), find, and export. Every switch that only changes how
-            the map is drawn lives in the View menu instead of its own row of
-            buttons. */}
-        <div className="flex items-center gap-2 mb-2 flex-wrap">
-          <Btn variant="outline" onClick={() => addVisibleConcept({ x: 200 + Math.random() * 200, y: 150 + Math.random() * 150 })} title="Add a concept (or double-click empty space on the map)">
-            <Plus size={14} />Add concept
-          </Btn>
-          <Btn variant="outline" onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)"><Undo2 size={14} /></Btn>
-          <Btn variant="outline" onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Y)"><Redo2 size={14} /></Btn>
-          <div className="w-px h-5 bg-slate-200 mx-0.5" />
-          <div className="relative" ref={layoutMenuRef}>
-            <Btn variant="outline" onClick={() => { setViewMenuOpen(false); setLayoutMenuOpen((v) => !v); }} disabled={layoutBusy} title="Arrange the concepts automatically">
-              <Maximize2 size={14} />{layoutBusy ? "Arranging..." : "Arrange"}<ChevronDown size={12} />
-            </Btn>
-            {layoutMenuOpen && (
-              <div className="absolute z-30 mt-1 w-72 bg-white border border-slate-200 rounded-md shadow-lg py-1">
-                <p className="px-3 pt-1 pb-0.5 text-[11.5px] font-semibold uppercase tracking-wide text-neutral-600">Smart layouts</p>
-                {FCM_LAYOUT_MODES.map((m) => (
-                  <button key={m.id} onClick={() => runLayout(`fcm:${m.id}`)} className="w-full text-left px-3 py-1.5 hover:bg-slate-50 flex items-start gap-2">
-                    <Sparkles size={13} className="mt-0.5 shrink-0 text-cobalt-700" />
-                    <span className="min-w-0">
-                      <span className="block text-xs font-medium text-neutral-900">{m.label}{m.id === "readable" ? <span className="ml-1.5 text-[11.5px] font-normal text-neutral-600">(recommended)</span> : null}</span>
-                      <span className="block text-[11.5px] leading-snug text-neutral-600">{m.hint}</span>
-                    </span>
-                  </button>
-                ))}
-                <div className="my-1 border-t border-slate-200" />
-                <p className="px-3 pt-0.5 pb-0.5 text-[11.5px] font-semibold uppercase tracking-wide text-neutral-600">Classic</p>
-                <button onClick={() => runLayout("hier-td")} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center gap-2"><GitBranch size={13} />Layered, top to bottom</button>
-                <button onClick={() => runLayout("hier-lr")} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center gap-2"><GitBranch size={13} className="rotate-90" />Layered, left to right</button>
-                <button onClick={() => runLayout("circular")} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center gap-2"><LayoutGrid size={13} />Circle</button>
-                <button onClick={() => runLayout("modules")} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center gap-2" title="Give every module its own area, so modules read as separate sub-models"><Layers size={13} />One area per module</button>
-              </div>
-            )}
-          </div>
-          <div className="relative" ref={viewMenuRef}>
-            <Btn variant="outline" onClick={() => { setLayoutMenuOpen(false); setViewMenuOpen((v) => !v); }} title="How the map is drawn">
-              <Eye size={14} />View<ChevronDown size={12} />
-            </Btn>
-            {viewMenuOpen && (
-              <div className="absolute z-30 mt-1 w-72 bg-white border border-slate-200 rounded-md shadow-lg py-1 text-xs">
-                <p className="px-3 pt-1 pb-0.5 text-[11.5px] font-semibold uppercase tracking-wide text-neutral-600">Style</p>
-                <MenuChoice checked={figureStyle} onClick={() => setFigureStyle(true)} label="Figure" hint="Clean, name-only cards; ready for a paper or slide" />
-                <MenuChoice checked={!figureStyle} onClick={() => setFigureStyle(false)} label="Editing" hint="Larger cards that also show each concept's value" />
-                <p className="px-3 pt-1.5 pb-0.5 text-[11.5px] font-semibold uppercase tracking-wide text-neutral-600">Lines</p>
-                <MenuChoice checked={edgeStyle === "curved"} onClick={() => setEdgeStyle("curved")} label={figureStyle ? "Direct" : "Curved"} hint={figureStyle ? "Straight, bending only around cards in the way" : "Gently curved"} />
-                <MenuChoice checked={edgeStyle === "orthogonal"} onClick={() => setEdgeStyle("orthogonal")} label="Right angles" hint="Horizontal and vertical segments" />
-                <MenuChoice checkbox checked={!hideEdgeLabels} onClick={() => setHideEdgeLabels((v) => !v)} label="Show weights" hint="The number on each relationship" />
-                {setDisplayMode && (
-                  <>
-                    <p className="px-3 pt-1.5 pb-0.5 text-[11.5px] font-semibold uppercase tracking-wide text-neutral-600">Outside the analysis scope</p>
-                    <MenuChoice checked={displayMode === "hide"} onClick={() => setDisplayMode("hide")} label="Hide" hint="Show only the concepts being analysed" />
-                    <MenuChoice checked={displayMode === "focus"} onClick={() => setDisplayMode("focus")} label="Fade" hint="Keep everything, fade what is not analysed" />
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-          {setCollapsedModules && moduleKeysInView.length >= 2 && (
-            <label className="flex items-center gap-1.5 border border-slate-300 rounded-md pl-2 bg-white text-xs" title="Show the full model, every module folded into one block, or one module opened inside the others">
-              <Layers size={13} className="text-neutral-700 shrink-0" />
-              <select
-                value={structure === "custom" ? "custom" : structure}
-                onChange={(e) => e.target.value !== "custom" && showStructure(e.target.value)}
-                className="py-1.5 pr-1.5 bg-transparent text-xs text-neutral-900 outline-none"
-              >
-                <option value="full">Full model</option>
-                <option value="overview">Module overview</option>
-                <optgroup label="Open one module">
-                  {folded.modules.map((m) => <option key={m.key} value={`m:${m.key}`}>{m.label}</option>)}
-                </optgroup>
-                {structure === "custom" && <option value="custom" disabled>Custom folding</option>}
-              </select>
-            </label>
-          )}
-          <div className="relative flex-1 min-w-[140px] max-w-[260px]">
-            <div className="flex items-center gap-1 border border-slate-300 rounded-md px-2 py-1 bg-white">
-              <Search size={13} className="text-neutral-600 shrink-0" />
-              <input
-                value={searchQuery}
-                onChange={(e) => { setSearchQuery(e.target.value); setSearchOpen(true); }}
-                onFocus={() => setSearchOpen(true)}
-                onBlur={() => setTimeout(() => setSearchOpen(false), 150)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && searchMatches.length) focusOnConceptId(searchMatches[0].id);
-                  if (e.key === "Escape") { setSearchOpen(false); e.currentTarget.blur(); }
-                }}
-                placeholder="Find a concept..."
-                className="text-xs outline-none w-full min-w-0 placeholder:text-neutral-500"
-              />
-              {searchQuery && (
-                <button onClick={() => setSearchQuery("")} className="text-neutral-500 hover:text-neutral-900" title="Clear search">
-                  <X size={12} />
-                </button>
-              )}
-            </div>
-            {searchOpen && searchQuery.trim() && (
-              <div className="absolute z-30 mt-1 w-64 bg-white border border-slate-200 rounded-md shadow-lg py-1 max-h-64 overflow-auto">
-                {searchMatches.length === 0 ? (
-                  <p className="px-3 py-1.5 text-xs text-neutral-600">No concepts match &ldquo;{searchQuery}&rdquo;</p>
-                ) : (
-                  searchMatches.map((c) => (
-                    <button
-                      key={c.id}
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => focusOnConceptId(c.id)}
-                      className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center justify-between gap-2"
-                    >
-                      <span className="truncate">{c.name}</span>
-                      <span className="text-[11.5px] text-neutral-600 shrink-0 ml-2">{c.category}</span>
-                    </button>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
-          <span className="ml-auto flex items-center gap-2">
-            {spaceHeld && <span className="text-[12.5px] text-cobalt-700 font-medium">Pan mode (space held)</span>}
-            <Btn variant="outline" onClick={exportDiagram} disabled={exportingPng} title={figureStyle ? "Download the whole map as a high-resolution PNG image" : "Download the map exactly as shown (layout, colors, zoom) as a PNG image"}>
-              <Download size={14} />{exportingPng ? "Exporting..." : "Export PNG"}
-            </Btn>
-            <Btn variant="outline" onClick={() => setInspectorCollapsed((v) => !v)} title={inspectorCollapsed ? "Show the Inspector panel" : "Hide the Inspector panel, so the map fills the width"}>
-              <PanelLeftClose size={14} className={inspectorCollapsed ? "rotate-180" : ""} />
-            </Btn>
-          </span>
-        </div>
-
-        {layoutReport && (
-          <p className="mb-2 text-[12.5px] text-neutral-900 bg-slate-50 border border-slate-200 rounded px-2 py-1 flex items-center gap-2" title={`Layout score ${layoutReport.score} (higher is better): -10 x crossings, -5 x overlapping cards, -5 x label clashes, -2 x mean edge length, +3 x cluster separation (${layoutReport.clusterSeparation}), +3 x centrality visibility (${layoutReport.centralityVisibility}), +2 x hierarchy visibility (${layoutReport.hierarchyVisibility}). Crossings include lines running through a card.`}>
-            <Sparkles size={13} className="text-cobalt-700 shrink-0" />
-            <span className="flex-1">
-              {FCM_LAYOUT_MODES.find((m) => m.id === layoutReport.mode)?.label} layout: {layoutReport.crossings} crossing{layoutReport.crossings === 1 ? "" : "s"}, {layoutReport.nodeOverlaps} overlapping card{layoutReport.nodeOverlaps === 1 ? "" : "s"}, {layoutReport.communities} group{layoutReport.communities === 1 ? "" : "s"}, {layoutReport.feedbackLoops} feedback structure{layoutReport.feedbackLoops === 1 ? "" : "s"} &middot; {(layoutReport.ms / 1000).toFixed(1)} s. Undo (Ctrl+Z) restores the previous arrangement.
-            </span>
-            <button onClick={() => setLayoutReport(null)} className="text-neutral-600 hover:text-neutral-900" title="Dismiss"><X size={12} /></button>
-          </p>
-        )}
-        {networkView.mode === "nexus" && (
-          <p className="mb-2 text-[12.5px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1">
-            {displayMode === "focus"
-              ? "Nexus Interface: relationships between different modules are drawn normally; relationships inside a module are faded and left out of every analysis."
-              : "Nexus Interface: only relationships between different modules are drawn. A new relationship between two concepts of the same module is still saved to the model, but it won't appear until you switch back to Modules."}
-          </p>
-        )}
-        {displayMode === "focus" && viewInfo?.isFiltered && networkView.mode !== "nexus" && (
-          <p className="mb-2 text-[12.5px] text-neutral-700">
-            Focus mode: faded concepts and relationships are outside the analysis scope. They are shown for context only and excluded from every analysis.
-          </p>
-        )}
-        {viewInfo?.isFiltered && concepts.length === 0 && (
-          <p className="mb-2 text-[12.5px] text-neutral-700">Nothing to show in this view. Try including isolated concepts or more modules.</p>
-        )}
-        {collapsedSet.size > 0 && (
-          <p className="mb-2 text-[12.5px] text-neutral-900 bg-slate-50 border border-slate-200 rounded px-2 py-1">
-            {structure === "overview"
-              ? "Module overview: every module is folded into one block; the links between blocks bundle all relationships between those modules (count and net weight). Double-click a block to unfold it."
-              : "Folded modules are shown as blocks; links to them bundle their relationships. Use Fold on a module's outline to fold it again, or Full model to unfold everything."}
-            {" "}Folding only changes the map; analyses follow the analysis scope.
-            {blocksOverlap && <span className="text-amber-700"> Some blocks overlap because their concepts are spread across the map: Auto Arrange &rarr; Grouped by module gives each module its own area.</span>}
-          </p>
-        )}
-
-        <div
-          ref={wrapperRef} data-chart="network-graph" className="se-canvas relative flex-1 rounded-lg overflow-hidden border border-slate-200" onWheelCapture={onWheelCapture}
-          onDoubleClick={(e) => {
-            // Only add a concept when the double-click lands on empty canvas:
-            // not on a node, edge, handle, or a UI control like the minimap.
-            if (e.target.closest(".react-flow__node, .react-flow__edge, .react-flow__handle, .react-flow__minimap, .react-flow__controls, .react-flow__edgelabel-renderer")) return;
-            onPaneDoubleClick(e);
-          }}
-        >
-          {concepts.length === 0 && !viewInfo?.isFiltered && (
-            <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
-              <div className="max-w-sm text-center bg-white/90 border border-slate-200 rounded-lg shadow-sm px-5 py-4">
-                <p className="text-sm font-semibold text-neutral-900">Your map is empty</p>
-                <p className="text-xs text-neutral-700 mt-1">
-                  Double-click anywhere here to add your first concept, or use <strong>Add concept</strong> above.
-                  To start from an example instead, pick one from <strong>New / example model</strong> at the top right.
-                </p>
-              </div>
-            </div>
-          )}
-          <style>{HOVER_FADE_BASE_CSS + hoverCss}</style>
-          <ErrorBoundary label="the network canvas">
-            <ReactFlow
-              nodes={rfNodes}
-              edges={rfEdges}
-              nodeTypes={nodeTypes}
-              edgeTypes={edgeTypes}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onConnect={onConnect}
-              edgesReconnectable={false}
-              onPaneClick={onPaneClick}
-              onNodeDoubleClick={(e, node) => { if (isModuleNodeId(node.id)) expandModule(node.id.slice(MODULE_PREFIX.length)); }}
-              onNodeMouseEnter={(e, node) => { if (!edgeDragActiveRef.current) setHoverNodeIdNow(node.id); }}
-              onNodeMouseLeave={() => { if (!edgeDragActiveRef.current) clearHoverNodeIdSoon(); }}
-              onNodeDragStart={() => setHoverNodeIdNow(null)}
-              onMoveStart={() => setHoverNodeIdNow(null)}
-              connectionMode="loose"
-              panOnDrag={spaceHeld ? [0, 1, 2] : [1, 2]}
-              nodesDraggable={!spaceHeld}
-              selectionOnDrag={!spaceHeld}
-              deleteKeyCode={null}
-              zoomOnDoubleClick={false}
-              zoomOnScroll
-              minZoom={0.15}
-              maxZoom={2.5}
-              fitView
-              fitViewOptions={{ padding: 0.2, maxZoom: FIT_MAX_ZOOM }}
-              proOptions={{ hideAttribution: true }}
-            >
-              {!figureStyle && <Background gap={18} size={1} />}
-              <Controls showInteractive={false} />
-              <ZoomCssVar targetRef={wrapperRef} />
-              <MiniMap pannable zoomable nodeColor={(n) => (n.type === "moduleFrame" ? "transparent" : n.type === "module" ? categoryStyle(n.data?.categoryValue).border : categoryStyle(n.data?.concept?.category).bg)} className="!bg-white" />
-            </ReactFlow>
-          </ErrorBoundary>
-        </div>
-
-        <div className="flex items-center gap-4 text-[12.5px] text-neutral-700 mt-2 px-1 flex-wrap">
-          {categoriesPresent.length > 0 ? (
-            categoriesPresent.map((cat) => {
-              const s = categoryStyle(cat);
-              return (
-                <span key={cat} className="flex items-center gap-1">
-                  <span className="w-3 h-3 rounded-sm inline-block border" style={{ background: s.bg, borderColor: s.border }} />
-                  {cat}
-                </span>
-              );
-            })
-          ) : (
-            <span className="italic text-neutral-600">Give a concept a module (select it, then pick or type one in the Inspector) to colour-code the map by module.</span>
-          )}
-          <span className="flex items-center gap-1 ml-2"><span className="w-4 h-0.5 inline-block bg-green-600" /> positive influence</span>
-          <span className="flex items-center gap-1"><span className="w-4 h-0.5 inline-block bg-orange-600" /> negative influence</span>
-        </div>
-      </div>
-
-      {!inspectorCollapsed && (
+  // The Inspector only changes when the selection or the model does, so it
+  // is built once per such change instead of on every frame of a drag or a
+  // hover on the canvas.
+  const inspectorPanel = useMemo(() => (inspectorCollapsed ? null : (
       <div className="bg-white rounded-lg border border-slate-200 p-4 overflow-auto flex flex-col">
         <h3 className="font-semibold text-sm mb-3">Inspector</h3>
         {selectedConcept && (() => {
@@ -4908,8 +4772,11 @@ function NetworkTabInner({
           const currentModule = moduleKey(c.category);
           const linkOptions = concepts.filter((o) => o.id !== c.id);
           const linked = new Set((linkDir === "out" ? outgoing.map((e) => e.target) : incoming.map((e) => e.source)));
-          const RelRow = ({ e, otherId, arrow }) => (
+          // a plain function, not a component defined in here: a component
+          // created anew on every render is unmounted and rebuilt each time
+          const relRow = (e, otherId, arrow) => (
             <button
+              key={e.id}
               onClick={() => setSelected({ kind: "edge", id: e.id })}
               className="w-full flex items-center gap-1.5 text-left text-[12.5px] px-1.5 py-1 rounded hover:bg-slate-100"
               title={relationshipSentence(conceptById.get(e.source)?.name, conceptById.get(e.target)?.name, e.weight)}
@@ -4998,9 +4865,9 @@ function NetworkTabInner({
               <div className="pt-2 border-t border-slate-100">
                 <div className="text-xs font-semibold text-neutral-900 mb-1">Relationships</div>
                 <div className="text-[12.5px] text-neutral-600">Affects ({outgoing.length})</div>
-                {outgoing.length ? outgoing.map((e) => <RelRow key={e.id} e={e} otherId={e.target} arrow="&rarr;" />) : <p className="text-[12.5px] text-neutral-500 italic px-1.5">nothing yet</p>}
+                {outgoing.length ? outgoing.map((e) => relRow(e, e.target, "→")) : <p className="text-[12.5px] text-neutral-500 italic px-1.5">nothing yet</p>}
                 <div className="text-[12.5px] text-neutral-600 mt-1">Affected by ({incoming.length})</div>
-                {incoming.length ? incoming.map((e) => <RelRow key={e.id} e={e} otherId={e.source} arrow="&larr;" />) : <p className="text-[12.5px] text-neutral-500 italic px-1.5">nothing yet</p>}
+                {incoming.length ? incoming.map((e) => relRow(e, e.source, "←")) : <p className="text-[12.5px] text-neutral-500 italic px-1.5">nothing yet</p>}
                 {linkOptions.length > 0 && (
                   <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 p-2 space-y-1.5">
                     <div className="text-[12.5px] font-medium text-neutral-900">Add a relationship</div>
@@ -5209,7 +5076,257 @@ function NetworkTabInner({
           </ul>
         </div>
       </div>
-      )}
+  )),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [inspectorCollapsed, selected, selectedConcept, selectedEdge, concepts, edges, conceptById, moduleList, linkDir, linkTarget, hasRun,
+    viewInfo, displayMode, collapsedSet, folded, updateConcept, updateEdge, removeConcept, removeEdge, createEdge, copyConcept,
+    commitHistory, setSelected, expandModule, openModuleAsModel, setCollapsedModules]);
+
+  return (
+    <div className="grid gap-4 h-[calc(100vh-260px)] min-h-[640px]" style={{ gridTemplateColumns: inspectorCollapsed ? "1fr" : "1fr 280px" }}>
+      <div className="bg-white rounded-lg border border-slate-200 p-3 flex flex-col relative">
+        {/* One row, grouped by what you are doing: build (add, undo, redo),
+            tidy (Arrange), look (View, and which part of a modular model is
+            unfolded), find, and export. Every switch that only changes how
+            the map is drawn lives in the View menu instead of its own row of
+            buttons. */}
+        <div className="flex items-center gap-2 mb-2 flex-wrap">
+          <Btn variant="outline" onClick={() => addVisibleConcept({ x: 200 + Math.random() * 200, y: 150 + Math.random() * 150 })} title="Add a concept (or double-click empty space on the map)">
+            <Plus size={14} />Add concept
+          </Btn>
+          <Btn variant="outline" onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)"><Undo2 size={14} /></Btn>
+          <Btn variant="outline" onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Y)"><Redo2 size={14} /></Btn>
+          <div className="w-px h-5 bg-slate-200 mx-0.5" />
+          <div className="relative" ref={layoutMenuRef}>
+            <Btn variant="outline" onClick={() => { setViewMenuOpen(false); setLayoutMenuOpen((v) => !v); }} disabled={layoutBusy} title="Arrange the concepts automatically">
+              <Maximize2 size={14} />{layoutBusy ? "Arranging..." : "Arrange"}<ChevronDown size={12} />
+            </Btn>
+            {layoutMenuOpen && (
+              <div className="absolute z-30 mt-1 w-72 bg-white border border-slate-200 rounded-md shadow-lg py-1">
+                <p className="px-3 pt-1 pb-0.5 text-[11.5px] font-semibold uppercase tracking-wide text-neutral-600">Smart layouts</p>
+                {FCM_LAYOUT_MODES.map((m) => (
+                  <button key={m.id} onClick={() => runLayout(`fcm:${m.id}`)} className="w-full text-left px-3 py-1.5 hover:bg-slate-50 flex items-start gap-2">
+                    <Sparkles size={13} className="mt-0.5 shrink-0 text-cobalt-700" />
+                    <span className="min-w-0">
+                      <span className="block text-xs font-medium text-neutral-900">{m.label}{m.id === "readable" ? <span className="ml-1.5 text-[11.5px] font-normal text-neutral-600">(recommended)</span> : null}</span>
+                      <span className="block text-[11.5px] leading-snug text-neutral-600">{m.hint}</span>
+                    </span>
+                  </button>
+                ))}
+                <div className="my-1 border-t border-slate-200" />
+                <p className="px-3 pt-0.5 pb-0.5 text-[11.5px] font-semibold uppercase tracking-wide text-neutral-600">Classic</p>
+                <button onClick={() => runLayout("hier-td")} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center gap-2"><GitBranch size={13} />Layered, top to bottom</button>
+                <button onClick={() => runLayout("hier-lr")} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center gap-2"><GitBranch size={13} className="rotate-90" />Layered, left to right</button>
+                <button onClick={() => runLayout("circular")} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center gap-2"><LayoutGrid size={13} />Circle</button>
+                <button onClick={() => runLayout("modules")} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center gap-2" title="Give every module its own area, so modules read as separate sub-models"><Layers size={13} />One area per module</button>
+              </div>
+            )}
+          </div>
+          <div className="relative" ref={viewMenuRef}>
+            <Btn variant="outline" onClick={() => { setLayoutMenuOpen(false); setViewMenuOpen((v) => !v); }} title="How the map is drawn">
+              <Eye size={14} />View<ChevronDown size={12} />
+            </Btn>
+            {viewMenuOpen && (
+              <div className="absolute z-30 mt-1 w-72 bg-white border border-slate-200 rounded-md shadow-lg py-1 text-xs">
+                <p className="px-3 pt-1 pb-0.5 text-[11.5px] font-semibold uppercase tracking-wide text-neutral-600">Style</p>
+                <MenuChoice checked={figureStyle} onClick={() => setFigureStyle(true)} label="Figure" hint="Clean, name-only cards; ready for a paper or slide" />
+                <MenuChoice checked={!figureStyle} onClick={() => setFigureStyle(false)} label="Editing" hint="Larger cards that also show each concept's value" />
+                <p className="px-3 pt-1.5 pb-0.5 text-[11.5px] font-semibold uppercase tracking-wide text-neutral-600">Lines</p>
+                <MenuChoice checked={edgeStyle === "curved"} onClick={() => setEdgeStyle("curved")} label={figureStyle ? "Direct" : "Curved"} hint={figureStyle ? "Straight, bending only around cards in the way" : "Gently curved"} />
+                <MenuChoice checked={edgeStyle === "orthogonal"} onClick={() => setEdgeStyle("orthogonal")} label="Right angles" hint="Horizontal and vertical segments" />
+                <MenuChoice checkbox checked={!hideEdgeLabels} onClick={() => setHideEdgeLabels((v) => !v)} label="Show weights" hint="The number on each relationship" />
+                <MenuChoice checkbox checked={showMiniMap} onClick={() => setShowMiniMap(!showMiniMap)} label="Overview map" hint="A small map of the whole model in the corner" />
+                {setDisplayMode && (
+                  <>
+                    <p className="px-3 pt-1.5 pb-0.5 text-[11.5px] font-semibold uppercase tracking-wide text-neutral-600">Outside the analysis scope</p>
+                    <MenuChoice checked={displayMode === "hide"} onClick={() => setDisplayMode("hide")} label="Hide" hint="Show only the concepts being analysed" />
+                    <MenuChoice checked={displayMode === "focus"} onClick={() => setDisplayMode("focus")} label="Fade" hint="Keep everything, fade what is not analysed" />
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+          {setCollapsedModules && moduleKeysInView.length >= 2 && (
+            <label className="flex items-center gap-1.5 border border-slate-300 rounded-md pl-2 bg-white text-xs" title="Show the full model, every module folded into one block, or one module opened inside the others">
+              <Layers size={13} className="text-neutral-700 shrink-0" />
+              <select
+                value={structure === "custom" ? "custom" : structure}
+                onChange={(e) => e.target.value !== "custom" && showStructure(e.target.value)}
+                className="py-1.5 pr-1.5 bg-transparent text-xs text-neutral-900 outline-none"
+              >
+                <option value="full">Full model</option>
+                <option value="overview">Module overview</option>
+                <optgroup label="Open one module">
+                  {folded.modules.map((m) => <option key={m.key} value={`m:${m.key}`}>{m.label}</option>)}
+                </optgroup>
+                {structure === "custom" && <option value="custom" disabled>Custom folding</option>}
+              </select>
+            </label>
+          )}
+          <div className="relative flex-1 min-w-[140px] max-w-[260px]">
+            <div className="flex items-center gap-1 border border-slate-300 rounded-md px-2 py-1 bg-white">
+              <Search size={13} className="text-neutral-600 shrink-0" />
+              <input
+                value={searchQuery}
+                onChange={(e) => { setSearchQuery(e.target.value); setSearchOpen(true); }}
+                onFocus={() => setSearchOpen(true)}
+                onBlur={() => setTimeout(() => setSearchOpen(false), 150)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && searchMatches.length) focusOnConceptId(searchMatches[0].id);
+                  if (e.key === "Escape") { setSearchOpen(false); e.currentTarget.blur(); }
+                }}
+                placeholder="Find a concept..."
+                className="text-xs outline-none w-full min-w-0 placeholder:text-neutral-500"
+              />
+              {searchQuery && (
+                <button onClick={() => setSearchQuery("")} className="text-neutral-500 hover:text-neutral-900" title="Clear search">
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+            {searchOpen && searchQuery.trim() && (
+              <div className="absolute z-30 mt-1 w-64 bg-white border border-slate-200 rounded-md shadow-lg py-1 max-h-64 overflow-auto">
+                {searchMatches.length === 0 ? (
+                  <p className="px-3 py-1.5 text-xs text-neutral-600">No concepts match &ldquo;{searchQuery}&rdquo;</p>
+                ) : (
+                  searchMatches.map((c) => (
+                    <button
+                      key={c.id}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => focusOnConceptId(c.id)}
+                      className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center justify-between gap-2"
+                    >
+                      <span className="truncate">{c.name}</span>
+                      <span className="text-[11.5px] text-neutral-600 shrink-0 ml-2">{c.category}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+          <span className="ml-auto flex items-center gap-2">
+            {spaceHeld && <span className="text-[12.5px] text-cobalt-700 font-medium">Pan mode (space held)</span>}
+            <Btn variant="outline" onClick={exportDiagram} disabled={exportingPng} title={figureStyle ? "Download the whole map as a high-resolution PNG image" : "Download the map exactly as shown (layout, colors, zoom) as a PNG image"}>
+              <Download size={14} />{exportingPng ? "Exporting..." : "Export PNG"}
+            </Btn>
+            <Btn variant="outline" onClick={() => setInspectorCollapsed((v) => !v)} title={inspectorCollapsed ? "Show the Inspector panel" : "Hide the Inspector panel, so the map fills the width"}>
+              <PanelLeftClose size={14} className={inspectorCollapsed ? "rotate-180" : ""} />
+            </Btn>
+          </span>
+        </div>
+
+        {layoutReport && (
+          <p className="mb-2 text-[12.5px] text-neutral-900 bg-slate-50 border border-slate-200 rounded px-2 py-1 flex items-center gap-2" title={`Layout score ${layoutReport.score} (higher is better): -10 x crossings, -5 x overlapping cards, -5 x label clashes, -2 x mean edge length, +3 x cluster separation (${layoutReport.clusterSeparation}), +3 x centrality visibility (${layoutReport.centralityVisibility}), +2 x hierarchy visibility (${layoutReport.hierarchyVisibility}). Crossings include lines running through a card.`}>
+            <Sparkles size={13} className="text-cobalt-700 shrink-0" />
+            <span className="flex-1">
+              {FCM_LAYOUT_MODES.find((m) => m.id === layoutReport.mode)?.label} layout: {layoutReport.crossings} crossing{layoutReport.crossings === 1 ? "" : "s"}, {layoutReport.nodeOverlaps} overlapping card{layoutReport.nodeOverlaps === 1 ? "" : "s"}, {layoutReport.communities} group{layoutReport.communities === 1 ? "" : "s"}, {layoutReport.feedbackLoops} feedback structure{layoutReport.feedbackLoops === 1 ? "" : "s"} &middot; {(layoutReport.ms / 1000).toFixed(1)} s. Undo (Ctrl+Z) restores the previous arrangement.
+            </span>
+            <button onClick={() => setLayoutReport(null)} className="text-neutral-600 hover:text-neutral-900" title="Dismiss"><X size={12} /></button>
+          </p>
+        )}
+        {networkView.mode === "nexus" && (
+          <p className="mb-2 text-[12.5px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+            {displayMode === "focus"
+              ? "Nexus Interface: relationships between different modules are drawn normally; relationships inside a module are faded and left out of every analysis."
+              : "Nexus Interface: only relationships between different modules are drawn. A new relationship between two concepts of the same module is still saved to the model, but it won't appear until you switch back to Modules."}
+          </p>
+        )}
+        {displayMode === "focus" && viewInfo?.isFiltered && networkView.mode !== "nexus" && (
+          <p className="mb-2 text-[12.5px] text-neutral-700">
+            Focus mode: faded concepts and relationships are outside the analysis scope. They are shown for context only and excluded from every analysis.
+          </p>
+        )}
+        {viewInfo?.isFiltered && concepts.length === 0 && (
+          <p className="mb-2 text-[12.5px] text-neutral-700">Nothing to show in this view. Try including isolated concepts or more modules.</p>
+        )}
+        {collapsedSet.size > 0 && (
+          <p className="mb-2 text-[12.5px] text-neutral-900 bg-slate-50 border border-slate-200 rounded px-2 py-1">
+            {structure === "overview"
+              ? "Module overview: every module is folded into one block; the links between blocks bundle all relationships between those modules (count and net weight). Double-click a block to unfold it."
+              : "Folded modules are shown as blocks; links to them bundle their relationships. Use Fold on a module's outline to fold it again, or Full model to unfold everything."}
+            {" "}Folding only changes the map; analyses follow the analysis scope.
+            {blocksOverlap && <span className="text-amber-700"> Some blocks overlap because their concepts are spread across the map: Auto Arrange &rarr; Grouped by module gives each module its own area.</span>}
+          </p>
+        )}
+
+        <div
+          ref={wrapperRef} data-chart="network-graph" className="se-canvas relative flex-1 rounded-lg overflow-hidden border border-slate-200" onWheelCapture={onWheelCapture}
+          onDoubleClick={(e) => {
+            // Only add a concept when the double-click lands on empty canvas:
+            // not on a node, edge, handle, or a UI control like the minimap.
+            if (e.target.closest(".react-flow__node, .react-flow__edge, .react-flow__handle, .react-flow__minimap, .react-flow__controls, .react-flow__edgelabel-renderer")) return;
+            onPaneDoubleClick(e);
+          }}
+        >
+          {concepts.length === 0 && !viewInfo?.isFiltered && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+              <div className="max-w-sm text-center bg-white/90 border border-slate-200 rounded-lg shadow-sm px-5 py-4">
+                <p className="text-sm font-semibold text-neutral-900">Your map is empty</p>
+                <p className="text-xs text-neutral-700 mt-1">
+                  Double-click anywhere here to add your first concept, or use <strong>Add concept</strong> above.
+                  To start from an example instead, pick one from <strong>New / example model</strong> at the top right.
+                </p>
+              </div>
+            </div>
+          )}
+          <style>{HOVER_FADE_BASE_CSS + hoverCss}</style>
+          <ErrorBoundary label="the network canvas">
+            <ReactFlow
+              nodes={rfNodes}
+              edges={rfEdges}
+              nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onConnect={onConnect}
+              edgesReconnectable={false}
+              onPaneClick={onPaneClick}
+              onNodeDoubleClick={(e, node) => { if (isModuleNodeId(node.id)) expandModule(node.id.slice(MODULE_PREFIX.length)); }}
+              onNodeMouseEnter={(e, node) => { if (!edgeDragActiveRef.current) setHoverNodeIdNow(node.id); }}
+              onNodeMouseLeave={() => { if (!edgeDragActiveRef.current) clearHoverNodeIdSoon(); }}
+              onNodeDragStart={() => setHoverNodeIdNow(null)}
+              onMoveStart={() => setHoverNodeIdNow(null)}
+              connectionMode="loose"
+              panOnDrag={spaceHeld ? [0, 1, 2] : [1, 2]}
+              nodesDraggable={!spaceHeld}
+              selectionOnDrag={!spaceHeld}
+              deleteKeyCode={null}
+              zoomOnDoubleClick={false}
+              zoomOnScroll
+              minZoom={0.15}
+              maxZoom={2.5}
+              fitView
+              fitViewOptions={{ padding: 0.2, maxZoom: FIT_MAX_ZOOM }}
+              proOptions={{ hideAttribution: true }}
+            >
+              {!figureStyle && <Background gap={18} size={1} />}
+              <Controls showInteractive={false} />
+              <ZoomCssVar targetRef={wrapperRef} />
+              {showMiniMap && <MiniMap pannable zoomable nodeColor={(n) => (n.type === "moduleFrame" ? "transparent" : n.type === "module" ? categoryStyle(n.data?.categoryValue).border : categoryStyle(n.data?.concept?.category).bg)} className="!bg-white" />}
+            </ReactFlow>
+          </ErrorBoundary>
+        </div>
+
+        <div className="flex items-center gap-4 text-[12.5px] text-neutral-700 mt-2 px-1 flex-wrap">
+          {categoriesPresent.length > 0 ? (
+            categoriesPresent.map((cat) => {
+              const s = categoryStyle(cat);
+              return (
+                <span key={cat} className="flex items-center gap-1">
+                  <span className="w-3 h-3 rounded-sm inline-block border" style={{ background: s.bg, borderColor: s.border }} />
+                  {cat}
+                </span>
+              );
+            })
+          ) : (
+            <span className="italic text-neutral-600">Give a concept a module (select it, then pick or type one in the Inspector) to colour-code the map by module.</span>
+          )}
+          <span className="flex items-center gap-1 ml-2"><span className="w-4 h-0.5 inline-block bg-green-600" /> positive influence</span>
+          <span className="flex items-center gap-1"><span className="w-4 h-0.5 inline-block bg-orange-600" /> negative influence</span>
+        </div>
+      </div>
+
+      {inspectorPanel}
     </div>
   );
 }
@@ -12152,53 +12269,24 @@ function SpaghettiEngineApp() {
 
   const activeScenario = scenarios.find((s) => s.id === activeScenarioId) || scenarios[0];
 
-  // Reuses the same pure compute functions InfluenceMetricsTab already
-  // builds its charts/tables from (computeMetrics/computeAdvancedMetrics/
-  // computeSystemStats/computeCategoryStats/computeCategoryMatrix, all
-  // stateless functions of concepts/edges/settings) so the Export Analysis
-  // Workbook button has network/category/system metrics available without
-  // duplicating any of that math.
-  //
-  // These run unconditionally on every render of the whole app (not just
-  // while the Export button's own tab is open), so they must not key off
-  // `concepts`/`edges` directly: those get a brand new array reference on
-  // every single position update while a node is being dragged on the
-  // Network tab, even though none of these five metrics depend on position
-  // at all. Left as-is, that meant dragging a node re-ran five O(n²)-ish
-  // graph algorithms on every animation frame of every drag, real,
-  // synchronous main-thread work with nothing on screen even needing the
-  // result yet — exactly the kind of per-frame stall that can make a
-  // canvas stutter or blank out mid-gesture. `simSignature` (above) already
-  // excludes position for the same reason (it drives modelVersion staleness
-  // checks); routing through it here means these only actually recompute
-  // when something they truly depend on changes.
-  // The active view's network (see simSignature), so the workbook's metric
-  // sheets describe the same network as the analyses exported beside them.
-  const stableModelForMetrics = useMemo(() => ({ concepts: aConcepts, edges: aEdges }), [simSignature]);
-  const exportStructuralMetrics = useMemo(
-    () => computeMetrics(stableModelForMetrics.concepts, stableModelForMetrics.edges),
-    [stableModelForMetrics]
-  );
-  const exportAdvancedMetrics = useMemo(
-    () => computeAdvancedMetrics(stableModelForMetrics.concepts, stableModelForMetrics.edges, settings),
-    [stableModelForMetrics, settings]
-  );
-  const exportMetrics = useMemo(
-    () => exportStructuralMetrics.map((m) => ({ ...m, ...exportAdvancedMetrics[m.id] })).sort((a, b) => b.centrality - a.centrality),
-    [exportStructuralMetrics, exportAdvancedMetrics]
-  );
-  const exportSystemStats = useMemo(
-    () => computeSystemStats(stableModelForMetrics.concepts, stableModelForMetrics.edges, exportMetrics),
-    [stableModelForMetrics, exportMetrics]
-  );
-  const exportCategoryStats = useMemo(
-    () => computeCategoryStats(stableModelForMetrics.concepts, stableModelForMetrics.edges, exportMetrics),
-    [stableModelForMetrics, exportMetrics]
-  );
-  const exportCategoryMatrix = useMemo(
-    () => computeCategoryMatrix(stableModelForMetrics.concepts, stableModelForMetrics.edges, exportCategoryStats.map((c) => c.category)),
-    [stableModelForMetrics, exportCategoryStats]
-  );
+  // The workbook's metric sheets reuse the pure compute functions the
+  // Influence Metrics tab builds its charts from, on the active view's
+  // network so they describe the same network as the analyses beside them.
+  // They are computed only when the workbook is exported: the perturbation
+  // scores run one simulation per concept, which on a 150-concept model took
+  // seconds, and used to rerun after every edit on every tab.
+  const computeWorkbookMetrics = () => {
+    const structural = computeMetrics(aConcepts, aEdges);
+    const advanced = computeAdvancedMetrics(aConcepts, aEdges, settings);
+    const metrics = structural.map((m) => ({ ...m, ...advanced[m.id] })).sort((x, y) => y.centrality - x.centrality);
+    const categoryStats = computeCategoryStats(aConcepts, aEdges, metrics);
+    return {
+      metrics,
+      systemStats: computeSystemStats(aConcepts, aEdges, metrics),
+      categoryStats,
+      categoryMatrix: computeCategoryMatrix(aConcepts, aEdges, categoryStats.map((c) => c.category)),
+    };
+  };
 
   // ==== concept/edge editing ===============================================
   const addConcept = () => {
@@ -12490,8 +12578,7 @@ function SpaghettiEngineApp() {
       const buffer = await buildAnalysisWorkbook({
         concepts, edges, settings, scenarios, results,
         baselineResult, sensitivityResult, transitionResult, pathwayResult,
-        metrics: exportMetrics, systemStats: exportSystemStats,
-        categoryStats: exportCategoryStats, categoryMatrix: exportCategoryMatrix,
+        ...computeWorkbookMetrics(),
         chartCache, modelVersion, resultsStale,
         analysisConcepts: aConcepts, analysisEdges: aEdges, viewInfo, multiScale: multiScaleFresh ? multiScale : null, routeConfig,
       });
