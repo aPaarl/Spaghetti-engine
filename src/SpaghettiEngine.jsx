@@ -2833,7 +2833,7 @@ function MenuChoice({ checked, onClick, label, hint, checkbox = false }) {
 }
 
 // Fades for the hover highlight (see hoverCss in NetworkTabInner).
-const HOVER_FADE_BASE_CSS = ".se-canvas .react-flow__node,.se-canvas .react-flow__edge,.se-canvas [data-se-edge]{transition:opacity 120ms ease}";
+const HOVER_FADE_BASE_CSS = ".se-canvas .react-flow__node,.se-canvas .react-flow__edge,.se-canvas [data-se-edge] > *{transition:opacity 120ms ease}";
 
 // Line width of a relationship: thin, print-weight lines in Figure style,
 // bolder ones in Editing style; wider for stronger weights (or, for a bundled
@@ -3987,7 +3987,8 @@ function NetworkTabInner({
     const keepLabels = [...hoverConnected.edgeIds].map((id) => `:not([data-se-edge="${q(id)}"])`).join("");
     return `.se-canvas .react-flow__node:not(.react-flow__node-moduleFrame):not(.selected)${keepNodes}{opacity:.35}` +
       `.se-canvas .react-flow__edge:not(.selected)${keepEdges}{opacity:.08}` +
-      `.se-canvas [data-se-edge]${keepLabels}{opacity:.1}`;
+      // (the label's inner element: its positioning wrapper sets an inline opacity)
+      `.se-canvas [data-se-edge]${keepLabels} > *{opacity:.1}`;
   }, [hoverConnected]);
   // Past a point, hundreds of relationships at the default opacity read as a
   // solid mass rather than individual lines; easing the baseline back once a
