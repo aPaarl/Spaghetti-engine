@@ -2572,18 +2572,49 @@ function sameFlowItem(a, b) {
 // Returns `items` with every entry that is unchanged since the last render
 // replaced by the previous render's object, keyed by id.
 function useStableItems(items) {
-  const cache = useRef(new Map());
+  const cache = useRef({ map: new Map(), list: null });
   return useMemo(() => {
-    const prev = cache.current, next = new Map();
-    const out = items.map((it) => {
+    const prev = cache.current.map, prevList = cache.current.list, next = new Map();
+    let same = !!prevList && prevList.length === items.length;
+    const out = items.map((it, i) => {
       const old = prev.get(it.id);
       const keep = old && sameFlowItem(old, it) ? old : it;
       next.set(it.id, keep);
+      if (same && prevList[i] !== keep) same = false;
       return keep;
     });
-    cache.current = next;
+    // Nothing changed: the previous array itself, so React Flow skips the
+    // update entirely instead of re-checking every card or line.
+    if (same) return prevList;
+    cache.current = { map: next, list: out };
     return out;
   }, [items]);
+}
+
+// A long list drawn in steps: the first rows at once, the rest a few frames
+// later, so opening a tab with hundreds of rows never freezes the page.
+function ProgressiveList({ items, render, first = 40, step = 80 }) {
+  const [count, setCount] = useState(first);
+  useEffect(() => {
+    if (count >= items.length) return undefined;
+    const t = setTimeout(() => setCount((c) => c + step), 16);
+    return () => clearTimeout(t);
+  }, [count, items.length, step]);
+  return items.slice(0, count).map(render);
+}
+
+// A concept picker that lists every concept only once it is opened. A
+// closed list needs just its current choice, and the Model editor shows two
+// per relationship: on a 150-concept model with 450 relationships that was
+// 135,000 option elements to build every time the tab opened.
+function ConceptSelect({ value, concepts, onChange, className }) {
+  const [full, setFull] = useState(false);
+  const current = full ? null : concepts.find((c) => c.id === value);
+  return (
+    <select value={value} onChange={onChange} onMouseDown={() => setFull(true)} onFocus={() => setFull(true)} onKeyDown={() => setFull(true)} className={className}>
+      {full ? concepts.map((c) => <option key={c.id} value={c.id}>{c.name}</option>) : current ? <option value={current.id}>{current.name}</option> : null}
+    </select>
+  );
 }
 
 // Closes a popup menu on a click outside it or on Escape.
@@ -3165,8 +3196,13 @@ function ModuleFrameNode({ data }) {
 // its target, orange when every one decreases it, violet when mixed.
 const aggregateColor = (a) => (a.negative === 0 ? "#16a34a" : a.positive === 0 ? "#ea580c" : "#7c3aed");
 
-const nodeTypes = { concept: ConceptNode, module: ModuleNode, moduleFrame: ModuleFrameNode };
-const edgeTypes = { influence: InfluenceEdge };
+// Memoized: React Flow re-renders its wrapper of every card and line whenever
+// its node or edge list changes (a selection, any edit), and an unmemoized
+// custom card or line re-renders with it. Memoized, only the cards and lines
+// whose own props changed are drawn again; on a 150-concept map one click had
+// re-rendered all 150 cards, their 600 dots, and all 450 lines, twice.
+const nodeTypes = { concept: React.memo(ConceptNode), module: React.memo(ModuleNode), moduleFrame: React.memo(ModuleFrameNode) };
+const edgeTypes = { influence: React.memo(InfluenceEdge) };
 
 // ============================================================================
 // Model-building aids: plain-language relationships and the Model check
@@ -3887,11 +3923,27 @@ function NetworkTabInner({
   // handle bounds every frame, and an id it couldn't resolve in time made it
   // drop the edge outright — one of the ways the model could vanish mid-drag.
   const edgeSlotsRef = useRef({});
+  // Both the fan-out here and the figure routing below depend only on where
+  // the cards are, how big they are (their names), and which relationships
+  // join them. They are keyed on exactly that, so editing a starting value, a
+  // definition, a module, or a description no longer recomputes them.
+  const geometryKey = useMemo(
+    () => displayConcepts.map((c) => `${c.id}:${c.position?.x ?? 0}:${c.position?.y ?? 0}:${c.name}`).join("|") +
+      "#" + moduleBlocks.map((m) => `${m.id}:${m.position.x}:${m.position.y}`).join("|"),
+    [displayConcepts, moduleBlocks]
+  );
+  const edgeGeometryKey = useMemo(
+    () => displayEdges.map((e) => `${e.id}:${e.source}:${e.target}:${e.weight}:${e.bend || 0}:${e.sourceHandle || ""}:${e.targetHandle || ""}`).join("|"),
+    [displayEdges]
+  );
+  const geometryInputs = useRef(null);
+  geometryInputs.current = { slotNodes, displayEdges, displayConcepts, moduleBlocks };
   const edgeSlots = useMemo(() => {
     if (isDragging) return edgeSlotsRef.current;
-    edgeSlotsRef.current = computeEdgeSlots(slotNodes, displayEdges);
+    edgeSlotsRef.current = computeEdgeSlots(geometryInputs.current.slotNodes, geometryInputs.current.displayEdges);
     return edgeSlotsRef.current;
-  }, [slotNodes, displayEdges, isDragging]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [geometryKey, edgeGeometryKey, isDragging]);
 
   // The handle ids handed to React Flow. A hand-pinned anchor is passed
   // through exactly (normalized for older models that only recorded one
@@ -3919,7 +3971,7 @@ function NetworkTabInner({
   // should nudge it.
   const parallelSlots = useMemo(() => {
     const groups = {};
-    displayEdges.forEach((e) => {
+    geometryInputs.current.displayEdges.forEach((e) => {
       const key = [e.source, e.target].sort().join("|");
       (groups[key] = groups[key] || []).push(e);
     });
@@ -3932,7 +3984,8 @@ function NetworkTabInner({
         .forEach((e, i) => { slots[e.id] = i % 2 === 0 ? Math.ceil((i + 1) / 2) : -Math.ceil(i / 2); });
     });
     return slots;
-  }, [displayEdges]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [edgeGeometryKey]);
 
   // Figure style routing (see computeFigureRouting): which relationships
   // bow around a card in their way, and where along each one its weight
@@ -3949,18 +4002,24 @@ function NetworkTabInner({
   const figureRouting = useMemo(() => {
     if (!figureStyle || edgeStyle === "orthogonal") return {};
     if (isDragging) return figureRoutingRef.current;
+    const { displayConcepts: dc, moduleBlocks: mb, displayEdges: de } = geometryInputs.current;
     const rects = new Map();
-    displayConcepts.forEach((c) => {
+    dc.forEach((c) => {
       const m = rf.getInternalNode?.(c.id)?.measured;
       const est = m?.width && m?.height ? { w: m.width, h: m.height } : estimateNodeSize(c.name, true);
       const p = c.position || { x: 0, y: 0 };
       rects.set(c.id, { x: p.x, y: p.y, w: est.w, h: est.h });
     });
-    moduleBlocks.forEach((m) => rects.set(m.id, { x: m.position.x, y: m.position.y, w: MODULE_NODE_W, h: MODULE_NODE_H }));
-    figureRoutingRef.current = computeFigureRouting(rects, displayEdges, parallelSlots);
+    mb.forEach((m) => rects.set(m.id, { x: m.position.x, y: m.position.y, w: MODULE_NODE_W, h: MODULE_NODE_H }));
+    const next = computeFigureRouting(rects, de, parallelSlots);
+    // unchanged routing keeps its identity, so the lines' props stay equal
+    const prev = figureRoutingRef.current;
+    const keys = Object.keys(next);
+    const unchanged = keys.length === Object.keys(prev).length && keys.every((k) => prev[k] && prev[k].autoBend === next[k].autoBend && prev[k].labelT === next[k].labelT);
+    if (!unchanged) figureRoutingRef.current = next;
     return figureRoutingRef.current;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [figureStyle, edgeStyle, isDragging, displayConcepts, moduleBlocks, displayEdges, parallelSlots, measureTick, rf]);
+  }, [figureStyle, edgeStyle, isDragging, geometryKey, edgeGeometryKey, parallelSlots, measureTick, rf]);
 
   // Lets a relationship's own label (or, with labels hidden, its selected
   // handle — see InfluenceEdge) be grabbed and dragged to bow the line out
@@ -13014,7 +13073,7 @@ function SpaghettiEngineApp() {
               </div>
               <div className="space-y-2 max-h-[560px] overflow-auto pr-1">
                 {concepts.length === 0 && <p className="text-sm text-neutral-600 italic">No concepts yet: add one here, paste a matrix above, or draw them on the Network tab.</p>}
-                {concepts.map((c) => (
+                <ProgressiveList items={concepts} render={(c) => (
                   <div key={c.id} className="border border-slate-200 rounded-md p-2.5">
                     <div className="flex items-center gap-2">
                       <input
@@ -13054,7 +13113,7 @@ function SpaghettiEngineApp() {
                       className="mt-1.5 w-full text-xs border border-slate-200 rounded px-1.5 py-1 resize-y focus:outline-none focus:ring-1 focus:ring-cobalt-500"
                     />
                   </div>
-                ))}
+                )} />
               </div>
             </div>
 
@@ -13065,16 +13124,12 @@ function SpaghettiEngineApp() {
               </div>
               <div className="space-y-2 max-h-[560px] overflow-auto pr-1">
                 {edges.length === 0 && <p className="text-sm text-neutral-600 italic">No relationships yet.</p>}
-                {edges.map((e) => (
+                <ProgressiveList items={edges} render={(e) => (
                   <div key={e.id} className="border border-slate-200 rounded-md p-2.5">
                     <div className="flex items-center gap-2 mb-2">
-                      <select value={e.source} onChange={(ev) => updateEdge(e.id, { source: ev.target.value })} className="text-xs border border-slate-200 rounded px-1 py-1 flex-1">
-                        {concepts.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                      </select>
+                      <ConceptSelect value={e.source} concepts={concepts} onChange={(ev) => updateEdge(e.id, { source: ev.target.value })} className="text-xs border border-slate-200 rounded px-1 py-1 flex-1" />
                       <ChevronRight size={14} className="text-neutral-600 shrink-0" />
-                      <select value={e.target} onChange={(ev) => updateEdge(e.id, { target: ev.target.value })} className="text-xs border border-slate-200 rounded px-1 py-1 flex-1">
-                        {concepts.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                      </select>
+                      <ConceptSelect value={e.target} concepts={concepts} onChange={(ev) => updateEdge(e.id, { target: ev.target.value })} className="text-xs border border-slate-200 rounded px-1 py-1 flex-1" />
                       <button onClick={() => { commitHistory(); removeEdge(e.id); }} className="text-neutral-500 hover:text-red-500 shrink-0" title="Delete this relationship"><Trash2 size={14} /></button>
                     </div>
                     <WeightSlider value={e.weight} onChange={(v) => updateEdge(e.id, { weight: v })} />
@@ -13082,7 +13137,7 @@ function SpaghettiEngineApp() {
                       {relationshipSentence(concepts.find((c) => c.id === e.source)?.name, concepts.find((c) => c.id === e.target)?.name, e.weight)}
                     </p>
                   </div>
-                ))}
+                )} />
               </div>
             </div>
             </div>
