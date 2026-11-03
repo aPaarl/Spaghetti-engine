@@ -49,7 +49,7 @@ const AUDIENCES = [
   },
   {
     icon: GraduationCap, title: "Students and teachers",
-    text: "Three worked example models, and documentation that explains the method as well as the buttons.",
+    text: "A step-by-step guide to a first map, a Basic mode with just the essentials, and documentation that explains the method as well as the buttons.",
   },
 ];
 
@@ -142,7 +142,7 @@ export default function AboutTab({ onOpenTab }) {
         <div className="flex items-center gap-2 text-sm font-semibold text-neutral-900 mb-3"><Compass size={16} className="text-citrus-600" /> Where to start</div>
         <ol className="grid md:grid-cols-3 gap-4 text-sm text-neutral-900">
           <li className="space-y-1.5">
-            <div><span className="font-semibold">1. Pick a model.</span> Use New / example model at the top right for a worked example, or start a blank one.</div>
+            <div><span className="font-semibold">1. Start a model.</span> Your models are listed under the folder button at the top right: start a new one there, or open one you saved before. The Getting started guide walks you through your first map.</div>
             <button onClick={() => onOpenTab("editor")} className="text-xs font-medium text-cobalt-700 hover:underline inline-flex items-center gap-1">Open the Model editor <ArrowRight size={12} /></button>
           </li>
           <li className="space-y-1.5">

@@ -16,7 +16,7 @@ const stub = () => { throw new Error("stub"); };
 const store = {};
 const ls = { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); }, removeItem: (k) => { delete store[k]; } };
 const api = new Function("localStorage", "performance", "ExcelJS", "document", "window", "ELK", "forceSimulation", "forceManyBody", "forceLink", "forceCenter", "forceCollide", "domNodeToPngBlob",
-  "function layoutByModule(c){ return c; }\n" + code + "\nreturn { makeTemplate, DEFAULT_SETTINGS, makePathwayEngine, pathwaySimSettings, pathwayLeverValue, runPathwayAnalysis, classifyPathways, pathwayQuantile, pathwayThresholdVariants, pathwayAlternativeSettings, PATHWAY_THRESHOLD_DEFAULTS, PATHWAY_ROBUSTNESS_FAMILIES, DEFAULT_PATHWAY_CONFIG, PATHWAY_CONFIG_KEY, readPathwayConfig, pathwayKeyOf };")(ls, { now: () => Date.now() }, {}, {}, {}, class {}, stub, stub, stub, stub, stub, stub);
+  "function layoutByModule(c){ return c; }\n" + fs.readFileSync(path.join(__dirname, "fixtures", "example-models.js"), "utf8") + "\n" + code + "\nreturn { makeTemplate, DEFAULT_SETTINGS, makePathwayEngine, pathwaySimSettings, pathwayLeverValue, runPathwayAnalysis, classifyPathways, pathwayQuantile, pathwayThresholdVariants, pathwayAlternativeSettings, PATHWAY_THRESHOLD_DEFAULTS, PATHWAY_ROBUSTNESS_FAMILIES, DEFAULT_PATHWAY_CONFIG, PATHWAY_CONFIG_KEY, readPathwayConfig, pathwayKeyOf };")(ls, { now: () => Date.now() }, {}, {}, {}, class {}, stub, stub, stub, stub, stub, stub);
 
 let pass = 0, fail = 0;
 const ok = (c, msg) => { if (c) { pass++; console.log("PASS " + msg); } else { fail++; console.log("FAIL " + msg); } };
