@@ -5,7 +5,7 @@ import {
   X, Lock, Unlock, Info, ClipboardPaste, Check,
   Undo2, Redo2, Copy, Maximize2, HelpCircle, SlidersHorizontal,
   BarChart3, LayoutGrid, GitBranch, Shuffle, MousePointer2, Activity, FlaskConical, TrendingUp,
-  Eye, EyeOff, Route, Layers, Waypoints, PanelLeftClose, Search, Dices, Sparkles, FolderOpen, Pencil, CopyPlus, FilePlus, Compass, CheckCircle2, Circle,
+  Eye, EyeOff, Route, Layers, Waypoints, PanelLeftClose, Search, Dices, Sparkles, FolderOpen, Pencil, CopyPlus, FilePlus, Compass, CheckCircle2, Circle, Presentation,
 } from "lucide-react";
 import {
   LineChart, Line, BarChart, Bar, Cell, LabelList, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
@@ -2346,7 +2346,7 @@ function ConceptNode({ data, selected }) {
   // most of the work in each frame of a drag on a large map. At rest a card
   // keeps only the few invisible handles its relationships are attached to.
   const [hovered, setHovered] = useState(false);
-  const live = hovered || selected || isConnecting || !!data.showAnchors || !!data.reconnectDragActive;
+  const live = !data.present && (hovered || selected || isConnecting || !!data.showAnchors || !!data.reconnectDragActive);
   const updateNodeInternals = useUpdateNodeInternals();
   const firstLive = useRef(true);
   useEffect(() => {
@@ -2397,7 +2397,7 @@ function ConceptNode({ data, selected }) {
       // Focus mode: a concept outside the analysis scope stays on the canvas
       // for context but recedes, unless it is the one being worked on.
       style={figure
-        ? { background: cat.bg, color: "#0f172a", minWidth: 70, maxWidth: FIGURE_NODE_MAX_W, borderColor: selected ? "#2456d6" : cat.border, opacity: selected ? 1 : data.faded ? 0.15 : 1 }
+        ? { background: cat.bg, color: "#0f172a", minWidth: 70, maxWidth: data.present ? FIGURE_NODE_MAX_W + 70 : FIGURE_NODE_MAX_W, borderColor: selected ? "#2456d6" : cat.border, opacity: selected ? 1 : data.faded ? 0.15 : 1 }
         : { background: cat.bg, color: "#1e293b", minWidth: 135, maxWidth: 185, borderColor, opacity: selected ? 1 : data.faded ? 0.15 : 1 }}
       title={figure ? `${c.name}\n${data.hasRun ? "Current activation" : "Initial activation"}: ${valueText}` : undefined}
       onMouseEnter={() => setHovered(true)}
@@ -2450,10 +2450,10 @@ function ConceptNode({ data, selected }) {
         );
       })}
       {figure ? (
-        <div className="text-[13px] font-semibold leading-tight break-words" style={{ wordBreak: "break-word" }}>{c.name}</div>
+        <div className={`${data.present ? "text-[17px] px-1 py-0.5" : "text-[13px]"} font-semibold leading-tight break-words`} style={{ wordBreak: "break-word" }}>{c.name}</div>
       ) : (
         <>
-          <div className="text-sm font-semibold leading-snug break-words" style={{ wordBreak: "break-word" }}>{c.name}</div>
+          <div className={`${data.present ? "text-lg" : "text-sm"} font-semibold leading-snug break-words`} style={{ wordBreak: "break-word" }}>{c.name}</div>
           <div className="text-[11.5px] mt-1 leading-tight whitespace-nowrap overflow-hidden text-ellipsis">
             <span className="opacity-60">{data.hasRun ? "Current activation" : "Initial activation"}:</span>{" "}
             <span className="font-mono font-semibold" style={{ color: valueColor }}>{valueText}</span>
@@ -2614,6 +2614,49 @@ function ConceptSelect({ value, concepts, onChange, className }) {
     <select value={value} onChange={onChange} onMouseDown={() => setFull(true)} onFocus={() => setFull(true)} onKeyDown={() => setFull(true)} className={className}>
       {full ? concepts.map((c) => <option key={c.id} value={c.id}>{c.name}</option>) : current ? <option value={current.id}>{current.name}</option> : null}
     </select>
+  );
+}
+
+// ============================================================================
+// In-app notices
+// ============================================================================
+// Errors and notes from anywhere in the app (an analysis that stopped, an
+// import or export that failed) appear as notices in the top-right corner,
+// inside the tool, instead of the browser's alert(): those block the page,
+// look like they come from the browser rather than the tool, and some
+// browsers suppress them silently. An error stays until it is closed; a note
+// goes away by itself.
+const NOTICE_EVENT = "se-notice";
+function notify(text, { kind = "error", title } = {}) {
+  try { window.dispatchEvent(new CustomEvent(NOTICE_EVENT, { detail: { text, kind, title } })); } catch { /* no window */ }
+}
+
+function NoticeStack() {
+  const [notices, setNotices] = useState([]);
+  useEffect(() => {
+    const onNotice = (e) => {
+      const n = { id: `${Date.now()}-${Math.random()}`, ...e.detail };
+      setNotices((list) => [...list.slice(-3), n]);
+      if (n.kind !== "error") setTimeout(() => setNotices((list) => list.filter((x) => x.id !== n.id)), 7000);
+    };
+    window.addEventListener(NOTICE_EVENT, onNotice);
+    return () => window.removeEventListener(NOTICE_EVENT, onNotice);
+  }, []);
+  if (!notices.length) return null;
+  return (
+    <div className="fixed top-16 right-4 z-[65] w-96 max-w-[calc(100vw-2rem)] space-y-2" aria-live="assertive">
+      {notices.map((n) => (
+        <div key={n.id} role={n.kind === "error" ? "alert" : "status"}
+          className={`flex items-start gap-2 rounded-lg border shadow-lg px-3.5 py-2.5 text-sm ${n.kind === "error" ? "bg-rose-50 border-rose-200 text-rose-900" : "bg-white border-slate-200 text-neutral-900"}`}>
+          <Info size={16} className={`mt-0.5 shrink-0 ${n.kind === "error" ? "text-rose-600" : "text-cobalt-700"}`} />
+          <div className="flex-1 min-w-0">
+            {n.title && <p className="font-semibold">{n.title}</p>}
+            <p className="leading-snug">{n.text}</p>
+          </div>
+          <button onClick={() => setNotices((list) => list.filter((x) => x.id !== n.id))} className="text-neutral-600 hover:text-neutral-900" aria-label="Dismiss"><X size={14} /></button>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -2972,7 +3015,7 @@ function InfluenceEdge({
             onMouseDown={canBend ? beginBend : undefined}
             onDoubleClick={canBend && manualBend ? (ev) => { ev.stopPropagation(); data.onBendReset?.(id); } : undefined}
             style={{ pointerEvents: isBeingDraggedByUser ? "none" : "all", cursor: canBend ? "grab" : undefined, background: "rgba(255,255,255,0.9)", color: agg ? (agg.negative === 0 ? "#166534" : agg.positive === 0 ? "#9a3412" : "#5b21b6") : w >= 0 ? "#166534" : "#9a3412" }}
-            className={`px-[3px] rounded-sm text-[10.5px] leading-[14px] font-mono font-semibold select-none whitespace-nowrap ${selected ? "ring-1 ring-cobalt-400" : ""}`}
+            className={`px-[3px] rounded-sm ${data?.present ? "text-[13px] leading-[17px]" : "text-[10.5px] leading-[14px]"} font-mono font-semibold select-none whitespace-nowrap ${selected ? "ring-1 ring-cobalt-400" : ""}`}
             title={agg ? `${agg.count} relationship${agg.count === 1 ? "" : "s"}: ${agg.positive} increasing, ${agg.negative} decreasing; net weight ${agg.sum >= 0 ? "+" : ""}${agg.sum}` : canBend ? `Drag to bend this relationship's line${manualBend ? "; double-click to straighten it back out" : ""}` : undefined}
           >
             {agg
@@ -3436,7 +3479,7 @@ function NetworkTabInner({
   modules = EMPTY_ARRAY, networkView = DEFAULT_NETWORK_VIEW, setNetworkView, viewInfo, newConceptCategory = "",
   displayMode = "hide", setDisplayMode, fadedNodeIds = null, fadedEdgeIds = null,
   allConcepts = null, focusRequest = null, focusNameId = null, onNameFocused,
-  collapsedModules = EMPTY_ARRAY, setCollapsedModules, translateConcepts, basic = false,
+  collapsedModules = EMPTY_ARRAY, setCollapsedModules, translateConcepts, basic = false, modelName = "",
 }) {
   const wrapperRef = useRef(null);
   // Mirrors `concepts` every render without being a dependency of anything:
@@ -3461,6 +3504,49 @@ function NetworkTabInner({
   const [spaceHeld, setSpaceHeld] = useState(false);
   const [layoutMenuOpen, setLayoutMenuOpen] = useState(false);
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
+  // Presentation view: the map alone, full screen, with larger text and no
+  // editing, for showing a model to workshop participants. Hovering a
+  // concept still highlights its connections; dragging the background pans.
+  const [present, setPresent] = useState(false);
+  const presentRef = useRef(false);
+  presentRef.current = present;
+  const enterPresent = () => {
+    setSelected(null);
+    setLayoutMenuOpen(false); setViewMenuOpen(false);
+    setPresent(true);
+    try { document.documentElement.requestFullscreen?.().catch(() => {}); } catch { /* the overlay alone still fills the window */ }
+  };
+  const exitPresent = useCallback(() => {
+    setPresent(false);
+    try { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); } catch { /* not in full screen */ }
+  }, []);
+  useEffect(() => {
+    // leaving the browser's full screen (Esc, F11) also leaves the presentation
+    const onFs = () => { if (!document.fullscreenElement && presentRef.current) setPresent(false); };
+    document.addEventListener("fullscreenchange", onFs);
+    return () => document.removeEventListener("fullscreenchange", onFs);
+  }, []);
+  const firstPresent = useRef(true);
+  useEffect(() => {
+    if (firstPresent.current) { firstPresent.current = false; return undefined; }
+    const t = setTimeout(() => rf.fitView({ padding: present ? 0.08 : 0.2, duration: 300, maxZoom: present ? 2 : FIT_MAX_ZOOM }), 150);
+    return () => clearTimeout(t);
+    // rf is declared further down this component; it is read when the effect runs
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [present]);
+  // While presenting, the stage refits the map whenever its size changes
+  // (entering full screen, rotating a tablet, a projector's resolution).
+  useEffect(() => {
+    if (!present || !wrapperRef.current || typeof ResizeObserver === "undefined") return undefined;
+    let t = 0;
+    const ro = new ResizeObserver(() => {
+      clearTimeout(t);
+      t = setTimeout(() => rf.fitView({ padding: 0.08, duration: 200, maxZoom: 2 }), 120);
+    });
+    ro.observe(wrapperRef.current);
+    return () => { clearTimeout(t); ro.disconnect(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [present]);
   // The small overview map in the corner redraws every card on every pan,
   // zoom, and drag step, so it is off unless asked for (View menu).
   const [showMiniMap, setShowMiniMapState] = useState(() => {
@@ -3858,7 +3944,7 @@ function NetworkTabInner({
   const conceptRfNodes = useMemo(() => displayConcepts.map((c) => ({
     id: c.id, type: "concept", position: dragPos?.get(c.id) || animPositions?.get(c.id) || c.position || { x: 0, y: 0 },
     data: {
-      concept: c, hasRun, figure: figureStyle,
+      concept: c, hasRun, figure: figureStyle, present,
       showAnchors: !!selectedEdgeNodeIds?.has(c.id),
       pinnedTargets: pinnedTargetsByNode[c.id] || EMPTY_ARRAY,
       pinnedSources: pinnedSourcesByNode[c.id] || EMPTY_ARRAY,
@@ -3873,7 +3959,7 @@ function NetworkTabInner({
       reconnectDragActive: !!dragReconnect,
     },
     selected: selected?.kind === "concept" && selected.id === c.id,
-  })), [displayConcepts, dragPos, animPositions, selected, hasRun, figureStyle, selectedEdgeNodeIds, pinnedTargetsByNode, pinnedSourcesByNode, fadedNodeIds, dragReconnect]);
+  })), [displayConcepts, dragPos, animPositions, present, selected, hasRun, figureStyle, selectedEdgeNodeIds, pinnedTargetsByNode, pinnedSourcesByNode, fadedNodeIds, dragReconnect]);
 
   const rfNodesRaw = useMemo(() => [
     ...frames.map((f) => ({
@@ -4160,7 +4246,7 @@ function NetworkTabInner({
       sourceHandle: h.sourceHandle, targetHandle: h.targetHandle,
       data: {
         edge: e, aggregate: agg, edgeStyle, parallelSlot: parallelSlots[e.id] || 0,
-        figure: figureStyle, autoBend: figureRouting[e.id]?.autoBend || 0, labelT: figureRouting[e.id]?.labelT ?? 0.5,
+        figure: figureStyle, present, autoBend: figureRouting[e.id]?.autoBend || 0, labelT: figureRouting[e.id]?.labelT ?? 0.5,
         sourceSlot: slot.sourceSlot ?? 0, sourceCount: slot.sourceCount ?? 1,
         targetSlot: slot.targetSlot ?? 0, targetCount: slot.targetCount ?? 1,
         faded, baseOpacity: edgeBaseOpacity, hideLabel: hideEdgeLabels,
@@ -4199,7 +4285,7 @@ function NetworkTabInner({
         return { type: MarkerType.ArrowClosed, color: agg ? aggregateColor(agg) : e.weight >= 0 ? "#16a34a" : "#ea580c", width: size, height: size };
       })(),
     };
-  }), [displayEdges, selected, edgeStyle, parallelSlots, figureStyle, figureRouting, resolvedHandles, edgeSlots, fadedEdgeIds, edgeBaseOpacity, hideEdgeLabels, startBendDrag, resetBend, dragBend, dragReconnect, startReconnectDrag]);
+  }), [displayEdges, selected, edgeStyle, parallelSlots, figureStyle, present, figureRouting, resolvedHandles, edgeSlots, fadedEdgeIds, edgeBaseOpacity, hideEdgeLabels, startBendDrag, resetBend, dragBend, dragReconnect, startReconnectDrag]);
 
   // Hand React Flow the very same node and relationship objects whenever
   // nothing about them changed, so hovering, selecting or dragging one card
@@ -4376,6 +4462,7 @@ function NetworkTabInner({
       return el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
     };
     const onKeyDown = (e) => {
+      if (presentRef.current) { if (e.key === "Escape") exitPresent(); return; }
       if (e.code === "Space" && !isTyping()) { setSpaceHeld(true); }
       if (isTyping()) return;
       const mod = e.ctrlKey || e.metaKey;
@@ -4529,13 +4616,16 @@ function NetworkTabInner({
       if (figureStyle) {
         setHoverNodeIdNow(null);
         await new Promise((r) => setTimeout(r, 50));
-        await exportNetworkFigurePng(
+        const ok = await exportNetworkFigurePng(
           wrapperRef.current?.querySelector(".react-flow__viewport"),
           rf.getNodesBounds(rf.getNodes()),
           "spaghetti-engine-network-figure.png",
         );
+        if (!ok) notify("The map could not be saved as an image in this browser. Try again, or switch to Editing style and export the visible part.", { title: "Export failed" });
       } else {
-        await exportNetworkDiagramAsPng(wrapperRef.current, "spaghetti-engine-network-diagram.png");
+        if (!(await exportNetworkDiagramAsPng(wrapperRef.current, "spaghetti-engine-network-diagram.png"))) {
+          notify("The map could not be saved as an image in this browser. Try again, or zoom out first if the map is very large.", { title: "Export failed" });
+        }
       }
     } finally {
       setExportingPng(false);
@@ -4996,6 +5086,9 @@ function NetworkTabInner({
           </div>
           <span className="ml-auto flex items-center gap-2">
             {spaceHeld && <span className="text-[12.5px] text-cobalt-700 font-medium">Pan mode (space held)</span>}
+            <Btn variant="outline" onClick={enterPresent} disabled={!concepts.length} title="Show the map full screen, with larger text and no editing, for a workshop or a talk (Esc to leave)">
+              <Presentation size={14} />Present
+            </Btn>
             <Btn variant="outline" onClick={exportDiagram} disabled={exportingPng} title={figureStyle ? "Download the whole map as a high-resolution PNG image" : "Download the map exactly as shown (layout, colors, zoom) as a PNG image"}>
               <Download size={14} />{exportingPng ? "Exporting..." : "Export PNG"}
             </Btn>
@@ -5040,8 +5133,11 @@ function NetworkTabInner({
         )}
 
         <div
-          ref={wrapperRef} data-chart="network-graph" className="se-canvas relative flex-1 rounded-lg overflow-hidden border border-slate-200" onWheelCapture={onWheelCapture}
+          ref={wrapperRef} data-chart="network-graph"
+          className={present ? "se-canvas fixed inset-0 z-[70] bg-white overflow-hidden" : "se-canvas relative flex-1 rounded-lg overflow-hidden border border-slate-200"}
+          onWheelCapture={onWheelCapture}
           onDoubleClick={(e) => {
+            if (present) return;
             // Only add a concept when the double-click lands on empty canvas:
             // not on a node, edge, handle, or a UI control like the minimap.
             if (e.target.closest(".react-flow__node, .react-flow__edge, .react-flow__handle, .react-flow__minimap, .react-flow__controls, .react-flow__edgelabel-renderer")) return;
@@ -5060,6 +5156,25 @@ function NetworkTabInner({
             </div>
           )}
           <style>{HOVER_FADE_BASE_CSS + hoverCss}</style>
+          {present && (
+            <>
+              <div className="absolute top-4 left-5 z-10 pointer-events-none">
+                <p className="text-xl font-semibold text-neutral-900">{modelName}</p>
+                <p className="text-sm text-neutral-600">{concepts.length} concepts &middot; {edges.length} relationships &middot; hover a concept to see its connections</p>
+              </div>
+              <button onClick={exitPresent} className="absolute top-4 right-5 z-10 inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white/90 px-3 py-1.5 text-sm text-neutral-900 shadow-sm hover:bg-white" title="Leave the presentation (Esc)">
+                <X size={15} />Exit <span className="text-neutral-500">(Esc)</span>
+              </button>
+              <div className="absolute bottom-4 left-5 z-10 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md bg-white/90 px-3 py-2 text-sm text-neutral-900 shadow-sm pointer-events-none">
+                {categoriesPresent.map((cat) => {
+                  const st = categoryStyle(cat);
+                  return <span key={cat} className="flex items-center gap-1.5"><span className="w-3.5 h-3.5 rounded-sm inline-block border" style={{ background: st.bg, borderColor: st.border }} />{cat}</span>;
+                })}
+                <span className="flex items-center gap-1.5"><span className="w-5 h-0.5 inline-block bg-green-600" />increases</span>
+                <span className="flex items-center gap-1.5"><span className="w-5 inline-block border-t-2 border-dashed border-orange-600" />decreases</span>
+              </div>
+            </>
+          )}
           <ErrorBoundary label="the network canvas">
             <ReactFlow
               nodes={rfNodes}
@@ -5077,9 +5192,11 @@ function NetworkTabInner({
               onNodeDragStart={() => setHoverNodeIdNow(null)}
               onMoveStart={() => setHoverNodeIdNow(null)}
               connectionMode="loose"
-              panOnDrag={spaceHeld ? [0, 1, 2] : [1, 2]}
-              nodesDraggable={!spaceHeld}
-              selectionOnDrag={!spaceHeld}
+              panOnDrag={spaceHeld || present ? [0, 1, 2] : [1, 2]}
+              nodesDraggable={!spaceHeld && !present}
+              nodesConnectable={!present}
+              elementsSelectable={!present}
+              selectionOnDrag={!spaceHeld && !present}
               deleteKeyCode={null}
               zoomOnDoubleClick={false}
               zoomOnScroll
@@ -5090,9 +5207,9 @@ function NetworkTabInner({
               proOptions={{ hideAttribution: true }}
             >
               {!figureStyle && <Background gap={18} size={1} />}
-              <Controls showInteractive={false} />
+              {!present && <Controls showInteractive={false} />}
               <ZoomCssVar targetRef={wrapperRef} />
-              {showMiniMap && <MiniMap pannable zoomable nodeColor={(n) => (n.type === "moduleFrame" ? "transparent" : n.type === "module" ? categoryStyle(n.data?.categoryValue).border : categoryStyle(n.data?.concept?.category).bg)} className="!bg-white" />}
+              {showMiniMap && !present && <MiniMap pannable zoomable nodeColor={(n) => (n.type === "moduleFrame" ? "transparent" : n.type === "module" ? categoryStyle(n.data?.categoryValue).border : categoryStyle(n.data?.concept?.category).bg)} className="!bg-white" />}
             </ReactFlow>
           </ErrorBoundary>
         </div>
@@ -6870,7 +6987,7 @@ function MonteCarloTab({ concepts, edges, scenarios, activeScenarioId, settings,
         do { r = gen.next(); } while (!r.done && performance.now() - t0 < 40);
       } catch (err) {
         setRunning(false); setProgress(null);
-        alert("The Monte Carlo run stopped with an error: " + (err?.message || err));
+        notify(`The Monte Carlo run stopped with an error: ${err?.message || err}. The settings and the model are unchanged; try again, or lower the number of runs.`, { title: "Monte Carlo stopped" });
         return;
       }
       if (r.done) {
@@ -9006,7 +9123,7 @@ async function exportFigure(containerEl, filename, settings, { title, subtitle }
       a.href = URL.createObjectURL(blob);
       a.download = scopedFilename(filename.replace(/\.png$/, `.${ext}`));
       a.click();
-      if (!pdf) alert("PDF export needs a newer browser (CompressionStream is not available here); downloaded a high-resolution PNG instead.");
+      if (!pdf) notify("This browser cannot write PDF files (it lacks CompressionStream), so a high-resolution PNG was downloaded instead.", { kind: "info", title: "Saved as PNG" });
       return;
     }
     const tagged = await pngWithDpi(result.blob, settings.dpi);
@@ -10632,7 +10749,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
         do { r = gen.next(); } while (!r.done && performance.now() - t0 < 40);
       } catch (err) {
         setRunning(false); setProgress(null);
-        alert("The pathway analysis stopped with an error: " + (err?.message || err));
+        notify(`The pathway analysis stopped with an error: ${err?.message || err}. The setup and the model are unchanged; try again with fewer stages or levers.`, { title: "Pathway analysis stopped" });
         return;
       }
       if (r.done) {
@@ -11777,7 +11894,7 @@ function ModelLibraryDialog({ library, activeId, onOpen, onNew, onRename, onDupl
 class AppCrashBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { error: null, confirmFresh: false };
+    this.state = { error: null, confirmFresh: false, note: null };
   }
   static getDerivedStateFromError(error) { return { error }; }
   componentDidCatch(error, info) { console.error("[The Spaghetti Engine] unrecoverable render error:", error, info?.componentStack); }
@@ -11785,12 +11902,12 @@ class AppCrashBoundary extends React.Component {
     try {
       const idx = readIndex();
       const raw = idx?.activeId ? localStorage.getItem(modelKey(idx.activeId)) : null;
-      if (!raw) { alert("There is no model saved in this browser."); return; }
+      if (!raw) { this.setState({ note: "There is no model saved in this browser." }); return; }
       const a = document.createElement("a");
       a.href = URL.createObjectURL(new Blob([raw], { type: "application/json" }));
       a.download = "spaghetti-engine-saved-model.json";
       a.click();
-    } catch { alert("The saved model could not be read."); }
+    } catch { this.setState({ note: "The saved model could not be read." }); }
   }
   render() {
     if (!this.state.error) return this.props.children;
@@ -11800,6 +11917,7 @@ class AppCrashBoundary extends React.Component {
           <h1 className="text-lg font-semibold text-neutral-900">The Spaghetti Engine ran into a problem</h1>
           <p>Something went wrong while showing the page. Your models are saved in this browser, and reloading the page usually solves this.</p>
           <p className="text-xs text-neutral-600 font-mono break-words">{String(this.state.error?.message || this.state.error)}</p>
+          {this.state.note && <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">{this.state.note}</p>}
           <div className="flex flex-wrap gap-2 pt-1">
             <button onClick={() => window.location.reload()} className="px-3 py-1.5 rounded-md bg-cobalt-700 text-white text-sm">Reload</button>
             <button onClick={() => this.downloadSaved()} className="px-3 py-1.5 rounded-md border border-slate-300 text-sm">Download the saved model</button>
@@ -12524,7 +12642,7 @@ function SpaghettiEngineApp() {
         switchToModel(r.id, { ...data, savedAt: r.payload.savedAt });
         setLibraryOpen(false);
         setImportNotice(data.fixes.length ? { file: file.name, fixes: data.fixes } : null);
-      } catch (err) { alert("Could not read that file as a Spaghetti Engine model (a .json file saved with Export JSON)."); }
+      } catch (err) { notify(`"${file.name}" could not be read as a Spaghetti Engine model. Choose a .json file saved with Export JSON. Your models are unchanged.`, { title: "Import failed" }); }
     };
     reader.readAsText(file);
   };
@@ -12558,7 +12676,7 @@ function SpaghettiEngineApp() {
       a.download = scopedFilename("spaghetti-engine-analysis-workbook.xlsx");
       a.click();
     } catch (err) {
-      alert("Could not build the analysis workbook: " + (err?.message || err));
+      notify(`The analysis workbook could not be built: ${err?.message || err}. Nothing was downloaded; your model and results are unchanged.`, { title: "Export failed" });
     } finally {
       setExportingWorkbook(false);
     }
@@ -12895,6 +13013,8 @@ function SpaghettiEngineApp() {
         </div>
       )}
 
+      <NoticeStack />
+
       {libraryOpen && (
         <ModelLibraryDialog
           library={library} activeId={activeModelId}
@@ -13180,7 +13300,7 @@ function SpaghettiEngineApp() {
             fadedNodeIds={fadedIds.nodes} fadedEdgeIds={fadedIds.edges}
             focusRequest={focusRequest} focusNameId={newConceptId} onNameFocused={() => setNewConceptId(null)}
             collapsedModules={basic ? EMPTY_ARRAY : collapsedModules} setCollapsedModules={basic ? undefined : setCollapsedModules} translateConcepts={translateConcepts}
-            onReveal={revealItem} basic={basic}
+            onReveal={revealItem} basic={basic} modelName={activeModelName}
           />
         )}
 
