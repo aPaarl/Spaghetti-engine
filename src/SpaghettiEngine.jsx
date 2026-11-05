@@ -1377,6 +1377,7 @@ function MethodPanel({ title = "Method & diagnostics", stats = [], children }) {
 function AnalysisScopeBar({ viewInfo, modules, networkView, setNetworkView }) {
   const v = viewInfo;
   const [flashChips, setFlashChips] = useState(false);
+  const [openSmall, setOpenSmall] = useState(false);
   const keys = resolveViewModules(modules, networkView);
   const every = keys.length === modules.length;
   const presetValue = networkView.mode === "nexus"
@@ -1394,19 +1395,24 @@ function AnalysisScopeBar({ viewInfo, modules, networkView, setNetworkView }) {
     }
   };
   return (
-    <div className={`px-5 py-1.5 text-xs border-b ${v.isFiltered ? "bg-amber-50 border-amber-200 text-amber-900" : "bg-white border-slate-200 text-neutral-900"}`}>
+    <div className={`px-3 sm:px-5 py-1.5 text-xs border-b ${v.isFiltered ? "bg-amber-50 border-amber-200 text-amber-900" : "bg-white border-slate-200 text-neutral-900"}`}>
       <div className="flex items-center gap-x-3 gap-y-1.5 flex-wrap">
         <span className="flex items-center gap-1.5">
           <span className="text-neutral-600">Viewing:</span>
           <span className={`w-2 h-2 rounded-full ${v.isFiltered ? "bg-amber-500" : "bg-cobalt-600"}`} />
           <span className="font-semibold">{v.label}</span>
         </span>
-        <span className={v.isFiltered ? "text-amber-800/80" : "text-neutral-600"}>
+        {modules.length > 0 && (
+          <button onClick={() => setOpenSmall((o) => !o)} className="lg:hidden ml-auto inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-0.5 text-neutral-900" aria-expanded={openSmall}>
+            Scope<ChevronDown size={12} className={openSmall ? "rotate-180" : ""} />
+          </button>
+        )}
+        <span className={`${openSmall ? "" : "hidden lg:inline"} ${v.isFiltered ? "text-amber-800/80" : "text-neutral-600"}`}>
           {v.visibleConcepts} of {v.totalConcepts} concepts &middot; {v.visibleEdges} of {v.totalEdges} relationships
           {!v.showIsolated ? " · isolated concepts hidden" : ""}
         </span>
         {modules.length > 0 && (
-          <>
+          <div className={`${openSmall ? "flex" : "hidden"} lg:contents w-full flex-wrap items-center gap-x-3 gap-y-1.5`}>
             <span className="hidden md:inline h-4 w-px bg-slate-300" />
             <label className="flex items-center gap-1.5">
               <span className="text-neutral-600">Analysis scope</span>
@@ -1425,7 +1431,7 @@ function AnalysisScopeBar({ viewInfo, modules, networkView, setNetworkView }) {
               modules={modules} networkView={networkView} setNetworkView={setNetworkView}
               className={`rounded-md transition-shadow ${flashChips ? "ring-2 ring-cobalt-400 ring-offset-2" : ""}`}
             />
-          </>
+          </div>
         )}
         {v.isFiltered && (
           <button onClick={() => setNetworkView((nv) => ({ ...DEFAULT_NETWORK_VIEW, showIsolated: nv.showIsolated }))} className="ml-auto underline hover:no-underline font-medium">
@@ -3508,6 +3514,11 @@ function NetworkTabInner({
   // editing, for showing a model to workshop participants. Hovering a
   // concept still highlights its connections; dragging the background pans.
   const [present, setPresent] = useState(false);
+  // a touch screen has no right mouse button, so one finger pans the map
+  // and dragging a concept still moves it
+  const coarsePointer = useMemo(() => {
+    try { return window.matchMedia("(pointer: coarse)").matches; } catch { return false; }
+  }, []);
   const presentRef = useRef(false);
   presentRef.current = present;
   const enterPresent = () => {
@@ -4959,8 +4970,8 @@ function NetworkTabInner({
     commitHistory, setSelected, expandModule, openModuleAsModel, setCollapsedModules]);
 
   return (
-    <div className="grid gap-4 h-[calc(100vh-260px)] min-h-[640px]" style={{ gridTemplateColumns: inspectorCollapsed ? "1fr" : "1fr 280px" }}>
-      <div className="bg-white rounded-lg border border-slate-200 p-3 flex flex-col relative">
+    <div className={`grid gap-4 lg:h-[calc(100vh-260px)] lg:min-h-[640px] grid-cols-1 ${inspectorCollapsed ? "" : "lg:grid-cols-[1fr_280px]"}`}>
+      <div className="bg-white rounded-lg border border-slate-200 p-2 sm:p-3 flex flex-col relative h-[78dvh] min-h-[440px] lg:h-auto lg:min-h-0">
         {/* One row, grouped by what you are doing: build (add, undo, redo),
             tidy (Arrange), look (View, and which part of a modular model is
             unfolded), find, and export. Every switch that only changes how
@@ -4968,7 +4979,7 @@ function NetworkTabInner({
             buttons. */}
         <div className="flex items-center gap-2 mb-2 flex-wrap">
           <Btn variant="outline" onClick={() => addVisibleConcept({ x: 200 + Math.random() * 200, y: 150 + Math.random() * 150 })} title="Add a concept (or double-click empty space on the map)">
-            <Plus size={14} />Add concept
+            <Plus size={14} /><span className="max-sm:hidden">Add concept</span>
           </Btn>
           <Btn variant="outline" onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)"><Undo2 size={14} /></Btn>
           <Btn variant="outline" onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Y)"><Redo2 size={14} /></Btn>
@@ -5043,7 +5054,7 @@ function NetworkTabInner({
               </select>
             </label>
           )}
-          <div className="relative flex-1 min-w-[140px] max-w-[260px]">
+          <div className="relative flex-1 min-w-[120px] max-w-[260px]">
             <div className="flex items-center gap-1 border border-slate-300 rounded-md px-2 py-1 bg-white">
               <Search size={13} className="text-neutral-600 shrink-0" />
               <input
@@ -5087,10 +5098,10 @@ function NetworkTabInner({
           <span className="ml-auto flex items-center gap-2">
             {spaceHeld && <span className="text-[12.5px] text-cobalt-700 font-medium">Pan mode (space held)</span>}
             <Btn variant="outline" onClick={enterPresent} disabled={!concepts.length} title="Show the map full screen, with larger text and no editing, for a workshop or a talk (Esc to leave)">
-              <Presentation size={14} />Present
+              <Presentation size={14} /><span className="max-sm:hidden">Present</span>
             </Btn>
             <Btn variant="outline" onClick={exportDiagram} disabled={exportingPng} title={figureStyle ? "Download the whole map as a high-resolution PNG image" : "Download the map exactly as shown (layout, colors, zoom) as a PNG image"}>
-              <Download size={14} />{exportingPng ? "Exporting..." : "Export PNG"}
+              <Download size={14} /><span className="max-sm:hidden">{exportingPng ? "Exporting..." : "Export PNG"}</span>
             </Btn>
             <Btn variant="outline" onClick={() => setInspectorCollapsed((v) => !v)} title={inspectorCollapsed ? "Show the Inspector panel" : "Hide the Inspector panel, so the map fills the width"}>
               <PanelLeftClose size={14} className={inspectorCollapsed ? "rotate-180" : ""} />
@@ -5192,11 +5203,11 @@ function NetworkTabInner({
               onNodeDragStart={() => setHoverNodeIdNow(null)}
               onMoveStart={() => setHoverNodeIdNow(null)}
               connectionMode="loose"
-              panOnDrag={spaceHeld || present ? [0, 1, 2] : [1, 2]}
+              panOnDrag={spaceHeld || present || coarsePointer ? [0, 1, 2] : [1, 2]}
               nodesDraggable={!spaceHeld && !present}
               nodesConnectable={!present}
               elementsSelectable={!present}
-              selectionOnDrag={!spaceHeld && !present}
+              selectionOnDrag={!spaceHeld && !present && !coarsePointer}
               deleteKeyCode={null}
               zoomOnDoubleClick={false}
               zoomOnScroll
@@ -5507,7 +5518,7 @@ function InfluenceMetricsTab({ concepts, edges, settings, onHighlight, multiScal
             <div className="text-[12.5px] text-neutral-600">{stats.loops.reinforcing} reinforcing, {stats.loops.balancing} balancing{stats.loops.capped ? " (showing first 300 found)" : ""}</div>
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t border-slate-100">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4 pt-4 border-t border-slate-100">
           <div title={SYSTEM_STAT_HELP.complexity}>
             <div className="text-xs text-neutral-600 mb-1 flex items-center gap-1">Complexity score <HelpCircle size={10} className="text-neutral-500" /></div>
             <div className="text-sm font-mono">{Number.isFinite(stats.complexity) ? stats.complexity : "N/A"}</div>
@@ -6726,7 +6737,7 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
 
       <div className="bg-white rounded-lg border border-slate-200 p-4">
         <h3 className="font-semibold text-sm mb-3">Run an analysis</h3>
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
             <label className="text-xs text-neutral-700 font-medium">Step 1: Input concept</label>
             <select
@@ -6760,7 +6771,7 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
             </select>
           </div>
         </div>
-        <div className="grid grid-cols-4 gap-4 mt-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-3">
           <div>
             <label className="text-xs text-neutral-700 font-medium">Step 3: Range min</label>
             <input type="number" step={0.1} min={-1} max={1} value={sensMin} onChange={(e) => setSensMin(clamp(parseFloat(e.target.value) || 0))} className="w-full mt-1 text-xs border border-slate-200 rounded px-2 py-1.5" />
@@ -7565,7 +7576,7 @@ function BaselineEquilibriumTab({
 
       <div className="bg-white rounded-lg border border-slate-200 p-4 flex items-center justify-between flex-wrap gap-3">
         <h3 className="font-semibold text-sm">Run baseline equilibrium</h3>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center border border-slate-300 rounded-md overflow-hidden text-xs" title="Overrides the shared squash function for this tab only; Scenarios & Simulation, Sensitivity Analysis, and Transition Point Analysis keep using whatever's set in Scenarios & Simulation's Advanced options.">
             <button onClick={() => setSquashOverride("tanh")} className={`px-2.5 py-1.5 ${effectiveSquash === "tanh" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}>Hyperbolic tangent</button>
             <button onClick={() => setSquashOverride("sigmoid")} className={`px-2.5 py-1.5 border-l border-slate-300 ${effectiveSquash === "sigmoid" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}>Sigmoid</button>
@@ -7636,7 +7647,7 @@ function BaselineEquilibriumTab({
 
           <div className="bg-white rounded-lg border border-slate-200 p-4">
             <h4 className="text-sm font-semibold mb-3">Equilibrium diagnostics</h4>
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div>
                 <div className="text-xs text-neutral-600 mb-1">Initial state type</div>
                 <div className="text-sm font-mono">{initialStateType}</div>
@@ -7654,7 +7665,7 @@ function BaselineEquilibriumTab({
                 <div className="text-sm font-mono">{finalMaxDelta}</div>
               </div>
             </div>
-            <div className="grid grid-cols-4 gap-4 mt-4 pt-4 border-t border-slate-100">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 pt-4 border-t border-slate-100">
               <div title="A converged run is, by this engine's definition, a detected fixed point; the two are the same condition here.">
                 <div className="text-xs text-neutral-600 mb-1 flex items-center gap-1">Fixed point detected <HelpCircle size={10} className="text-neutral-500" /></div>
                 <div className={`text-sm font-mono ${fixedPointDetected ? "text-cobalt-700" : "text-amber-700"}`}>{fixedPointDetected ? "Yes" : "No"}</div>
@@ -7715,7 +7726,7 @@ function BaselineEquilibriumTab({
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             <div className="bg-white rounded-lg border border-slate-200 p-4">
               <h4 className="text-sm font-semibold mb-2">Final steady state</h4>
               <table className="w-full text-xs">
@@ -10159,7 +10170,7 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
 
       <div className="bg-white rounded-lg border border-slate-200 p-4">
         <h3 className="font-semibold text-sm mb-3">Run an analysis</h3>
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
             <label className="text-xs text-neutral-700 font-medium">Step 1: Intervention variable</label>
             <select
@@ -10399,7 +10410,7 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
                 <h4 className="text-sm font-semibold">Transition point dashboard</h4>
                 <Btn variant="outline" onClick={exportRankingsCSV}><Download size={13} />Export CSV</Btn>
               </div>
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div className="border border-slate-200 rounded-lg p-3">
                   <div className="text-[11.5px] text-neutral-600 font-medium uppercase tracking-wide">Earliest transition point</div>
                   <div className="text-sm font-semibold mt-0.5">{kpis.earliest.outcomeName}</div>
@@ -12935,24 +12946,24 @@ function SpaghettiEngineApp() {
   };
 
   return (
-    <div className="w-full h-full min-h-[820px] bg-white text-neutral-900 flex flex-col" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+    <div className="w-full h-full min-h-[100dvh] md:min-h-[820px] bg-white text-neutral-900 flex flex-col" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
       {/* Top bar */}
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-5 py-2.5 border-b-2 border-citrus-400 bg-ink text-white">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-3 sm:px-5 py-2.5 border-b-2 border-citrus-400 bg-ink text-white">
         <button onClick={() => setTab("about")} className="flex items-center gap-2.5 text-left rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-citrus-400" title="About the Spaghetti Engine, and the documentation">
           <BrandMark size={32} />
           <span className="leading-tight">
             <span className="block font-semibold tracking-tight whitespace-nowrap">The Spaghetti Engine</span>
             <span className="hidden lg:block text-[11.5px] uppercase tracking-[0.12em] text-slate-300 whitespace-nowrap">Visual system modelling workspace</span>
           </span>
-          <span className="ml-1 text-[11.5px] font-mono px-1.5 py-0.5 rounded border border-slate-700 bg-slate-800 text-citrus-400" title="Version">v{APP_VERSION}</span>
+          <span className="hidden sm:inline ml-1 text-[11.5px] font-mono px-1.5 py-0.5 rounded border border-slate-700 bg-slate-800 text-citrus-400" title="Version">v{APP_VERSION}</span>
         </button>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
           {saveFailed ? (
             <span className="text-[12.5px] text-amber-300 mr-1 flex items-center gap-1" title="This browser refused to store the model (storage blocked or full). Use Export JSON to keep a copy.">
               <Info size={12} />Not saved: use Export JSON
             </span>
           ) : savedAt && (
-            <span className="text-[12.5px] text-slate-300 mr-1 flex items-center gap-1" title="Your models are saved automatically in this browser. Use Export JSON to keep a file copy or move a model to another computer.">
+            <span className="hidden xl:flex text-[12.5px] text-slate-300 mr-1 items-center gap-1" title="Your models are saved automatically in this browser. Use Export JSON to keep a file copy or move a model to another computer.">
               <Check size={12} className="text-cobalt-400" />Saved {new Date(savedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
             </span>
           )}
@@ -12970,12 +12981,12 @@ function SpaghettiEngineApp() {
           </div>
           {!guide.open && (
             <button onClick={() => setGuide({ open: true, collapsed: false })} className="inline-flex items-center gap-1 text-xs text-slate-200 hover:text-white px-1.5 py-1.5" title="Show the Getting started guide again">
-              <Compass size={14} className="text-citrus-400" />Guide
+              <Compass size={14} className="text-citrus-400" /><span className="hidden sm:inline">Guide</span>
             </button>
           )}
           <button
             onClick={() => { saveNow(); setLibraryOpen(true); }}
-            className="inline-flex items-center gap-1.5 max-w-[260px] bg-slate-800 text-xs text-slate-100 rounded-md px-2.5 py-1.5 border border-slate-600 hover:bg-slate-700"
+            className="inline-flex items-center gap-1.5 max-w-[150px] sm:max-w-[260px] bg-slate-800 text-xs text-slate-100 rounded-md px-2.5 py-1.5 border border-slate-600 hover:bg-slate-700"
             title="Your models: open another one, start a new one, rename, copy, or delete"
           >
             <FolderOpen size={14} className="text-citrus-400 shrink-0" />
@@ -12987,10 +12998,10 @@ function SpaghettiEngineApp() {
             onClick={exportAnalysisWorkbook} disabled={exportingWorkbook}
             title="Builds one .xlsx workbook with the model structure, network metrics, baseline equilibrium, and every scenario/analysis that's been run"
           >
-            <Table2 size={14} />{exportingWorkbook ? "Building workbook…" : "Export Analysis Workbook"}
+            <Table2 size={14} /><span className="hidden lg:inline">{exportingWorkbook ? "Building workbook…" : "Export Analysis Workbook"}</span>
           </Btn>
-          <Btn variant="outline" className="!text-slate-200 !border-slate-600 hover:!bg-slate-800" onClick={exportModel}><Download size={14} />Export JSON</Btn>
-          <Btn variant="outline" className="!text-slate-200 !border-slate-600 hover:!bg-slate-800" onClick={() => fileInputRef.current?.click()}><Upload size={14} />Import</Btn>
+          <Btn variant="outline" className="max-sm:!hidden !text-slate-200 !border-slate-600 hover:!bg-slate-800" onClick={exportModel} title="Download this model as a .json file"><Download size={14} /><span className="hidden lg:inline">Export JSON</span></Btn>
+          <Btn variant="outline" className="max-sm:!hidden !text-slate-200 !border-slate-600 hover:!bg-slate-800" onClick={() => fileInputRef.current?.click()} title="Open a model from a .json file"><Upload size={14} /><span className="hidden lg:inline">Import</span></Btn>
           <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={importModel} />
         </div>
       </div>
@@ -13077,7 +13088,7 @@ function SpaghettiEngineApp() {
 
       {/* Tabs: the groups on top, and the tabs of the active group beneath */}
       <div className="bg-white">
-        <div role="tablist" aria-label="Workspace sections" className="flex flex-wrap items-center gap-1.5 px-5 pt-2.5 pb-1">
+        <div role="tablist" aria-label="Workspace sections" className="flex sm:flex-wrap items-center gap-1.5 px-3 sm:px-5 pt-2.5 pb-1 overflow-x-auto">
           {visibleGroups.map((g) => {
             const on = g.id === activeGroup.id;
             return (
@@ -13099,7 +13110,7 @@ function SpaghettiEngineApp() {
           })}
         </div>
         {activeGroup.tabs.length < 2 ? <div className="mt-1 border-b border-slate-200" /> : (
-        <div className="flex items-center justify-between gap-4 px-5 border-b border-slate-200 overflow-x-auto">
+        <div className="flex items-center justify-between gap-4 px-3 sm:px-5 border-b border-slate-200 overflow-x-auto">
           <div role="tablist" aria-label={activeGroup.label} className="flex">
             {activeGroup.tabs.map(({ id, label, icon: Icon }) => (
               <button
@@ -13122,7 +13133,7 @@ function SpaghettiEngineApp() {
 
       {tab !== "about" && !basic && <AnalysisScopeBar viewInfo={viewInfo} modules={modules} networkView={networkView} setNetworkView={setNetworkView} />}
 
-      <div className="flex-1 overflow-auto p-5 bg-slate-50">
+      <div className="flex-1 overflow-auto p-3 sm:p-5 bg-slate-50">
         {/* A display error in one tab stays in that tab: the rest of the app,
             the tab bar, and the model are unaffected, and switching tabs
             (the key) starts that tab fresh. */}
@@ -13185,7 +13196,7 @@ function SpaghettiEngineApp() {
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-5">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             <div className="bg-white rounded-lg border border-slate-200 p-4">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-semibold text-sm">Concepts ({concepts.length})</h3>
@@ -13351,7 +13362,7 @@ function SpaghettiEngineApp() {
               )}
             </div>
 
-          <div className="grid grid-cols-[300px_1fr] gap-5">
+          <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-5">
             <div className="bg-white rounded-lg border border-slate-200 p-4">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-semibold text-sm">Scenarios</h3>
@@ -13813,10 +13824,10 @@ function SpaghettiEngineApp() {
         </ErrorBoundary>
       </div>
 
-      <div className="px-5 py-2 border-t border-slate-200 bg-white text-[12.5px] text-neutral-700 flex items-center gap-1.5">
+      <div className="px-3 sm:px-5 py-2 border-t border-slate-200 bg-white text-[12.5px] text-neutral-700 flex items-center gap-1.5">
         <Info size={12} className="shrink-0" />
-        <span className="flex-1 hidden sm:inline">Prototype scope: runs entirely in your browser. Your model is saved automatically in this browser only; use Export JSON to keep a copy or move it to another computer. Analysis results are not saved and are re-run on demand. PDF/DOCX/PPTX export are not yet implemented.</span>
-        <span className="flex-1 sm:hidden">Prototype: runs in your browser; your model is saved in this browser only.</span>
+        <span className="flex-1 hidden lg:inline">Prototype scope: runs entirely in your browser. Your model is saved automatically in this browser only; use Export JSON to keep a copy or move it to another computer. Analysis results are not saved and are re-run on demand. PDF/DOCX/PPTX export are not yet implemented.</span>
+        <span className="flex-1 lg:hidden">Prototype: runs in your browser; your model is saved in this browser only.</span>
         <a href={`mailto:${CONTACT.email}?subject=${encodeURIComponent(`The Spaghetti Engine v${APP_VERSION}`)}`} className="shrink-0 text-cobalt-700 hover:underline" title={`Contact ${CONTACT.name}`}>Contact: {CONTACT.name}</a>
       </div>
     </div>
