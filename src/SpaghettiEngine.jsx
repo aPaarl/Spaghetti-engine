@@ -5,7 +5,7 @@ import {
   X, Lock, Unlock, Info, ClipboardPaste, Check,
   Undo2, Redo2, Copy, Maximize2, HelpCircle, SlidersHorizontal,
   BarChart3, LayoutGrid, GitBranch, Shuffle, MousePointer2, Activity, FlaskConical, TrendingUp,
-  Eye, EyeOff, Route, Layers, Waypoints, PanelLeftClose, Search, Dices, Sparkles, FolderOpen, Pencil, CopyPlus, FilePlus, Compass, CheckCircle2, Circle, Presentation,
+  Eye, EyeOff, Route, Layers, Waypoints, PanelLeftClose, Search, Dices, Sparkles, FolderOpen, Pencil, CopyPlus, FilePlus, Compass, CheckCircle2, Circle, Presentation, Gamepad2,
 } from "lucide-react";
 import {
   LineChart, Line, BarChart, Bar, Cell, LabelList, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
@@ -27,6 +27,8 @@ import ExcelJS from "exceljs";
 // the approach React Flow's own docs recommend for exporting the canvas.
 import { toBlob as domNodeToPngBlob } from "html-to-image";
 import AboutTab, { APP_VERSION, CONTACT } from "./AboutTab.jsx";
+import { GamePanel, PredictionGate } from "./game/GamePanel.jsx";
+import { getPack, DEFAULT_PACK_ID, newGame, cleanGame, currentRound, roundIndex, roundTabs, roundChecks, craftPoints, pendingPredictions, scorePrediction, gameLogRows } from "./game/gameEngine.js";
 import { bootLibrary, saveModel, loadModel, setActive, createModel, renameModel, duplicateModel, deleteModel, readIndex, modelKey } from "./modelLibrary.js";
 import { BrandMark } from "./brand.jsx";
 
@@ -989,7 +991,11 @@ function sanitizeModel(data) {
   if (["relative", "absolute"].includes(s.updateRule)) settings.updateRule = s.updateRule;
   if (["synchronous", "asynchronous"].includes(s.mode)) settings.mode = s.mode;
 
-  return { concepts, edges, scenarios, settings, fixes };
+  // Game mode: the game state travels with the model; the app checks it
+  // against its game pack (cleanGame) before using it.
+  const game = data.game && typeof data.game === "object" && !Array.isArray(data.game) ? data.game : null;
+
+  return { concepts, edges, scenarios, settings, fixes, game };
 }
 
 
@@ -11967,6 +11973,7 @@ export default function SpaghettiEngine() {
 // transition analyses) appears in Advanced mode.
 const BASIC_TABS = new Set(["editor", "network", "metrics", "equilibrium", "scenarios", "about"]);
 const UI_LEVEL_KEY = "se.ui.level";
+const GAME_PANEL_KEY = "se.game.collapsed";
 const GUIDE_KEY = "se.guide";
 
 const TAB_GROUPS = [
@@ -12035,10 +12042,12 @@ function SpaghettiEngineApp() {
   // Someone arriving with a model from an earlier version starts in Advanced,
   // where everything they used before still is; a new user starts in Basic.
   const [uiLevel, setUiLevelState] = useState(() => {
-    try { const v = localStorage.getItem(UI_LEVEL_KEY); if (v === "basic" || v === "advanced") return v; } catch { /* storage unavailable */ }
+    try { const v = localStorage.getItem(UI_LEVEL_KEY); if (v === "basic" || v === "advanced" || v === "game") return v; } catch { /* storage unavailable */ }
     return boot.migrated ? "advanced" : "basic";
   });
-  const basic = uiLevel === "basic";
+  // Game mode runs on top of Basic: the same essentials, opened round by round.
+  const gameMode = uiLevel === "game";
+  const basic = uiLevel !== "advanced";
   // Getting started guide: shown until closed (remembered in this browser).
   const [guide, setGuideState] = useState(() => {
     try { const g = JSON.parse(localStorage.getItem(GUIDE_KEY) || "null"); if (g) return g; } catch { /* storage unavailable */ }
@@ -12050,6 +12059,10 @@ function SpaghettiEngineApp() {
     return next;
   });
   const [edgeInspected, setEdgeInspected] = useState(false);
+  // Game mode: the game state of the open model (null when it has none).
+  const [game, setGame] = useState(() => cleanGame(restored?.game));
+  const [gamePanelCollapsed, setGamePanelCollapsedState] = useState(() => { try { return localStorage.getItem(GAME_PANEL_KEY) === "1"; } catch { return false; } });
+  const setGamePanelCollapsed = (v) => { setGamePanelCollapsedState(v); try { localStorage.setItem(GAME_PANEL_KEY, v ? "1" : "0"); } catch { /* storage unavailable */ } };
   const [concepts, setConcepts] = useState(() => restored?.concepts ?? []);
   const [edges, setEdges] = useState(() => restored?.edges ?? []);
   const [restoreNotice, setRestoreNotice] = useState(() => !!restored?.concepts?.length);
@@ -12340,14 +12353,14 @@ function SpaghettiEngineApp() {
   // before switching to another model, so no edit is ever left unsaved.
   const saveNow = useCallback(() => {
     const at = Date.now();
-    const { concepts: cs, edges: es, scenarios: ss, settings: st } = latestSaveRef.current;
-    const r = saveModel(activeModelIdRef.current, { v: 1, savedAt: at, concepts: cs, edges: es, scenarios: ss, settings: st });
+    const { concepts: cs, edges: es, scenarios: ss, settings: st, game: gm } = latestSaveRef.current;
+    const r = saveModel(activeModelIdRef.current, { v: 1, savedAt: at, concepts: cs, edges: es, scenarios: ss, settings: st, ...(gm ? { game: gm } : {}) });
     setLibrary(r.index);
     setSaveFailed(!r.ok);
     if (r.ok) setSavedAt(at);
   }, []);
   const latestSaveRef = useRef(null);
-  latestSaveRef.current = { concepts, edges, scenarios, settings };
+  latestSaveRef.current = { concepts, edges, scenarios, settings, game };
   const skipNextSave = useRef(true); // nothing to save on the first render
   useEffect(() => {
     const flush = () => saveNow();
@@ -12358,7 +12371,7 @@ function SpaghettiEngineApp() {
     if (skipNextSave.current) { skipNextSave.current = false; return undefined; }
     const t = setTimeout(saveNow, 800);
     return () => clearTimeout(t);
-  }, [concepts, edges, scenarios, settings, saveNow]);
+  }, [concepts, edges, scenarios, settings, game, saveNow]);
 
   // ==== confirmation dialog ======================================================
   // An in-app dialog rather than the browser's window.confirm: some browser
@@ -12616,7 +12629,7 @@ function SpaghettiEngineApp() {
 
   // ==== import / export ======================================================
   const exportModel = () => {
-    const payload = { concepts, edges, scenarios, settings };
+    const payload = { concepts, edges, scenarios, settings, ...(game ? { game } : {}) };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -12648,7 +12661,7 @@ function SpaghettiEngineApp() {
         // the file; the model that was open stays saved as it was.
         saveNow();
         const base = file.name.replace(/\.json$/i, "").replace(/[-_]+/g, " ").trim() || "Imported model";
-        const r = createModel(base, { concepts: data.concepts, edges: data.edges, scenarios: data.scenarios, settings: data.settings });
+        const r = createModel(base, { concepts: data.concepts, edges: data.edges, scenarios: data.scenarios, settings: data.settings, ...(data.game ? { game: data.game } : {}) });
         setLibrary(r.index);
         switchToModel(r.id, { ...data, savedAt: r.payload.savedAt });
         setLibraryOpen(false);
@@ -12790,6 +12803,7 @@ function SpaghettiEngineApp() {
     setEdges(data?.edges || []);
     setScenarios(data?.scenarios?.length ? data.scenarios : [{ ...BASELINE_SCENARIO }]);
     setSettings({ ...DEFAULT_SETTINGS, ...(data?.settings || {}) });
+    setGame(cleanGame(data?.game));
     setActiveScenarioId("baseline");
     setCompareIds([]);
     setResults({});
@@ -12928,15 +12942,85 @@ function SpaghettiEngineApp() {
   const setUiLevel = (level) => {
     setUiLevelState(level);
     try { localStorage.setItem(UI_LEVEL_KEY, level); } catch { /* storage unavailable */ }
-    if (level === "basic") {
+    if (level === "basic" || level === "game") {
       setNetworkView(DEFAULT_NETWORK_VIEW);
       setCollapsedModules([]);
       setNetworkDisplay("hide");
       if (!BASIC_TABS.has(tab)) setTab("network");
     }
+    if (level === "game") setGamePanelCollapsed(false);
   };
+
+  // ==== Game mode ================================================================
+  // The rules live in src/game/gameEngine.js; here the game state is kept with
+  // the model and the engine's own functions are handed to the rules.
+  const gamePack = getPack(game?.packId || DEFAULT_PACK_ID);
+  const gameDeps = useMemo(() => ({ checkModel, computeMetrics, enumerateFeedbackLoops, simulate, BASELINE_SCENARIO }), []);
+  const gameCtx = { concepts, edges, scenarios, settings, game };
+  // In a running game only the tabs of the current round are open.
+  const gameTabs = gameMode && game ? roundTabs(gamePack, game) : null;
+  const tabAllowed = (t) => (gameTabs ? gameTabs.has(t) : !basic || BASIC_TABS.has(t));
+  useEffect(() => {
+    if (gameTabs && !gameTabs.has(tab)) setTab("network");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameMode, game?.round, game?.finishedAt]);
+  const gatePending = (t) => (gameMode && game ? pendingPredictions(gamePack, game, t, gameCtx) : []);
+  const startGame = (team) => {
+    saveNow();
+    const g = newGame(gamePack, team);
+    const r = createModel(`Game: ${g.team}`, { concepts: [], edges: [], scenarios: [{ ...BASELINE_SCENARIO }], settings: { ...DEFAULT_SETTINGS }, game: g });
+    setLibrary(r.index);
+    switchToModel(r.id, r.payload);
+    setTab("network");
+  };
+  const addCardConcept = (card) => {
+    const n = concepts.length;
+    const id = uid("c");
+    commitHistory();
+    setConcepts((cs) => [...cs, {
+      id, name: card.name, card: card.id, category: "", description: "",
+      initialValue: 0, currentValue: 0, position: circlePos(n, Math.max(n + 1, 12)),
+    }]);
+    setSelected({ kind: "concept", id });
+    if (tab !== "network") setTab("network");
+  };
+  const finishGameRound = (reflection, skipped) => {
+    const round = currentRound(gamePack, game);
+    const craft = skipped ? { points: 0, detail: ["Moved on by the facilitator: no craft points"] } : craftPoints(round, gameCtx, gameDeps);
+    const i = roundIndex(gamePack, round.id);
+    const next = gamePack.rounds[i + 1];
+    setGame((g) => ({
+      ...g,
+      roundPoints: { ...g.roundPoints, [round.id]: { craft: craft.points, detail: craft.detail, skipped: !!skipped, checks: roundChecks(gamePack, round, gameCtx, gameDeps).map((c) => ({ id: c.id, done: c.done })) } },
+      reflections: reflection?.trim() ? { ...g.reflections, [round.id]: reflection.trim() } : g.reflections,
+      roundsDone: [...g.roundsDone.filter((r) => r !== round.id), round.id],
+      round: next ? next.id : g.round,
+      finishedAt: next ? null : Date.now(),
+    }));
+    setGamePanelCollapsed(false);
+    if (next && !next.tabs.includes(tab)) setTab("network");
+  };
+  const drawGameEvent = () => {
+    const ev = gamePack.events[Math.floor(Math.random() * gamePack.events.length)];
+    setGame((g) => ({ ...g, eventId: ev.id }));
+  };
+  const submitPredictions = (preds, answers) => {
+    const scored = {};
+    preds.forEach((p) => {
+      scored[p.id] = { answer: answers[p.id], at: Date.now(), ...scorePrediction(gamePack, p, answers[p.id], gameCtx, gameDeps) };
+    });
+    setGame((g) => ({ ...g, predictions: { ...g.predictions, ...scored } }));
+    setGamePanelCollapsed(false);
+  };
+  const downloadGameLog = () => downloadCSV(gameLogRows(gamePack, game), `game-log-${(game?.team || "team").replace(/[^\w-]+/g, "-").toLowerCase()}.csv`);
+  const scenarioRunBlocked = gameMode && gatePending("scenarios").length > 0;
+  const runAllGated = () => {
+    if (scenarioRunBlocked) { notify("Enter your team's predictions above first; then Run simulation is unlocked.", { kind: "info", title: "Predict first" }); return; }
+    runAll();
+  };
+
   const visibleGroups = TAB_GROUPS
-    .map((g) => ({ ...g, tabs: basic ? g.tabs.filter((t) => BASIC_TABS.has(t.id)) : g.tabs }))
+    .map((g) => ({ ...g, tabs: g.tabs.filter((t) => tabAllowed(t.id)) }))
     .filter((g) => g.tabs.length);
   const activeGroup = visibleGroups.find((g) => g.tabs.some((t) => t.id === tab)) || visibleGroups[0];
   const goToGroup = (g) => {
@@ -12971,15 +13055,20 @@ function SpaghettiEngineApp() {
             <button
               onClick={() => setUiLevel("basic")}
               title="Basic: the essentials for building a map and seeing what it does"
-              className={`px-2.5 py-1.5 ${basic ? "bg-citrus-400 text-ink font-semibold" : "bg-slate-800 text-slate-200 hover:bg-slate-700"}`}
+              className={`px-2.5 py-1.5 ${uiLevel === "basic" ? "bg-citrus-400 text-ink font-semibold" : "bg-slate-800 text-slate-200 hover:bg-slate-700"}`}
             >Basic</button>
             <button
               onClick={() => setUiLevel("advanced")}
               title="Advanced: every analysis tab, the analysis scope, module folding, and the simulation settings"
               className={`px-2.5 py-1.5 border-l border-slate-600 ${!basic ? "bg-citrus-400 text-ink font-semibold" : "bg-slate-800 text-slate-200 hover:bg-slate-700"}`}
             >Advanced</button>
+            <button
+              onClick={() => setUiLevel("game")}
+              title="Game: learn to build a model as a team, round by round"
+              className={`px-2.5 py-1.5 border-l border-slate-600 inline-flex items-center gap-1 ${gameMode ? "bg-citrus-400 text-ink font-semibold" : "bg-slate-800 text-slate-200 hover:bg-slate-700"}`}
+            ><Gamepad2 size={13} />Game</button>
           </div>
-          {!guide.open && (
+          {!guide.open && !gameMode && (
             <button onClick={() => setGuide({ open: true, collapsed: false })} className="inline-flex items-center gap-1 text-xs text-slate-200 hover:text-white px-1.5 py-1.5" title="Show the Getting started guide again">
               <Compass size={14} className="text-citrus-400" /><span className="hidden sm:inline">Guide</span>
             </button>
@@ -13069,12 +13158,21 @@ function SpaghettiEngineApp() {
         </div>
       )}
 
-      {guide.open && (
+      {gameMode && (
+        <GamePanel
+          pack={gamePack} game={game} ctx={gameCtx} deps={gameDeps}
+          collapsed={gamePanelCollapsed} setCollapsed={setGamePanelCollapsed}
+          onStart={startGame} onAddCard={addCardConcept} onFinishRound={finishGameRound} onDrawEvent={drawGameEvent}
+          onGoTab={(t) => { if (tabAllowed(t)) setTab(t); }} onDownloadLog={downloadGameLog} onRestart={() => newModel()}
+        />
+      )}
+
+      {guide.open && !gameMode && (
         <GettingStartedGuide
           steps={gettingStartedSteps({ concepts, edges, tab, edgeInspected, hasResults: !!baselineResult || Object.keys(results).length > 0 })}
           collapsed={guide.collapsed} setCollapsed={(c) => setGuide({ collapsed: c })}
           onClose={() => setGuide({ open: false })}
-          onGo={(t) => { if (!basic || BASIC_TABS.has(t)) setTab(t); }}
+          onGo={(t) => { if (tabAllowed(t)) setTab(t); }}
         />
       )}
 
@@ -13133,7 +13231,8 @@ function SpaghettiEngineApp() {
 
       {tab !== "about" && !basic && <AnalysisScopeBar viewInfo={viewInfo} modules={modules} networkView={networkView} setNetworkView={setNetworkView} />}
 
-      <div className="flex-1 overflow-auto p-3 sm:p-5 bg-slate-50">
+      {/* While the Game panel is open on a wide screen, the work area moves right so the panel never covers it. */}
+      <div className={`flex-1 overflow-auto p-3 sm:p-5 bg-slate-50 ${gameMode && !gamePanelCollapsed ? "xl:pl-[25rem]" : ""}`}>
         {/* A display error in one tab stays in that tab: the rest of the app,
             the tab bar, and the model are unaffected, and switching tabs
             (the key) starts that tab fresh. */}
@@ -13316,7 +13415,10 @@ function SpaghettiEngineApp() {
         )}
 
         {/* ============================= INFLUENCE METRICS ============================= */}
-        {tab === "metrics" && (
+        {tab === "metrics" && gatePending("metrics").length > 0 && (
+          <PredictionGate pack={gamePack} game={game} preds={gatePending("metrics")} concepts={concepts} scenarios={scenarios} onSubmit={(a) => submitPredictions(gatePending("metrics"), a)} />
+        )}
+        {tab === "metrics" && !gatePending("metrics").length && (
           <InfluenceMetricsTab concepts={aConcepts} edges={aEdges} settings={settings} onHighlight={highlightConcept} multiScale={multiScale} multiScaleFresh={multiScaleFresh} viewInfo={viewInfo} />
         )}
 
@@ -13325,13 +13427,19 @@ function SpaghettiEngineApp() {
         )}
 
         {/* ============================= BASELINE EQUILIBRIUM ============================= */}
-        {tab === "equilibrium" && (
+        {tab === "equilibrium" && gatePending("equilibrium").length > 0 && (
+          <PredictionGate pack={gamePack} game={game} preds={gatePending("equilibrium")} concepts={concepts} scenarios={scenarios} onSubmit={(a) => submitPredictions(gatePending("equilibrium"), a)} />
+        )}
+        {tab === "equilibrium" && !gatePending("equilibrium").length && (
           <BaselineEquilibriumTab concepts={aConcepts} edges={aEdges} scenarios={scenarios} settings={settings} setTab={setTab} result={baselineResult} setResult={setBaselineResult} initState={baselineInit} setInitState={setBaselineInit} updateConcept={updateConcept} commitHistory={commitHistory} setChartCache={setChartCache} modelVersion={modelVersion} />
         )}
 
         {/* ============================= SCENARIOS ============================= */}
         {tab === "scenarios" && (
           <div className="space-y-5">
+            {scenarioRunBlocked && (
+              <PredictionGate compact pack={gamePack} game={game} preds={gatePending("scenarios")} concepts={concepts} scenarios={scenarios} onSubmit={(a) => submitPredictions(gatePending("scenarios"), a)} />
+            )}
             <div className="bg-white rounded-lg border border-slate-200 p-4">
               <button onClick={() => setShowScenarioHelp((v) => !v)} className="flex items-center gap-1.5 text-sm font-semibold w-full text-left">
                 <HelpCircle size={15} className="text-cobalt-700" />
@@ -13468,7 +13576,7 @@ function SpaghettiEngineApp() {
               </div>
 
               <div className="flex gap-2 mt-4">
-                <Btn variant="accent" onClick={runAll}><Play size={14} />Run simulation</Btn>
+                <Btn variant="accent" onClick={runAllGated} title={scenarioRunBlocked ? "Enter your team's predictions first" : undefined}>{scenarioRunBlocked ? <Lock size={14} /> : <Play size={14} />}Run simulation</Btn>
                 <Btn variant="ghost" onClick={resetActivation}><RotateCcw size={14} />Reset</Btn>
               </div>
             </div>
