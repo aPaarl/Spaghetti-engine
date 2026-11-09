@@ -30,6 +30,7 @@ Netlify builds and deploys the site from the `main` branch.
 | Path | What is in it |
 |---|---|
 | `src/SpaghettiEngine.jsx` | The application: the simulation engine, the analyses, and every tab. |
+| `src/game/` | Game mode: the rules (`gameEngine.js`, pure functions), the Geul game pack (`geulPack.js`), and the round panel and prediction gate (`GamePanel.jsx`). |
 | `src/AboutTab.jsx` | The About & documentation page (also exports `APP_VERSION` and `CONTACT`). |
 | `src/brand.jsx` | Brand colors, the logo mark, and the hero artwork. |
 | `src/docs-manifest.json` | Page count and size of each PDF, shown on the About page. Generated. |
@@ -38,7 +39,7 @@ Netlify builds and deploys the site from the `main` branch.
 | `public/favicon.svg`, `public/apple-touch-icon.png` | Site icons. |
 | `brand-assets/` | Logo files (SVG and PNG) for use in documents and slides. Not deployed. |
 | `tools/` | Scripts that produce the PDFs and the manifest, and a helper for editing the Word documents (see below). |
-| `tests/` | Checks that load the engine straight from `src/SpaghettiEngine.jsx`; run each with `node tests/<file>.cjs`. |
+| `tests/` | Checks that load the engine straight from `src/SpaghettiEngine.jsx`; run each with `node tests/<file>.cjs` (or `.mjs`). |
 
 ## Releasing a new version
 
