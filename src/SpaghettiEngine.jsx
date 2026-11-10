@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import {
   LineChart, Line, BarChart, Bar, Cell, LabelList, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
-  Legend, ResponsiveContainer, ReferenceLine, Brush, ScatterChart, Scatter, ZAxis,
+  Legend, ResponsiveContainer, ReferenceLine, Brush, ScatterChart, Scatter, ZAxis, ComposedChart, ReferenceArea,
 } from "recharts";
 import {
   ReactFlow, ReactFlowProvider, Background, Controls, MiniMap,
@@ -1337,11 +1337,36 @@ const SCENARIO_GLOSSARY = {
 // settings, whether anything hit a cap or failed to converge); the
 // collapsible section carries how the numbers are derived and — more
 // importantly for writing any of this up — what they do not mean.
-function MethodPanel({ title = "Method & diagnostics", stats = [], children }) {
+function MethodPanel({ title = "Method & diagnostics", stats = [], children, foldable = false }) {
   const [open, setOpen] = useState(false);
+  // Foldable: the whole panel is one closed fold-out, for tabs that keep it
+  // at the bottom below the results.
+  const [shown, setShown] = useState(!foldable);
+  if (!shown) {
+    return (
+      <div className="bg-white rounded-lg border border-slate-200">
+        <button onClick={() => setShown(true)} aria-expanded={false} className="w-full flex items-center gap-2 px-4 py-3 text-left rounded-lg hover:bg-slate-50">
+          <ChevronRight size={15} className="text-neutral-700 shrink-0" />
+          <Info size={15} className="text-cobalt-700 shrink-0" />
+          <span className="text-sm font-semibold text-neutral-900">{title}</span>
+          <span className="text-xs text-neutral-600">How the results were computed, and the run's diagnostics</span>
+          <span className="ml-auto shrink-0 text-[12.5px] font-medium text-cobalt-700 border border-cobalt-200 bg-cobalt-50 rounded px-1.5 py-0.5">Show</span>
+        </button>
+      </div>
+    );
+  }
   return (
     <div className="bg-white rounded-lg border border-slate-200 p-4">
-      <h4 className="text-sm font-semibold mb-3">{title}</h4>
+      {foldable ? (
+        <button onClick={() => setShown(false)} aria-expanded className="w-full flex items-center gap-2 mb-3 text-left">
+          <ChevronDown size={15} className="text-neutral-700 shrink-0" />
+          <Info size={15} className="text-cobalt-700 shrink-0" />
+          <span className="text-sm font-semibold text-neutral-900">{title}</span>
+          <span className="ml-auto shrink-0 text-[12.5px] font-medium text-cobalt-700 border border-cobalt-200 bg-cobalt-50 rounded px-1.5 py-0.5">Hide</span>
+        </button>
+      ) : (
+        <h4 className="text-sm font-semibold mb-3">{title}</h4>
+      )}
       {stats.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {stats.map((s) => (
@@ -2083,6 +2108,16 @@ const ANCHOR_POSITION = { t: Position.Top, r: Position.Right, b: Position.Bottom
 // so an older export still opens with edges attached exactly where they
 // were, instead of failing to resolve to any of the 12 new ids.
 const LEGACY_HANDLE_MAP = { t: "t-c", r: "r-c", b: "b-c", l: "l-c" };
+// Whether an end of a relationship stays on the anchor it is stored on. By
+// default both ends float: they attach to the side of the box that faces the
+// other box, so they follow the boxes when these are moved. An end is pinned
+// only when the user drops it on a specific anchor dot (pinSource /
+// pinTarget); the anchor a relationship was first drawn from is not a pin.
+function isPinnedEnd(e, end) {
+  if (!e) return false;
+  return end === "source" ? !!e.pinSource && !!normalizeHandleId(e.sourceHandle) : !!e.pinTarget && !!normalizeHandleId(e.targetHandle);
+}
+
 function normalizeHandleId(id) {
   if (!id) return null;
   if (LEGACY_HANDLE_MAP[id]) return LEGACY_HANDLE_MAP[id];
@@ -2750,10 +2785,10 @@ function computeEdgeSlots(concepts, edges) {
   const ends = [];
   edges.forEach((e) => {
     const sc = centerOf(e.source), tc = centerOf(e.target);
-    if (!normalizeHandleId(e.sourceHandle)) {
+    if (!isPinnedEnd(e, "source")) {
       ends.push({ edgeId: e.id, end: "source", key: `${e.source}|${sideFor(tc.x - sc.x, tc.y - sc.y)}` });
     }
-    if (!normalizeHandleId(e.targetHandle)) {
+    if (!isPinnedEnd(e, "target")) {
       ends.push({ edgeId: e.id, end: "target", key: `${e.target}|${sideFor(sc.x - tc.x, sc.y - tc.y)}` });
     }
   });
@@ -2817,8 +2852,8 @@ function InfluenceEdge({
   // the other node actually crosses this box's border, which is what makes
   // arrows meet boxes cleanly instead of leaving from a fixed point on the
   // wrong face and looping around.
-  const pinnedSource = !!normalizeHandleId(data?.edge?.sourceHandle);
-  const pinnedTarget = !!normalizeHandleId(data?.edge?.targetHandle);
+  const pinnedSource = isPinnedEnd(data?.edge, "source");
+  const pinnedTarget = isPinnedEnd(data?.edge, "target");
   const srcPt = pinnedSource ? null : spreadAlongSide(boundaryPoint(sourceNode, targetNode), data?.sourceSlot ?? 0, data?.sourceCount ?? 1);
   const tgtPt = pinnedTarget ? null : spreadAlongSide(boundaryPoint(targetNode, sourceNode), data?.targetSlot ?? 0, data?.targetCount ?? 1);
   if (srcPt) { sx = srcPt.x; sy = srcPt.y; sourcePos = SIDE_TO_POSITION[srcPt.side]; }
@@ -4032,7 +4067,7 @@ function NetworkTabInner({
     [displayConcepts, moduleBlocks]
   );
   const edgeGeometryKey = useMemo(
-    () => displayEdges.map((e) => `${e.id}:${e.source}:${e.target}:${e.weight}:${e.bend || 0}:${e.sourceHandle || ""}:${e.targetHandle || ""}`).join("|"),
+    () => displayEdges.map((e) => `${e.id}:${e.source}:${e.target}:${e.weight}:${e.bend || 0}:${e.sourceHandle || ""}:${e.targetHandle || ""}:${e.pinSource ? 1 : 0}${e.pinTarget ? 1 : 0}`).join("|"),
     [displayEdges]
   );
   const geometryInputs = useRef(null);
@@ -4077,7 +4112,7 @@ function NetworkTabInner({
     const slots = {};
     Object.values(groups).forEach((group) => {
       if (group.length < 2) { slots[group[0].id] = 0; return; }
-      const allPinned = group.every((e) => normalizeHandleId(e.sourceHandle) && normalizeHandleId(e.targetHandle));
+      const allPinned = group.every((e) => isPinnedEnd(e, "source") && isPinnedEnd(e, "target"));
       if (allPinned) { group.forEach((e) => { slots[e.id] = 0; }); return; }
       [...group].sort((a, b) => a.id.localeCompare(b.id))
         .forEach((e, i) => { slots[e.id] = i % 2 === 0 ? Math.ceil((i + 1) / 2) : -Math.ceil(i / 2); });
@@ -4219,9 +4254,11 @@ function NetworkTabInner({
       const nodeId = document.elementFromPoint(clientX, clientY)?.closest(".react-flow__node")?.getAttribute("data-id");
       if (nodeId && !isModuleNodeId(nodeId) && !isFrameNodeId(nodeId)) {
         const anchor = nearestAnchorOnNode(rf.getInternalNode(nodeId), flow.x, flow.y);
-        if (anchor) return { nodeId, handleId: anchor.id, x: anchor.x, y: anchor.y };
+        // Dropped right on an anchor dot: pin the end there. Dropped anywhere
+        // else on the box: the end floats to the best side.
+        if (anchor) return { nodeId, handleId: anchor.id, x: anchor.x, y: anchor.y, onAnchor: Math.hypot(anchor.x - flow.x, anchor.y - flow.y) <= 12 };
       }
-      return { nodeId: null, handleId: null, x: flow.x, y: flow.y };
+      return { nodeId: null, handleId: null, x: flow.x, y: flow.y, onAnchor: false };
     };
     const applyPending = () => {
       raf = 0;
@@ -4242,8 +4279,8 @@ function NetworkTabInner({
       const drop = resolve(ev.clientX, ev.clientY);
       if (!drop.nodeId) return; // dropped on empty canvas: leave the relationship as it was
       updateEdge(edgeId, end === "source"
-        ? { source: drop.nodeId, sourceHandle: drop.handleId }
-        : { target: drop.nodeId, targetHandle: drop.handleId });
+        ? { source: drop.nodeId, sourceHandle: drop.handleId, pinSource: !!drop.onAnchor }
+        : { target: drop.nodeId, targetHandle: drop.handleId, pinTarget: !!drop.onAnchor });
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
@@ -4851,7 +4888,7 @@ function NetworkTabInner({
               <div className="flex items-center gap-3 flex-wrap">
                 <button
                   disabled={reverseExists}
-                  onClick={() => { commitHistory(); updateEdge(e.id, { source: e.target, target: e.source, sourceHandle: undefined, targetHandle: undefined }); }}
+                  onClick={() => { commitHistory(); updateEdge(e.id, { source: e.target, target: e.source, sourceHandle: undefined, targetHandle: undefined, pinSource: false, pinTarget: false }); }}
                   className="inline-flex items-center gap-1 text-xs text-neutral-900 hover:text-black disabled:opacity-40 disabled:cursor-not-allowed"
                   title={reverseExists ? "A relationship in the other direction already exists" : "Make it point the other way"}
                 >
@@ -5475,27 +5512,6 @@ function InfluenceMetricsTab({ concepts, edges, settings, onHighlight, multiScal
         </div>
       </div>
 
-      <MethodPanel
-        stats={[
-          { label: "Concepts / relationships", value: `${concepts.length} / ${edges.length}` },
-          { label: "Simulation runs behind these scores", value: concepts.length, hint: "Influence and Sensitivity need one full driven run per concept. Structural columns (degree, centrality, role) need none." },
-          { label: "Transfer function / λ", value: transferFunctionLabel(structuralSettings(settings)), hint: settings.squashFunction === "linear" ? "The simulation settings currently use no squashing function, but Influence and Sensitivity are only meaningful on a bounded scale (an unbounded model can run away), so these scores use tanh at the same steepness." : undefined },
-          {
-            label: "Feedback loops found",
-            value: stats.loops.capped ? `${stats.loops.total}+ (capped)` : stats.loops.total,
-            tone: stats.loops.capped ? "warn" : undefined,
-            hint: "Simple cycles up to 8 relationships long, up to a maximum of 300. Hitting either limit makes the count a lower bound.",
-          },
-        ]}
-      >
-        <p><strong>The role labels depend on cut-offs that are conventions, not findings.</strong> "Hub" means centrality in the top quartile of all non-zero centralities; "Driver" and "Receiver" mean one direction exceeds the other by more than a factor of 1.2. Those numbers are choices built into this tool. A concept sitting just either side of them changes label without changing behaviour, so treat roles as a reading aid and report the underlying degree figures if a role claim matters to an argument.</p>
-        <p><strong>Degree and centrality use absolute weights.</strong> A strong negative relationship adds exactly as much centrality as an equally strong positive one, so these columns measure how <em>involved</em> a concept is, never whether its involvement is helpful or harmful. Net influence is the only structural column that keeps direction.</p>
-        <p><strong>Influence and Sensitivity are not properties of the network alone.</strong> They come from simulated runs, so they move with the transfer function, &lambda;, update rule and convergence settings currently selected. The same drawn model scored at a different &lambda; yields different numbers, so if you report these scores, report those settings with them.</p>
-        <p><strong>Loop counts are a lower bound.</strong> Enumeration stops at 8 relationships per loop and 300 loops in total, so longer or additional cycles simply are not counted{stats.loops.capped ? ", and this model has hit that limit, so the figure above is definitely an undercount" : ""}. A loop is classed reinforcing when it contains an even number of negative relationships and balancing when odd, which is a sign-parity rule: it says nothing about the strength of the loop or how quickly it acts.</p>
-      </MethodPanel>
-
-      <MultiScaleSection report={multiScale} fresh={multiScaleFresh} scopeMetrics={metrics} viewInfo={viewInfo} onHighlight={onHighlight} />
-
       <div className="bg-white rounded-lg border border-slate-200 p-4">
         <h3 className="font-semibold text-sm mb-3">System overview</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -5562,122 +5578,146 @@ function InfluenceMetricsTab({ concepts, edges, settings, onHighlight, multiScal
         </div>
       </div>
 
-      <div className="bg-white rounded-lg border border-slate-200 p-4">
-        <h3 className="font-semibold text-sm mb-1">Network metrics by category</h3>
-        <p className="text-xs text-neutral-600 mb-3">Compares how influence patterns differ between the categories defined on the Model editor tab. Uses whatever categories are actually present on this model; nothing is hard-coded.</p>
+      <FoldableBox storageKey="se.fold.influenceAdvanced" icon={SlidersHorizontal} title="Advanced results" summary="Multi-scale analysis (leverage points by scale, hierarchical ranking) and network metrics by category.">
+        <div className="space-y-4">
+          <MultiScaleSection report={multiScale} fresh={multiScaleFresh} scopeMetrics={metrics} viewInfo={viewInfo} onHighlight={onHighlight} />
+          <div className="bg-white rounded-lg border border-slate-200 p-4">
+            <h3 className="font-semibold text-sm mb-1">Network metrics by category</h3>
+            <p className="text-xs text-neutral-600 mb-3">Compares how influence patterns differ between the categories defined on the Model editor tab. Uses whatever categories are actually present on this model; nothing is hard-coded.</p>
 
-        {!hasCategories ? (
-          <p className="text-xs text-neutral-600 italic">No categories are set yet. Add a category to a concept on the Model editor tab (e.g. "water", "energy", "food", "governance") to enable this section.</p>
-        ) : (
-          <>
-            <div className="overflow-x-auto">
-              <p className="text-[12.5px] text-neutral-600 mb-1.5">Click any column heading to sort the categories by it; click again to reverse.</p>
-              <table className="w-full text-xs min-w-[820px]">
-                <thead>
-                  <tr className="text-left text-neutral-600 border-b border-slate-100">
-                    {categoryColumns.map((col) => (
-                      <SortHeader key={col.key} col={col} sortKey={categorySort.sortKey} sortDir={categorySort.sortDir} onSort={categorySort.onSort} />
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {categorySort.sorted.map((c) => (
-                    <tr key={c.category} className="border-b border-slate-50">
-                      {categoryColumns.map((col) => (
-                        <td key={col.key} className={`py-1.5 pr-3 ${col.type === "num" ? "font-mono" : ""} ${col.key === categorySort.sortKey ? "bg-cobalt-50/60 font-semibold text-neutral-900" : ""}`}>
-                          {col.key === "category" ? (
-                            <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: categoryColor.get(c.category) }} />
-                              <span className={c.isUncategorized ? "italic text-neutral-600" : ""}>{c.category}</span>
-                            </span>
-                          ) : (c[col.key] ?? "n/a")}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4 mt-4">
-              {[
-                { key: "meanInfluence", title: "Mean influence score by category", color: "#1d4ed8" },
-                { key: "meanSensitivity", title: "Mean sensitivity score by category", color: "#b45309" },
-                { key: "meanCentrality", title: "Mean centrality by category", color: "#0f766e" },
-                { key: "density", title: "Connection density by category (%)", color: "#7c3aed" },
-              ].map(({ key, title }) => {
-                const data = [...categoryStats].sort((a, b) => (b[key] ?? -Infinity) - (a[key] ?? -Infinity));
-                return (
-                  <div key={key} className="border border-slate-100 rounded-lg p-3 overflow-x-auto">
-                    <h4 className="text-xs font-semibold mb-2">{title}</h4>
-                    <div style={{ minWidth: categoryYAxisWidth + 180, height: Math.max(140, data.length * 30 + 40) }}>
-                      <ResponsiveContainer>
-                        <BarChart data={data} layout="vertical" margin={{ left: 8, right: 16 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                          <XAxis type="number" tick={{ fontSize: 12 }} />
-                          {/* interval={0}: show every module's name, never thin them out. */}
-                          <YAxis type="category" dataKey="category" width={categoryYAxisWidth} interval={0} tick={(p) => <SingleLineTick {...p} />} />
-                          <RTooltip formatter={(v) => (v === null ? "n/a (fewer than 2 concepts)" : v)} />
-                          <Bar dataKey={key} radius={[0, 3, 3, 0]}>
-                            {/* One Cell per bar IN THE ORDER DRAWN, so each bar keeps its own module's colour. */}
-                            {data.map((c) => <Cell key={c.category} fill={categoryColor.get(c.category)} fillOpacity={0.8} />)}
-                          </Bar>
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <details className="mt-4 pt-4 border-t border-slate-100">
-              <summary className="text-sm font-semibold cursor-pointer">Category interaction matrix (optional)</summary>
-              <p className="text-[12.5px] text-neutral-600 mt-2 mb-2">Rows are the source category, columns the target. Darker cells have more connections; hover a cell for the exact count and total weight. The diagonal (A→A) is the same figure as "Internal" above.</p>
-              <div className="overflow-x-auto">
-                <table className="text-xs border-collapse">
-                  <thead>
-                    <tr>
-                      <th className="p-1.5 text-left text-neutral-600 font-medium">From \ To</th>
-                      {categoryStats.map((c) => (
-                        <th key={c.category} className="p-1.5 text-left text-neutral-600 font-medium whitespace-nowrap">{c.category}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {categoryStats.map((rowCat) => {
-                      const maxCount = Math.max(1, ...categoryStats.map((c) => categoryMatrix[rowCat.category]?.[c.category]?.count ?? 0));
-                      return (
-                        <tr key={rowCat.category}>
-                          <td className="p-1.5 font-medium whitespace-nowrap">{rowCat.category}</td>
-                          {categoryStats.map((colCat) => {
-                            const cell = categoryMatrix[rowCat.category]?.[colCat.category] ?? { count: 0, totalWeight: 0 };
-                            const alpha = cell.count > 0 ? 0.15 + 0.65 * (cell.count / maxCount) : 0;
-                            // White text on the darker cells, black on the lighter ones: luminance of the
-                            // module colour blended over white at this cell's opacity.
-                            const hex = categoryColor.get(rowCat.category) || "#ffffff";
-                            const shade = [1, 3, 5].map((k) => alpha * parseInt(hex.slice(k, k + 2), 16) + (1 - alpha) * 255);
-                            const lum = (0.2126 * shade[0] + 0.7152 * shade[1] + 0.0722 * shade[2]) / 255;
-                            return (
-                              <td
-                                key={colCat.category}
-                                className="p-1.5 text-center font-mono whitespace-nowrap border border-slate-100"
-                                style={{ background: cell.count > 0 ? `${categoryColor.get(rowCat.category)}${Math.round(alpha * 255).toString(16).padStart(2, "0")}` : "transparent", color: cell.count > 0 && lum < 0.55 ? "#ffffff" : undefined }}
-                                title={`${rowCat.category} → ${colCat.category}: ${cell.count} connection${cell.count === 1 ? "" : "s"}, total weight ${cell.totalWeight >= 0 ? "+" : ""}${round2(cell.totalWeight)}`}
-                              >
-                                {cell.count > 0 ? `${cell.count} / ${cell.totalWeight >= 0 ? "+" : ""}${round2(cell.totalWeight)}` : "0"}
-                              </td>
-                            );
-                          })}
+            {!hasCategories ? (
+              <p className="text-xs text-neutral-600 italic">No categories are set yet. Add a category to a concept on the Model editor tab (e.g. "water", "energy", "food", "governance") to enable this section.</p>
+            ) : (
+              <>
+                <div className="overflow-x-auto">
+                  <p className="text-[12.5px] text-neutral-600 mb-1.5">Click any column heading to sort the categories by it; click again to reverse.</p>
+                  <table className="w-full text-xs min-w-[820px]">
+                    <thead>
+                      <tr className="text-left text-neutral-600 border-b border-slate-100">
+                        {categoryColumns.map((col) => (
+                          <SortHeader key={col.key} col={col} sortKey={categorySort.sortKey} sortDir={categorySort.sortDir} onSort={categorySort.onSort} />
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {categorySort.sorted.map((c) => (
+                        <tr key={c.category} className="border-b border-slate-50">
+                          {categoryColumns.map((col) => (
+                            <td key={col.key} className={`py-1.5 pr-3 ${col.type === "num" ? "font-mono" : ""} ${col.key === categorySort.sortKey ? "bg-cobalt-50/60 font-semibold text-neutral-900" : ""}`}>
+                              {col.key === "category" ? (
+                                <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: categoryColor.get(c.category) }} />
+                                  <span className={c.isUncategorized ? "italic text-neutral-600" : ""}>{c.category}</span>
+                                </span>
+                              ) : (c[col.key] ?? "n/a")}
+                            </td>
+                          ))}
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </details>
-          </>
-        )}
-      </div>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 mt-4">
+                  {[
+                    { key: "meanInfluence", title: "Mean influence score by category", color: "#1d4ed8" },
+                    { key: "meanSensitivity", title: "Mean sensitivity score by category", color: "#b45309" },
+                    { key: "meanCentrality", title: "Mean centrality by category", color: "#0f766e" },
+                    { key: "density", title: "Connection density by category (%)", color: "#7c3aed" },
+                  ].map(({ key, title }) => {
+                    const data = [...categoryStats].sort((a, b) => (b[key] ?? -Infinity) - (a[key] ?? -Infinity));
+                    return (
+                      <div key={key} className="border border-slate-100 rounded-lg p-3 overflow-x-auto">
+                        <h4 className="text-xs font-semibold mb-2">{title}</h4>
+                        <div style={{ minWidth: categoryYAxisWidth + 180, height: Math.max(140, data.length * 30 + 40) }}>
+                          <ResponsiveContainer>
+                            <BarChart data={data} layout="vertical" margin={{ left: 8, right: 16 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                              <XAxis type="number" tick={{ fontSize: 12 }} />
+                              {/* interval={0}: show every module's name, never thin them out. */}
+                              <YAxis type="category" dataKey="category" width={categoryYAxisWidth} interval={0} tick={(p) => <SingleLineTick {...p} />} />
+                              <RTooltip formatter={(v) => (v === null ? "n/a (fewer than 2 concepts)" : v)} />
+                              <Bar dataKey={key} radius={[0, 3, 3, 0]}>
+                                {/* One Cell per bar IN THE ORDER DRAWN, so each bar keeps its own module's colour. */}
+                                {data.map((c) => <Cell key={c.category} fill={categoryColor.get(c.category)} fillOpacity={0.8} />)}
+                              </Bar>
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <details className="mt-4 pt-4 border-t border-slate-100">
+                  <summary className="text-sm font-semibold cursor-pointer">Category interaction matrix (optional)</summary>
+                  <p className="text-[12.5px] text-neutral-600 mt-2 mb-2">Rows are the source category, columns the target. Darker cells have more connections; hover a cell for the exact count and total weight. The diagonal (A→A) is the same figure as "Internal" above.</p>
+                  <div className="overflow-x-auto">
+                    <table className="text-xs border-collapse">
+                      <thead>
+                        <tr>
+                          <th className="p-1.5 text-left text-neutral-600 font-medium">From \ To</th>
+                          {categoryStats.map((c) => (
+                            <th key={c.category} className="p-1.5 text-left text-neutral-600 font-medium whitespace-nowrap">{c.category}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {categoryStats.map((rowCat) => {
+                          const maxCount = Math.max(1, ...categoryStats.map((c) => categoryMatrix[rowCat.category]?.[c.category]?.count ?? 0));
+                          return (
+                            <tr key={rowCat.category}>
+                              <td className="p-1.5 font-medium whitespace-nowrap">{rowCat.category}</td>
+                              {categoryStats.map((colCat) => {
+                                const cell = categoryMatrix[rowCat.category]?.[colCat.category] ?? { count: 0, totalWeight: 0 };
+                                const alpha = cell.count > 0 ? 0.15 + 0.65 * (cell.count / maxCount) : 0;
+                                // White text on the darker cells, black on the lighter ones: luminance of the
+                                // module colour blended over white at this cell's opacity.
+                                const hex = categoryColor.get(rowCat.category) || "#ffffff";
+                                const shade = [1, 3, 5].map((k) => alpha * parseInt(hex.slice(k, k + 2), 16) + (1 - alpha) * 255);
+                                const lum = (0.2126 * shade[0] + 0.7152 * shade[1] + 0.0722 * shade[2]) / 255;
+                                return (
+                                  <td
+                                    key={colCat.category}
+                                    className="p-1.5 text-center font-mono whitespace-nowrap border border-slate-100"
+                                    style={{ background: cell.count > 0 ? `${categoryColor.get(rowCat.category)}${Math.round(alpha * 255).toString(16).padStart(2, "0")}` : "transparent", color: cell.count > 0 && lum < 0.55 ? "#ffffff" : undefined }}
+                                    title={`${rowCat.category} → ${colCat.category}: ${cell.count} connection${cell.count === 1 ? "" : "s"}, total weight ${cell.totalWeight >= 0 ? "+" : ""}${round2(cell.totalWeight)}`}
+                                  >
+                                    {cell.count > 0 ? `${cell.count} / ${cell.totalWeight >= 0 ? "+" : ""}${round2(cell.totalWeight)}` : "0"}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </details>
+              </>
+            )}
+          </div>
+        </div>
+      </FoldableBox>
+
+      <MethodPanel foldable
+        stats={[
+          { label: "Concepts / relationships", value: `${concepts.length} / ${edges.length}` },
+          { label: "Simulation runs behind these scores", value: concepts.length, hint: "Influence and Sensitivity need one full driven run per concept. Structural columns (degree, centrality, role) need none." },
+          { label: "Transfer function / λ", value: transferFunctionLabel(structuralSettings(settings)), hint: settings.squashFunction === "linear" ? "The simulation settings currently use no squashing function, but Influence and Sensitivity are only meaningful on a bounded scale (an unbounded model can run away), so these scores use tanh at the same steepness." : undefined },
+          {
+            label: "Feedback loops found",
+            value: stats.loops.capped ? `${stats.loops.total}+ (capped)` : stats.loops.total,
+            tone: stats.loops.capped ? "warn" : undefined,
+            hint: "Simple cycles up to 8 relationships long, up to a maximum of 300. Hitting either limit makes the count a lower bound.",
+          },
+        ]}
+      >
+        <p><strong>The role labels depend on cut-offs that are conventions, not findings.</strong> "Hub" means centrality in the top quartile of all non-zero centralities; "Driver" and "Receiver" mean one direction exceeds the other by more than a factor of 1.2. Those numbers are choices built into this tool. A concept sitting just either side of them changes label without changing behaviour, so treat roles as a reading aid and report the underlying degree figures if a role claim matters to an argument.</p>
+        <p><strong>Degree and centrality use absolute weights.</strong> A strong negative relationship adds exactly as much centrality as an equally strong positive one, so these columns measure how <em>involved</em> a concept is, never whether its involvement is helpful or harmful. Net influence is the only structural column that keeps direction.</p>
+        <p><strong>Influence and Sensitivity are not properties of the network alone.</strong> They come from simulated runs, so they move with the transfer function, &lambda;, update rule and convergence settings currently selected. The same drawn model scored at a different &lambda; yields different numbers, so if you report these scores, report those settings with them.</p>
+        <p><strong>Loop counts are a lower bound.</strong> Enumeration stops at 8 relationships per loop and 300 loops in total, so longer or additional cycles simply are not counted{stats.loops.capped ? ", and this model has hit that limit, so the figure above is definitely an undercount" : ""}. A loop is classed reinforcing when it contains an even number of negative relationships and balancing when odd, which is a sign-parity rule: it says nothing about the strength of the loop or how quickly it acts.</p>
+      </MethodPanel>
     </div>
   );
 }
@@ -10004,6 +10044,12 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
   const [figSlope, setFigSlope] = useState(DEFAULT_FIGURE_SETTINGS);
   const [figSlopeOpen, setFigSlopeOpen] = useState(false);
   const [figSlopeBusy, setFigSlopeBusy] = useState(false);
+  const [tpAdvancedOpen, setTpAdvancedOpen] = useState(false);
+  const withTpAdvanced = (fn) => {
+    if (tpAdvancedOpen) { fn(); return; }
+    setTpAdvancedOpen(true);
+    setTimeout(fn, 300);
+  };
   const [hiddenOutcomeKeys, setHiddenOutcomeKeys] = useState(() => new Set());
   const toggleHiddenOutcome = (id) => setHiddenOutcomeKeys((prev) => {
     const next = new Set(prev);
@@ -10244,7 +10290,255 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
         <>
           {isStale && <StaleResultBanner label="this transition point analysis" />}
 
-          <MethodPanel
+          <div className="bg-white rounded-lg border border-slate-200 p-4">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="text-sm font-semibold">Transition point results</h4>
+              <Btn variant="outline" onClick={exportTableCSV}><Download size={13} />Export CSV</Btn>
+            </div>
+            <p className="text-[11.5px] text-neutral-600 mb-1.5">Click a column header to sort by it; click again to reverse the direction.</p>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-neutral-600 border-b border-slate-100">
+                  {TRANSITION_TABLE_COLUMNS.map((col) => <SortHeader key={col.key} col={col} sortKey={tpSortKey} sortDir={tpSortDir} onSort={tpOnSort} />)}
+                </tr>
+              </thead>
+              <tbody>
+                {tpSortedRows.map((r) => (
+                  <tr key={r.outcomeId} className="border-b border-slate-50">
+                    <td className="py-1 pr-3">{r.interventionName}</td>
+                    <td className="py-1 pr-3">{r.outcomeName}</td>
+                    <td className="py-1 pr-3 font-mono">{round2(r.tp)}</td>
+                    <td className="py-1 pr-3 font-mono">{r.effectAtTp >= 0 ? "+" : ""}{round2(r.effectAtTp)}</td>
+                    <td className="py-1 pr-3 font-mono">{r.shareAtTp === null ? "n/a" : `${Math.round(100 * r.shareAtTp)}%`}</td>
+                    <td className="py-1 pr-3 font-mono">{r.effect >= 0 ? "+" : ""}{round2(r.effect)}</td>
+                    <td className="py-1 pr-3 font-mono">{round2(r.range)}</td>
+                    <td className="py-1 pr-3 font-mono">{r.efficiency >= 0 ? "+" : ""}{round2(r.efficiency)}</td>
+                    <td className="py-1 pr-3">
+                      <span title={RESPONSE_TYPE_HELP[r.responseType]} className={`text-[11.5px] px-1.5 py-0.5 rounded-full border ${RESPONSE_TYPE_STYLE[r.responseType]}`}>{r.responseType}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="bg-white rounded-lg border border-slate-200 p-4">
+            <h4 className="text-sm font-semibold mb-1">Intervention prioritization matrix</h4>
+            <p className="text-[12.5px] text-neutral-600 mb-2">X: transition point (the intensity from which returns diminish). Y: |effect size|. Point color: green = outcome improves, red = outcome declines.</p>
+            <div className="w-full h-80">
+              <ResponsiveContainer>
+                <ScatterChart margin={{ top: 10, right: 20, bottom: 20, left: 10 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis type="number" dataKey="x" domain={[0, 1]} tick={{ fontSize: 12 }} label={{ value: "Transition Point", position: "insideBottom", offset: -12, fontSize: 11 }} />
+                  <YAxis type="number" dataKey="y" tick={{ fontSize: 12 }} label={{ value: "Effect Size", angle: -90, position: "insideLeft", fontSize: 11 }} />
+                  <ZAxis range={[80, 80]} />
+                  <RTooltip cursor={{ strokeDasharray: "3 3" }} content={({ active, payload }) => active && payload?.[0] ? (
+                    <div className="bg-white border border-slate-200 rounded shadow-sm p-2 text-[12.5px]">
+                      <div className="font-semibold">{payload[0].payload.name}</div>
+                      <div>TP = {payload[0].payload.x}</div>
+                      <div>Effect = {payload[0].payload.effect >= 0 ? "+" : ""}{payload[0].payload.effect}</div>
+                    </div>
+                  ) : null} />
+                  <ReferenceLine x={0.5} stroke="#94a3b8" />
+                  <ReferenceLine y={matrixYSplit} stroke="#94a3b8" />
+                  <Scatter data={matrixData}>
+                    {matrixData.map((d, i) => <Cell key={i} fill={d.effect >= 0 ? "#16a34a" : "#dc2626"} />)}
+                  </Scatter>
+                </ScatterChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="grid grid-cols-2 gap-2 mt-2 text-[11.5px] text-neutral-600">
+              <div><strong className="text-neutral-900">Quick Wins</strong>: low TP, high effect</div>
+              <div><strong className="text-neutral-900">Strategic Investments</strong>: high TP, high effect</div>
+              <div><strong className="text-neutral-900">Small Improvements</strong>: low TP, low effect</div>
+              <div><strong className="text-neutral-900">Poor Leverage Points</strong>: high TP, low effect</div>
+            </div>
+          </div>
+
+          {kpis && (
+            <div className="bg-white rounded-lg border border-slate-200 p-4">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-sm font-semibold">Transition point dashboard</h4>
+                <Btn variant="outline" onClick={exportRankingsCSV}><Download size={13} />Export CSV</Btn>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="border border-slate-200 rounded-lg p-3">
+                  <div className="text-[11.5px] text-neutral-600 font-medium uppercase tracking-wide">Earliest transition point</div>
+                  <div className="text-sm font-semibold mt-0.5">{kpis.earliest.outcomeName}</div>
+                  <div className="text-xs font-mono text-neutral-700">TP = {round2(kpis.earliest.tp)}</div>
+                  <div className="text-[11.5px] text-neutral-600 mt-1">Returns diminish soonest.</div>
+                </div>
+                <div className="border border-slate-200 rounded-lg p-3">
+                  <div className="text-[11.5px] text-neutral-600 font-medium uppercase tracking-wide">Latest transition point</div>
+                  <div className="text-sm font-semibold mt-0.5">{kpis.latest.outcomeName}</div>
+                  <div className="text-xs font-mono text-neutral-700">TP = {round2(kpis.latest.tp)}</div>
+                  <div className="text-[11.5px] text-neutral-600 mt-1">Benefit keeps building longest.</div>
+                </div>
+                <div className="border border-slate-200 rounded-lg p-3">
+                  <div className="text-[11.5px] text-neutral-600 font-medium uppercase tracking-wide">Highest total effect</div>
+                  <div className="text-sm font-semibold mt-0.5">{kpis.highestEffect.outcomeName}</div>
+                  <div className="text-xs font-mono text-neutral-700">{kpis.highestEffect.effect >= 0 ? "+" : ""}{round2(kpis.highestEffect.effect)}</div>
+                  <div className="text-[11.5px] text-neutral-600 mt-1">Largest equilibrium change.</div>
+                </div>
+                <div className="border border-slate-200 rounded-lg p-3">
+                  <div className="text-[11.5px] text-neutral-600 font-medium uppercase tracking-wide" title="Efficiency = Total Effect / Transition Point (TP). How much this outcome changed overall, relative to the intensity from which further effort pays off markedly less. A high efficiency means a small nudge produces a big change; a low one means most of the intervention's range is spent for comparatively little. Sign matches the effect: a negative efficiency means the outcome got worse, not better.">Most efficient lever <HelpCircle size={10} className="inline text-neutral-500" /></div>
+                  <div className="text-sm font-semibold mt-0.5">{kpis.mostEfficient.outcomeName}</div>
+                  <div className="text-xs font-mono text-neutral-700">Efficiency = {round2(kpis.mostEfficient.efficiency)}</div>
+                  <div className="text-[11.5px] text-neutral-600 mt-1">Effect size / required intensity.</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {synergy && (
+            <div className="bg-white rounded-lg border border-slate-200 p-4">
+              <h4 className="text-sm font-semibold mb-1">Synergy classification</h4>
+              <p className="text-[12.5px] text-neutral-600 mb-2">Across the {synergy.total} selected outcomes, evaluated at full intervention intensity (x = 1).</p>
+              <div className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full border ${SYNERGY_STYLE[synergy.type]}`}>
+                {synergy.type}
+              </div>
+              <p className="text-xs text-neutral-700 mt-2">{synergy.improve} improved, {synergy.worsen} worsened, {synergy.total - synergy.improve - synergy.worsen} unchanged (within the flat-response threshold).</p>
+            </div>
+          )}
+
+          <div className="bg-white rounded-lg border border-slate-200" data-tp-advanced>
+            <button onClick={() => setTpAdvancedOpen((v) => !v)} aria-expanded={tpAdvancedOpen} className="w-full flex items-center gap-2 px-4 py-3 text-left rounded-lg hover:bg-slate-50">
+              {tpAdvancedOpen ? <ChevronDown size={15} className="text-neutral-700 shrink-0" /> : <ChevronRight size={15} className="text-neutral-700 shrink-0" />}
+              <SlidersHorizontal size={15} className="text-cobalt-700 shrink-0" />
+              <span className="text-sm font-semibold text-neutral-900">Advanced results</span>
+              <span className="text-xs text-neutral-600">Response and marginal benefit per outcome, and the detailed curve charts</span>
+              <span className="ml-auto shrink-0 text-[12.5px] font-medium text-cobalt-700 border border-cobalt-200 bg-cobalt-50 rounded px-1.5 py-0.5">{tpAdvancedOpen ? "Hide" : "Show"}</span>
+            </button>
+            {tpAdvancedOpen && (
+              <div className="px-4 pb-4 pt-1 space-y-5">
+                <div>
+                  <h4 className="text-sm font-semibold mb-1">How each outcome responds to {result.interventionName}</h4>
+                  <p className="text-[12.5px] text-neutral-600 mb-2">One panel per outcome. The line is the outcome's equilibrium value as the intervention is raised from 0 to full intensity ({transitionRangeLabel(result.direction)}); the bars are the marginal benefit, what each step adds. The dashed line is the transition point: in the green part each step adds the most, in the grey part extra effort adds markedly less.</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                    {chartRows.map((r, i) => (
+                      <TransitionOutcomePanel key={r.outcomeId} row={r} steps={result.steps} color={figurePalette("default", chartRows.length)[i]} />
+                    ))}
+                  </div>
+                </div>
+              <div className="bg-white rounded-lg border border-slate-200 p-4">
+                <div className="flex items-center justify-between mb-1">
+                  <h4 className="text-sm font-semibold">Response curves: {result.interventionName} ({transitionRangeLabel(result.direction)})</h4>
+                  <Btn variant="outline" onClick={() => setFigResponseOpen((v) => !v)}><SlidersHorizontal size={13} />{figResponseOpen ? "Hide figure options" : "Customize & export"}</Btn>
+                </div>
+                <p className="text-[12.5px] text-neutral-600 mb-2">Dashed vertical lines mark each outcome's transition point (where its marginal benefit declines most steeply). Drag the strip below the chart to zoom into an intensity range.</p>
+                <div ref={responseChartRef} data-chart="transition-curves" className="w-full h-80" style={figResponseOpen ? { width: mmToPx(figResponse.widthMm, 96), height: mmToPx(figResponse.heightMm, 96), maxWidth: "100%" } : undefined}>
+                  <ResponsiveContainer>
+                    <LineChart data={curveData} margin={{ bottom: 20 }}>
+                      {figResponse.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
+                      <XAxis dataKey="x" type="number" domain={[0, 1]} tick={{ fontSize: figResponse.tickFontSize }} tickFormatter={(v) => fmtDec(v, figResponse.decimals)} label={{ value: figResponse.xLabel || "Intervention Intensity", position: "insideBottom", offset: -12, fontSize: figResponse.axisFontSize }} />
+                      <YAxis tick={{ fontSize: figResponse.tickFontSize }} tickFormatter={(v) => fmtDec(v, figResponse.decimals)} label={{ value: figResponse.yLabel || "Equilibrium Outcome", angle: -90, position: "insideLeft", fontSize: figResponse.axisFontSize }} />
+                      <RTooltip />
+                      {figResponse.legendPosition !== "hidden" && (
+                        <Legend
+                          wrapperStyle={{ fontSize: figResponse.legendFontSize }}
+                          layout={figResponse.legendPosition === "left" || figResponse.legendPosition === "right" ? "vertical" : "horizontal"}
+                          verticalAlign={figResponse.legendPosition === "left" || figResponse.legendPosition === "right" ? "middle" : figResponse.legendPosition}
+                          align={figResponse.legendPosition === "left" || figResponse.legendPosition === "right" ? figResponse.legendPosition : "center"}
+                        />
+                      )}
+                      {figResponse.title && <text x="50%" y={14} textAnchor="middle" fontSize={figResponse.titleFontSize} fontWeight={600} fill="#0f172a">{figResponse.title}</text>}
+                      {chartRows.map((r, i) => (
+                        <ReferenceLine key={`tp-${r.outcomeId}`} x={round2(r.tp)} stroke={figurePalette(figResponse.palette, chartRows.length)[i]} strokeDasharray="4 4"
+                          label={i === 0 ? { value: `TP = ${round2(r.tp)}`, position: "top", fontSize: figResponse.tickFontSize, fill: figurePalette(figResponse.palette, chartRows.length)[i] } : undefined} />
+                      ))}
+                      {chartRows.map((r, i) => (
+                        <Line key={r.outcomeId} type="monotone" dataKey={r.outcomeId} name={r.outcomeName} stroke={figurePalette(figResponse.palette, chartRows.length)[i]} strokeWidth={figResponse.lineWidth} strokeOpacity={figResponse.opacity} dot={figResponse.markerSize > 0 ? { r: figResponse.markerSize } : false} />
+                      ))}
+                      <Brush dataKey="x" height={20} stroke="#2456d6" travellerWidth={8} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+                {figResponseOpen && (
+                  <FigurePanel
+                    settings={figResponse} onChange={setFigResponse}
+                    seriesOptions={outcomeSeriesOptions} hiddenKeys={hiddenOutcomeKeys} onToggleSeries={toggleHiddenOutcome}
+                    sortOptions={SERIES_ORDER_OPTIONS} sortValue={seriesOrder} onSortChange={setSeriesOrder}
+                    exporting={figResponseBusy}
+                    onExport={async () => {
+                      setFigResponseBusy(true);
+                      await exportFigure(responseChartRef.current, "transition-response-curves.png", figResponse, {
+                        title: figResponse.title || `Response curves: ${result.interventionName} (${transitionRangeLabel(result.direction)})`,
+                        subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}`,
+                      });
+                      setFigResponseBusy(false);
+                    }}
+                  />
+                )}
+              </div>
+
+              <div className="bg-white rounded-lg border border-slate-200 p-4">
+                <div className="flex items-center justify-between mb-1">
+                  <h4 className="text-sm font-semibold">Marginal benefit: the transition point is where it declines most steeply</h4>
+                  <Btn variant="outline" onClick={() => setFigSlopeOpen((v) => !v)}><SlidersHorizontal size={13} />{figSlopeOpen ? "Hide figure options" : "Customize & export"}</Btn>
+                </div>
+                <p className="text-[12.5px] text-neutral-600 mb-2">MB(i) = s (Y(i+1) - Y(i)) / Δx at every intensity step, with s = +1 for an outcome that rises over the sweep and -1 for one that falls. Dashed vertical lines mark each outcome's transition point, where its curve falls most steeply.</p>
+                <div ref={slopeChartRef} className="w-full h-72" style={figSlopeOpen ? { width: mmToPx(figSlope.widthMm, 96), height: mmToPx(figSlope.heightMm, 96), maxWidth: "100%" } : undefined}>
+                  <ResponsiveContainer>
+                    <LineChart data={slopeData}>
+                      {figSlope.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
+                      <XAxis dataKey="x" type="number" domain={[0, 1]} tick={{ fontSize: figSlope.tickFontSize }} tickFormatter={(v) => fmtDec(v, figSlope.decimals)} label={{ value: figSlope.xLabel || "Intervention Intensity", position: "insideBottom", offset: -5, fontSize: figSlope.axisFontSize }} />
+                      <YAxis tick={{ fontSize: figSlope.tickFontSize }} tickFormatter={(v) => fmtDec(v, figSlope.decimals)} label={{ value: figSlope.yLabel || "Marginal Benefit", angle: -90, position: "insideLeft", fontSize: figSlope.axisFontSize }} />
+                      <RTooltip />
+                      {figSlope.legendPosition !== "hidden" && (
+                        <Legend
+                          wrapperStyle={{ fontSize: figSlope.legendFontSize }}
+                          layout={figSlope.legendPosition === "left" || figSlope.legendPosition === "right" ? "vertical" : "horizontal"}
+                          verticalAlign={figSlope.legendPosition === "left" || figSlope.legendPosition === "right" ? "middle" : figSlope.legendPosition}
+                          align={figSlope.legendPosition === "left" || figSlope.legendPosition === "right" ? figSlope.legendPosition : "center"}
+                        />
+                      )}
+                      {figSlope.title && <text x="50%" y={14} textAnchor="middle" fontSize={figSlope.titleFontSize} fontWeight={600} fill="#0f172a">{figSlope.title}</text>}
+                      <ReferenceLine y={0} stroke="#cbd5e1" />
+                      {chartRows.map((r, i) => (
+                        <ReferenceLine key={`tp-${r.outcomeId}`} x={round2(r.tp)} stroke={figurePalette(figSlope.palette, chartRows.length)[i]} strokeDasharray="4 4" />
+                      ))}
+                      {chartRows.map((r, i) => (
+                        <Line key={r.outcomeId} type="monotone" dataKey={r.outcomeId} name={r.outcomeName} stroke={figurePalette(figSlope.palette, chartRows.length)[i]} strokeWidth={figSlope.lineWidth} strokeOpacity={figSlope.opacity} dot={figSlope.markerSize > 0 ? { r: figSlope.markerSize } : false} />
+                      ))}
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+                {figSlopeOpen && (
+                  <FigurePanel
+                    settings={figSlope} onChange={setFigSlope}
+                    seriesOptions={outcomeSeriesOptions} hiddenKeys={hiddenOutcomeKeys} onToggleSeries={toggleHiddenOutcome}
+                    sortOptions={SERIES_ORDER_OPTIONS} sortValue={seriesOrder} onSortChange={setSeriesOrder}
+                    exporting={figSlopeBusy}
+                    onExport={async () => {
+                      setFigSlopeBusy(true);
+                      await exportFigure(slopeChartRef.current, "transition-marginal-benefit.png", figSlope, {
+                        title: figSlope.title || `Marginal benefit: ${result.interventionName}`,
+                        subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}`,
+                      });
+                      setFigSlopeBusy(false);
+                    }}
+                  />
+                )}
+              </div>
+
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white rounded-lg border border-slate-200 p-4">
+            <h4 className="text-sm font-semibold mb-2">Export</h4>
+            <div className="flex flex-wrap gap-2">
+              <Btn variant="outline" onClick={exportResponseCSV}><Download size={13} />Response curves (CSV)</Btn>
+              <Btn variant="outline" onClick={exportSlopeCSV}><Download size={13} />Marginal benefit curves (CSV)</Btn>
+              <Btn variant="outline" onClick={exportTableCSV}><Download size={13} />TP table (CSV)</Btn>
+              <Btn variant="outline" onClick={exportRankingsCSV} disabled={!kpis}><Download size={13} />Rankings (CSV)</Btn>
+              <Btn variant="outline" onClick={() => withTpAdvanced(() => exportFigure(responseChartRef.current, "transition-response-curves.png", figResponse, { title: figResponse.title || `Response curves: ${result.interventionName} (${transitionRangeLabel(result.direction)})`, subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}` }))}><Download size={13} />Response chart ({figResponse.format.toUpperCase()})</Btn>
+              <Btn variant="outline" onClick={() => withTpAdvanced(() => exportFigure(slopeChartRef.current, "transition-marginal-benefit.png", figSlope, { title: figSlope.title || `Marginal benefit: ${result.interventionName}`, subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}` }))}><Download size={13} />Marginal chart ({figSlope.format.toUpperCase()})</Btn>
+            </div>
+            <p className="text-[11.5px] text-neutral-600 mt-2 italic">PDF export is not yet implemented (see the roadmap note at the bottom of the page). Use PNG for images and CSV for data in the meantime.</p>
+          </div>
+
+          <MethodPanel foldable
             stats={[
               { label: "Simulation runs", value: result.resolution + 1, hint: "One full run to equilibrium per sampled intervention level." },
               {
@@ -10283,230 +10577,6 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
             <p><strong>One intervention, held fixed, at equilibrium.</strong> The intervention concept is locked at each level for the whole run and every other concept evolves freely; nothing here sweeps two interventions together, and the x-axis is intensity rather than time, so the curves say nothing about how long a transition takes or what happens en route. Effects are measured from the intervention held at 0, not from the baseline in which it is free to move, and for a decrease a positive slope means the outcome rises as the intervention is pushed further down.</p>
           </MethodPanel>
 
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
-            <div className="flex items-center justify-between mb-1">
-              <h4 className="text-sm font-semibold">Response curves: {result.interventionName} ({transitionRangeLabel(result.direction)})</h4>
-              <Btn variant="outline" onClick={() => setFigResponseOpen((v) => !v)}><SlidersHorizontal size={13} />{figResponseOpen ? "Hide figure options" : "Customize & export"}</Btn>
-            </div>
-            <p className="text-[12.5px] text-neutral-600 mb-2">Dashed vertical lines mark each outcome's transition point (where its marginal benefit declines most steeply). Drag the strip below the chart to zoom into an intensity range.</p>
-            <div ref={responseChartRef} data-chart="transition-curves" className="w-full h-80" style={figResponseOpen ? { width: mmToPx(figResponse.widthMm, 96), height: mmToPx(figResponse.heightMm, 96), maxWidth: "100%" } : undefined}>
-              <ResponsiveContainer>
-                <LineChart data={curveData} margin={{ bottom: 20 }}>
-                  {figResponse.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
-                  <XAxis dataKey="x" type="number" domain={[0, 1]} tick={{ fontSize: figResponse.tickFontSize }} tickFormatter={(v) => fmtDec(v, figResponse.decimals)} label={{ value: figResponse.xLabel || "Intervention Intensity", position: "insideBottom", offset: -12, fontSize: figResponse.axisFontSize }} />
-                  <YAxis tick={{ fontSize: figResponse.tickFontSize }} tickFormatter={(v) => fmtDec(v, figResponse.decimals)} label={{ value: figResponse.yLabel || "Equilibrium Outcome", angle: -90, position: "insideLeft", fontSize: figResponse.axisFontSize }} />
-                  <RTooltip />
-                  {figResponse.legendPosition !== "hidden" && (
-                    <Legend
-                      wrapperStyle={{ fontSize: figResponse.legendFontSize }}
-                      layout={figResponse.legendPosition === "left" || figResponse.legendPosition === "right" ? "vertical" : "horizontal"}
-                      verticalAlign={figResponse.legendPosition === "left" || figResponse.legendPosition === "right" ? "middle" : figResponse.legendPosition}
-                      align={figResponse.legendPosition === "left" || figResponse.legendPosition === "right" ? figResponse.legendPosition : "center"}
-                    />
-                  )}
-                  {figResponse.title && <text x="50%" y={14} textAnchor="middle" fontSize={figResponse.titleFontSize} fontWeight={600} fill="#0f172a">{figResponse.title}</text>}
-                  {chartRows.map((r, i) => (
-                    <ReferenceLine key={`tp-${r.outcomeId}`} x={round2(r.tp)} stroke={figurePalette(figResponse.palette, chartRows.length)[i]} strokeDasharray="4 4"
-                      label={i === 0 ? { value: `TP = ${round2(r.tp)}`, position: "top", fontSize: figResponse.tickFontSize, fill: figurePalette(figResponse.palette, chartRows.length)[i] } : undefined} />
-                  ))}
-                  {chartRows.map((r, i) => (
-                    <Line key={r.outcomeId} type="monotone" dataKey={r.outcomeId} name={r.outcomeName} stroke={figurePalette(figResponse.palette, chartRows.length)[i]} strokeWidth={figResponse.lineWidth} strokeOpacity={figResponse.opacity} dot={figResponse.markerSize > 0 ? { r: figResponse.markerSize } : false} />
-                  ))}
-                  <Brush dataKey="x" height={20} stroke="#2456d6" travellerWidth={8} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-            {figResponseOpen && (
-              <FigurePanel
-                settings={figResponse} onChange={setFigResponse}
-                seriesOptions={outcomeSeriesOptions} hiddenKeys={hiddenOutcomeKeys} onToggleSeries={toggleHiddenOutcome}
-                sortOptions={SERIES_ORDER_OPTIONS} sortValue={seriesOrder} onSortChange={setSeriesOrder}
-                exporting={figResponseBusy}
-                onExport={async () => {
-                  setFigResponseBusy(true);
-                  await exportFigure(responseChartRef.current, "transition-response-curves.png", figResponse, {
-                    title: figResponse.title || `Response curves: ${result.interventionName} (${transitionRangeLabel(result.direction)})`,
-                    subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}`,
-                  });
-                  setFigResponseBusy(false);
-                }}
-              />
-            )}
-          </div>
-
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
-            <div className="flex items-center justify-between mb-1">
-              <h4 className="text-sm font-semibold">Marginal benefit: the transition point is where it declines most steeply</h4>
-              <Btn variant="outline" onClick={() => setFigSlopeOpen((v) => !v)}><SlidersHorizontal size={13} />{figSlopeOpen ? "Hide figure options" : "Customize & export"}</Btn>
-            </div>
-            <p className="text-[12.5px] text-neutral-600 mb-2">MB(i) = s (Y(i+1) - Y(i)) / Δx at every intensity step, with s = +1 for an outcome that rises over the sweep and -1 for one that falls. Dashed vertical lines mark each outcome's transition point, where its curve falls most steeply.</p>
-            <div ref={slopeChartRef} className="w-full h-72" style={figSlopeOpen ? { width: mmToPx(figSlope.widthMm, 96), height: mmToPx(figSlope.heightMm, 96), maxWidth: "100%" } : undefined}>
-              <ResponsiveContainer>
-                <LineChart data={slopeData}>
-                  {figSlope.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
-                  <XAxis dataKey="x" type="number" domain={[0, 1]} tick={{ fontSize: figSlope.tickFontSize }} tickFormatter={(v) => fmtDec(v, figSlope.decimals)} label={{ value: figSlope.xLabel || "Intervention Intensity", position: "insideBottom", offset: -5, fontSize: figSlope.axisFontSize }} />
-                  <YAxis tick={{ fontSize: figSlope.tickFontSize }} tickFormatter={(v) => fmtDec(v, figSlope.decimals)} label={{ value: figSlope.yLabel || "Marginal Benefit", angle: -90, position: "insideLeft", fontSize: figSlope.axisFontSize }} />
-                  <RTooltip />
-                  {figSlope.legendPosition !== "hidden" && (
-                    <Legend
-                      wrapperStyle={{ fontSize: figSlope.legendFontSize }}
-                      layout={figSlope.legendPosition === "left" || figSlope.legendPosition === "right" ? "vertical" : "horizontal"}
-                      verticalAlign={figSlope.legendPosition === "left" || figSlope.legendPosition === "right" ? "middle" : figSlope.legendPosition}
-                      align={figSlope.legendPosition === "left" || figSlope.legendPosition === "right" ? figSlope.legendPosition : "center"}
-                    />
-                  )}
-                  {figSlope.title && <text x="50%" y={14} textAnchor="middle" fontSize={figSlope.titleFontSize} fontWeight={600} fill="#0f172a">{figSlope.title}</text>}
-                  <ReferenceLine y={0} stroke="#cbd5e1" />
-                  {chartRows.map((r, i) => (
-                    <ReferenceLine key={`tp-${r.outcomeId}`} x={round2(r.tp)} stroke={figurePalette(figSlope.palette, chartRows.length)[i]} strokeDasharray="4 4" />
-                  ))}
-                  {chartRows.map((r, i) => (
-                    <Line key={r.outcomeId} type="monotone" dataKey={r.outcomeId} name={r.outcomeName} stroke={figurePalette(figSlope.palette, chartRows.length)[i]} strokeWidth={figSlope.lineWidth} strokeOpacity={figSlope.opacity} dot={figSlope.markerSize > 0 ? { r: figSlope.markerSize } : false} />
-                  ))}
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-            {figSlopeOpen && (
-              <FigurePanel
-                settings={figSlope} onChange={setFigSlope}
-                seriesOptions={outcomeSeriesOptions} hiddenKeys={hiddenOutcomeKeys} onToggleSeries={toggleHiddenOutcome}
-                sortOptions={SERIES_ORDER_OPTIONS} sortValue={seriesOrder} onSortChange={setSeriesOrder}
-                exporting={figSlopeBusy}
-                onExport={async () => {
-                  setFigSlopeBusy(true);
-                  await exportFigure(slopeChartRef.current, "transition-marginal-benefit.png", figSlope, {
-                    title: figSlope.title || `Marginal benefit: ${result.interventionName}`,
-                    subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}`,
-                  });
-                  setFigSlopeBusy(false);
-                }}
-              />
-            )}
-          </div>
-
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
-            <div className="flex items-center justify-between mb-2">
-              <h4 className="text-sm font-semibold">Transition point results</h4>
-              <Btn variant="outline" onClick={exportTableCSV}><Download size={13} />Export CSV</Btn>
-            </div>
-            <p className="text-[11.5px] text-neutral-600 mb-1.5">Click a column header to sort by it; click again to reverse the direction.</p>
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-left text-neutral-600 border-b border-slate-100">
-                  {TRANSITION_TABLE_COLUMNS.map((col) => <SortHeader key={col.key} col={col} sortKey={tpSortKey} sortDir={tpSortDir} onSort={tpOnSort} />)}
-                </tr>
-              </thead>
-              <tbody>
-                {tpSortedRows.map((r) => (
-                  <tr key={r.outcomeId} className="border-b border-slate-50">
-                    <td className="py-1 pr-3">{r.interventionName}</td>
-                    <td className="py-1 pr-3">{r.outcomeName}</td>
-                    <td className="py-1 pr-3 font-mono">{round2(r.tp)}</td>
-                    <td className="py-1 pr-3 font-mono">{r.effectAtTp >= 0 ? "+" : ""}{round2(r.effectAtTp)}</td>
-                    <td className="py-1 pr-3 font-mono">{r.shareAtTp === null ? "n/a" : `${Math.round(100 * r.shareAtTp)}%`}</td>
-                    <td className="py-1 pr-3 font-mono">{r.effect >= 0 ? "+" : ""}{round2(r.effect)}</td>
-                    <td className="py-1 pr-3 font-mono">{round2(r.range)}</td>
-                    <td className="py-1 pr-3 font-mono">{r.efficiency >= 0 ? "+" : ""}{round2(r.efficiency)}</td>
-                    <td className="py-1 pr-3">
-                      <span title={RESPONSE_TYPE_HELP[r.responseType]} className={`text-[11.5px] px-1.5 py-0.5 rounded-full border ${RESPONSE_TYPE_STYLE[r.responseType]}`}>{r.responseType}</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {kpis && (
-            <div className="bg-white rounded-lg border border-slate-200 p-4">
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="text-sm font-semibold">Transition point dashboard</h4>
-                <Btn variant="outline" onClick={exportRankingsCSV}><Download size={13} />Export CSV</Btn>
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="border border-slate-200 rounded-lg p-3">
-                  <div className="text-[11.5px] text-neutral-600 font-medium uppercase tracking-wide">Earliest transition point</div>
-                  <div className="text-sm font-semibold mt-0.5">{kpis.earliest.outcomeName}</div>
-                  <div className="text-xs font-mono text-neutral-700">TP = {round2(kpis.earliest.tp)}</div>
-                  <div className="text-[11.5px] text-neutral-600 mt-1">Returns diminish soonest.</div>
-                </div>
-                <div className="border border-slate-200 rounded-lg p-3">
-                  <div className="text-[11.5px] text-neutral-600 font-medium uppercase tracking-wide">Latest transition point</div>
-                  <div className="text-sm font-semibold mt-0.5">{kpis.latest.outcomeName}</div>
-                  <div className="text-xs font-mono text-neutral-700">TP = {round2(kpis.latest.tp)}</div>
-                  <div className="text-[11.5px] text-neutral-600 mt-1">Benefit keeps building longest.</div>
-                </div>
-                <div className="border border-slate-200 rounded-lg p-3">
-                  <div className="text-[11.5px] text-neutral-600 font-medium uppercase tracking-wide">Highest total effect</div>
-                  <div className="text-sm font-semibold mt-0.5">{kpis.highestEffect.outcomeName}</div>
-                  <div className="text-xs font-mono text-neutral-700">{kpis.highestEffect.effect >= 0 ? "+" : ""}{round2(kpis.highestEffect.effect)}</div>
-                  <div className="text-[11.5px] text-neutral-600 mt-1">Largest equilibrium change.</div>
-                </div>
-                <div className="border border-slate-200 rounded-lg p-3">
-                  <div className="text-[11.5px] text-neutral-600 font-medium uppercase tracking-wide" title="Efficiency = Total Effect / Transition Point (TP). How much this outcome changed overall, relative to the intensity from which further effort pays off markedly less. A high efficiency means a small nudge produces a big change; a low one means most of the intervention's range is spent for comparatively little. Sign matches the effect: a negative efficiency means the outcome got worse, not better.">Most efficient lever <HelpCircle size={10} className="inline text-neutral-500" /></div>
-                  <div className="text-sm font-semibold mt-0.5">{kpis.mostEfficient.outcomeName}</div>
-                  <div className="text-xs font-mono text-neutral-700">Efficiency = {round2(kpis.mostEfficient.efficiency)}</div>
-                  <div className="text-[11.5px] text-neutral-600 mt-1">Effect size / required intensity.</div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
-            <h4 className="text-sm font-semibold mb-1">Intervention prioritization matrix</h4>
-            <p className="text-[12.5px] text-neutral-600 mb-2">X: transition point (the intensity from which returns diminish). Y: |effect size|. Point color: green = outcome improves, red = outcome declines.</p>
-            <div className="w-full h-80">
-              <ResponsiveContainer>
-                <ScatterChart margin={{ top: 10, right: 20, bottom: 20, left: 10 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis type="number" dataKey="x" domain={[0, 1]} tick={{ fontSize: 12 }} label={{ value: "Transition Point", position: "insideBottom", offset: -12, fontSize: 11 }} />
-                  <YAxis type="number" dataKey="y" tick={{ fontSize: 12 }} label={{ value: "Effect Size", angle: -90, position: "insideLeft", fontSize: 11 }} />
-                  <ZAxis range={[80, 80]} />
-                  <RTooltip cursor={{ strokeDasharray: "3 3" }} content={({ active, payload }) => active && payload?.[0] ? (
-                    <div className="bg-white border border-slate-200 rounded shadow-sm p-2 text-[12.5px]">
-                      <div className="font-semibold">{payload[0].payload.name}</div>
-                      <div>TP = {payload[0].payload.x}</div>
-                      <div>Effect = {payload[0].payload.effect >= 0 ? "+" : ""}{payload[0].payload.effect}</div>
-                    </div>
-                  ) : null} />
-                  <ReferenceLine x={0.5} stroke="#94a3b8" />
-                  <ReferenceLine y={matrixYSplit} stroke="#94a3b8" />
-                  <Scatter data={matrixData}>
-                    {matrixData.map((d, i) => <Cell key={i} fill={d.effect >= 0 ? "#16a34a" : "#dc2626"} />)}
-                  </Scatter>
-                </ScatterChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="grid grid-cols-2 gap-2 mt-2 text-[11.5px] text-neutral-600">
-              <div><strong className="text-neutral-900">Quick Wins</strong>: low TP, high effect</div>
-              <div><strong className="text-neutral-900">Strategic Investments</strong>: high TP, high effect</div>
-              <div><strong className="text-neutral-900">Small Improvements</strong>: low TP, low effect</div>
-              <div><strong className="text-neutral-900">Poor Leverage Points</strong>: high TP, low effect</div>
-            </div>
-          </div>
-
-          {synergy && (
-            <div className="bg-white rounded-lg border border-slate-200 p-4">
-              <h4 className="text-sm font-semibold mb-1">Synergy classification</h4>
-              <p className="text-[12.5px] text-neutral-600 mb-2">Across the {synergy.total} selected outcomes, evaluated at full intervention intensity (x = 1).</p>
-              <div className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full border ${SYNERGY_STYLE[synergy.type]}`}>
-                {synergy.type}
-              </div>
-              <p className="text-xs text-neutral-700 mt-2">{synergy.improve} improved, {synergy.worsen} worsened, {synergy.total - synergy.improve - synergy.worsen} unchanged (within the flat-response threshold).</p>
-            </div>
-          )}
-
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
-            <h4 className="text-sm font-semibold mb-2">Export</h4>
-            <div className="flex flex-wrap gap-2">
-              <Btn variant="outline" onClick={exportResponseCSV}><Download size={13} />Response curves (CSV)</Btn>
-              <Btn variant="outline" onClick={exportSlopeCSV}><Download size={13} />Marginal benefit curves (CSV)</Btn>
-              <Btn variant="outline" onClick={exportTableCSV}><Download size={13} />TP table (CSV)</Btn>
-              <Btn variant="outline" onClick={exportRankingsCSV} disabled={!kpis}><Download size={13} />Rankings (CSV)</Btn>
-              <Btn variant="outline" onClick={() => exportFigure(responseChartRef.current, "transition-response-curves.png", figResponse, { title: figResponse.title || `Response curves: ${result.interventionName} (${transitionRangeLabel(result.direction)})`, subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}` })}><Download size={13} />Response chart ({figResponse.format.toUpperCase()})</Btn>
-              <Btn variant="outline" onClick={() => exportFigure(slopeChartRef.current, "transition-marginal-benefit.png", figSlope, { title: figSlope.title || `Marginal benefit: ${result.interventionName}`, subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}` })}><Download size={13} />Marginal chart ({figSlope.format.toUpperCase()})</Btn>
-            </div>
-            <p className="text-[11.5px] text-neutral-600 mt-2 italic">PDF export is not yet implemented (see the roadmap note at the bottom of the page). Use PNG for images and CSV for data in the meantime.</p>
-          </div>
         </>
       )}
     </div>
@@ -10594,6 +10664,50 @@ function ExpertBadge({ c }) {
     </span>
   );
 }
+
+// One outcome of a Transition Point Analysis as a single, self-explaining
+// panel: the outcome's response to the intervention (line), the marginal
+// benefit of each step (bars), and the transition point splitting the
+// intensity range into the part with a high return and the part with a
+// diminishing return.
+function TransitionOutcomePanel({ row, steps, color, rangeLabel }) {
+  const data = steps.map((x, i) => ({ x: round2(x), y: round2(row.y[i]), mb: i < row.mb.length ? round3(row.mb[i]) : null }));
+  const flat = row.responseType === "Flat";
+  const tp = Number.isFinite(row.tp) ? round2(row.tp) : null;
+  return (
+    <div className="rounded-md border border-slate-200 p-3" data-tp-panel>
+      <div className="flex items-baseline justify-between gap-2">
+        <div className="text-sm font-semibold text-neutral-900">{row.outcomeName}</div>
+        <div className="text-[11.5px] text-neutral-600">{row.responseType}</div>
+      </div>
+      <div className="h-44 mt-1">
+        <ResponsiveContainer>
+          <ComposedChart data={data} margin={{ top: 14, right: 6, bottom: 4, left: -18 }}>
+            {tp !== null && !flat && <ReferenceArea x1={0} x2={tp} fill="#16a34a" fillOpacity={0.08} ifOverflow="extendDomain" />}
+            {tp !== null && !flat && <ReferenceArea x1={tp} x2={1} fill="#94a3b8" fillOpacity={0.1} ifOverflow="extendDomain" />}
+            <XAxis dataKey="x" type="number" domain={[0, 1]} ticks={[0, 0.25, 0.5, 0.75, 1]} tick={{ fontSize: 10 }} />
+            <YAxis yAxisId="y" tick={{ fontSize: 10 }} width={46} />
+            <YAxis yAxisId="mb" orientation="right" hide />
+            <RTooltip formatter={(v, n) => [v, n === "mb" ? "Marginal benefit" : row.outcomeName]} labelFormatter={(x) => `Intensity ${x}`} />
+            <Bar yAxisId="mb" dataKey="mb" fill={color} fillOpacity={0.22} isAnimationActive={false} />
+            <Line yAxisId="y" type="monotone" dataKey="y" stroke={color} strokeWidth={2.5} dot={false} isAnimationActive={false} />
+            {tp !== null && !flat && (
+              <ReferenceLine yAxisId="y" x={tp} stroke="#0f172a" strokeDasharray="4 3" label={{ value: `TP ${tp}`, position: "top", fontSize: 10, fill: "#0f172a" }} />
+            )}
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+      <p className="text-[12px] text-neutral-700 mt-1 leading-snug">
+        {flat
+          ? "This outcome hardly responds to the intervention."
+          : tp === null
+            ? "This outcome does not improve over the range."
+            : <>Up to intensity <strong>{tp}</strong> (green) each step adds the most. Beyond it (grey), extra effort adds markedly less. Change at full intensity: <span className="font-mono">{fmtSignedTp(row.effect)}</span>.</>}
+      </p>
+    </div>
+  );
+}
+const fmtSignedTp = (v) => (Number.isFinite(v) ? `${v > 0 ? "+" : ""}${v.toFixed(2)}` : "n/a");
 
 // A numbered step heading of the setup.
 function StepBadge({ n, label }) {
@@ -11342,29 +11456,40 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
           </div>
 
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {PATHWAY_ARCHETYPES.map((a) => {
-              const top = s.ranked[a.key][0];
-              return (
-                <div key={a.key} className="bg-white rounded-lg border border-slate-200 p-3">
-                  <div className="flex items-center justify-between">
-                    <span className={`text-[11.5px] px-1.5 py-0.5 rounded-full border ${a.badge}`}>{a.label}</span>
-                    <span className="text-lg font-semibold font-mono" style={{ color: a.color }}>{s.counts[a.key]}</span>
+          <div className="bg-white rounded-lg border border-slate-200 p-4" data-pathway-archetypes>
+            <h4 className="text-sm font-semibold mb-1">Pathway archetypes</h4>
+            <p className="text-[12.5px] text-neutral-600 mb-3">Four kinds of pathway, each with its count in this run and its best pathways. Click a pathway to open it in the advanced results.</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {PATHWAY_ARCHETYPES.map((a) => (
+                <div key={a.key} className="rounded-md border border-slate-200 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`text-[11.5px] px-1.5 py-0.5 rounded-full border ${a.badge}`} title={a.rule}>{a.label}</span>
+                    <span className="text-lg font-semibold font-mono" style={{ color: a.color }} title="Pathways of this archetype">{s.counts[a.key]}</span>
                   </div>
                   <p className="text-[11.5px] text-neutral-600 mt-1">{a.purpose}</p>
-                  {top ? (
-                    <button onClick={() => selectPathway(top.id)} className="mt-2 text-left text-[12.5px] text-neutral-900 hover:text-cobalt-800">
-                      <div className="text-[11.5px] text-neutral-600 uppercase tracking-wide">Best: {a.ranking.toLowerCase()}</div>
-                      <PathwayStagesText c={top} nameOf={nameOf} compact />
-                    </button>
-                  ) : (
+                  {s.ranked[a.key].length === 0 ? (
                     <p className="mt-2 text-[12.5px] text-neutral-600 italic" title={Object.entries(s.why[a.key]).map(([k, v]) => `${k}: ${v} of ${s.counts.admissible}`).join("\n")}>
                       No pathway meets all conditions. {Object.entries(s.why[a.key]).map(([k, v]) => `${k}: ${v}`).join("; ")}.
                     </p>
+                  ) : (
+                    <>
+                      <div className="text-[11.5px] text-neutral-600 uppercase tracking-wide mt-2 mb-0.5">{a.ranking}</div>
+                      <ol className="space-y-0.5">
+                        {s.ranked[a.key].slice(0, PATHWAY_TOP_N).map((c, i) => (
+                          <li key={c.id}>
+                            <button onClick={() => selectPathway(c.id)} className={`w-full text-left text-[12.5px] px-1.5 py-1 rounded hover:bg-slate-50 flex gap-2 ${selectedId === c.id ? "bg-slate-100" : ""} ${i === 0 ? "font-medium" : ""}`}>
+                              <span className="font-mono text-neutral-600 w-4 shrink-0">{i + 1}</span>
+                              <span className="flex-1"><PathwayStagesText c={c} nameOf={nameOf} compact /></span>
+                              <span className="font-mono text-neutral-700 shrink-0">{a.key === "ef" ? `PEI ${fmtNum(c.pei)}` : a.key === "lhf" ? `CII ${fmtNum(c.cii)}` : `TOG ${fmtNum(c.tog)}`}</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ol>
+                    </>
                   )}
                 </div>
-              );
-            })}
+              ))}
+            </div>
           </div>
 
           {result.expert?.length > 0 && (
@@ -11402,35 +11527,6 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
               </div>
             </div>
           )}
-
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
-            <h4 className="text-sm font-semibold mb-2">Rankings by archetype</h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {PATHWAY_ARCHETYPES.map((a) => (
-                <div key={a.key}>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className={`text-[11.5px] px-1.5 py-0.5 rounded-full border ${a.badge}`}>{a.label}</span>
-                    <span className="text-[11.5px] text-neutral-600">{a.ranking}</span>
-                  </div>
-                  {s.ranked[a.key].length === 0 ? (
-                    <p className="text-[12.5px] text-neutral-600 italic">None in this run.</p>
-                  ) : (
-                    <ol className="space-y-0.5">
-                      {s.ranked[a.key].slice(0, PATHWAY_TOP_N).map((c, i) => (
-                        <li key={c.id}>
-                          <button onClick={() => selectPathway(c.id)} className={`w-full text-left text-[12.5px] px-1.5 py-1 rounded hover:bg-slate-50 flex gap-2 ${selectedId === c.id ? "bg-slate-100" : ""}`}>
-                            <span className="font-mono text-neutral-600 w-4 shrink-0">{i + 1}</span>
-                            <span className="flex-1"><PathwayStagesText c={c} nameOf={nameOf} compact /></span>
-                            <span className="font-mono text-neutral-700 shrink-0">{a.key === "ef" ? `PEI ${fmtNum(c.pei)}` : a.key === "lhf" ? `CII ${fmtNum(c.cii)}` : `TOG ${fmtNum(c.tog)}`}</span>
-                          </button>
-                        </li>
-                      ))}
-                    </ol>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
 
           <div className="bg-white rounded-lg border border-slate-200" data-pathway-advanced>
             <button onClick={() => setAdvancedOpen((v) => !v)} aria-expanded={advancedOpen} className="w-full flex items-center gap-2 px-4 py-3 text-left rounded-lg hover:bg-slate-50">
@@ -13261,57 +13357,14 @@ function SpaghettiEngineApp() {
         {/* ============================= EDITOR ============================= */}
         {tab === "editor" && (
           <div className="space-y-5">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <p className="text-xs text-neutral-700">Edit the concepts and relationships as lists. To draw them instead, use the <button onClick={() => setTab("network")} className="underline font-medium text-cobalt-800">Network tab</button>.</p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Btn variant="outline" onClick={exportModelTablesXlsx} disabled={!concepts.length} title="One Excel file with three sheets: Concepts, Relationships, Adjacency Matrix. More formats under More tools below."><Table2 size={13} />Export tables (.xlsx)</Btn>
+              </div>
+            </div>
+
             <ModelCheck concepts={concepts} edges={edges} onSelectConcept={(id) => revealItem("concept", id)} onSelectEdge={(id) => revealItem("edge", id)} />
-            <div className="bg-white rounded-lg border border-slate-200 p-4">
-              <button onClick={() => setShowMatrixPanel((v) => !v)} className="flex items-center gap-1.5 text-sm font-semibold w-full text-left">
-                <ClipboardPaste size={15} className="text-cobalt-700" />
-                Build from an adjacency matrix
-                {showMatrixPanel ? <ChevronDown size={14} className="ml-auto text-neutral-600" /> : <ChevronRight size={14} className="ml-auto text-neutral-600" />}
-              </button>
-              {showMatrixPanel && (
-                <div className="mt-3 space-y-2">
-                  <p className="text-xs text-neutral-700">
-                    Copy a square weight matrix out of Excel (concept names as both column headers and row labels, cell [row, col] = weight of the edge <em>row → col</em>) and paste it below. This <strong>replaces</strong> the current model.
-                  </p>
-                  <textarea
-                    value={matrixText}
-                    onChange={(e) => setMatrixText(e.target.value)}
-                    placeholder={"Paste directly from Excel, e.g.:\n\t Concept A\tConcept B\tConcept C\nConcept A\t0\t0.5\t0\nConcept B\t-0.25\t0\t0.5\nConcept C\t0\t0\t0"}
-                    className="w-full h-32 text-xs font-mono border border-slate-200 rounded p-2 focus:outline-none focus:ring-1 focus:ring-cobalt-500"
-                  />
-                  <div className="flex items-center gap-2">
-                    <Btn onClick={buildFromMatrix} disabled={!matrixText.trim()}><ClipboardPaste size={13} />Build model from matrix</Btn>
-                    {matrixError && <span className="text-xs text-rose-600">{matrixError}</span>}
-                    {matrixSuccess && <span className="text-xs text-cobalt-700 flex items-center gap-1"><Check size={12} />{matrixSuccess}</span>}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="bg-cobalt-50 border border-cobalt-100 rounded-lg p-3 text-xs text-cobalt-800">
-              Prefer building visually? The <button onClick={() => setTab("network")} className="underline font-medium">Network tab</button> is now the primary way to create and edit concepts and relationships by dragging on a canvas (this table view is for bulk review and editing).
-            </div>
-
-            <div className="bg-white rounded-lg border border-slate-200 p-4">
-              <button onClick={() => setShowInitialValueHelp((v) => !v)} className="flex items-center gap-1.5 text-sm font-semibold w-full text-left">
-                <HelpCircle size={15} className="text-cobalt-700" />
-                How to set each concept's "Initial" value
-                {showInitialValueHelp ? <ChevronDown size={14} className="ml-auto text-neutral-600" /> : <ChevronRight size={14} className="ml-auto text-neutral-600" />}
-              </button>
-              {showInitialValueHelp && (
-                <div className="mt-3 space-y-2.5 text-xs text-neutral-900">
-                  <p>This is <strong>A(0)</strong>: each concept's activation at the start of a run, on the same -1 (fully suppressed) to +1 (fully active) scale as relationship weights. It's what the <button onClick={() => setTab("equilibrium")} className="underline font-medium text-cobalt-700">Baseline Equilibrium tab</button> starts from.</p>
-
-                  <p><strong>Important: all-zero will always stay at zero.</strong> If every concept is set to 0 here, the Baseline Equilibrium run cannot move away from zero, no matter how strong or complex the causal weights are. This isn't a limit of this app; it's a mathematical property of the tanh/sigmoid update rule itself, since tanh(0) = sigmoid(0) = 0: with nothing pushing a concept away from zero, the model has no way to activate itself from nothing. Use this "all zeros" setup only when you specifically want that structural check ("could this network run away on its own from total rest, e.g. because of a strong self-reinforcing loop") rather than a realistic system state.</p>
-
-                  <p><strong>For a meaningful, non-trivial baseline equilibrium: give at least the currently-active concepts a real starting value</strong>, reflecting the stakeholder-elicited or observed current state of the system, on the same -1 to +1 scale used for weights (e.g. "already strongly present" -&gt; +0.75 to +1; "moderately present" -&gt; +0.25 to +0.5; "actively suppressed" -&gt; negative). This is what produces an equilibrium that actually diverges from zero: the model's own structure then carries those starting conditions forward to wherever the causal relationships settle.</p>
-
-                  <p><strong>Don't use this field to test interventions or policies</strong> once you have a meaningful baseline set up. Setting, say, "Fertiliser use" to +1 to see "what if fertiliser use were at its maximum" changes what the baseline itself represents, so it stops being a clean reference to compare against. For that, use the <button onClick={() => setTab("scenarios")} className="underline font-medium text-cobalt-700">Scenarios &amp; Simulation tab</button> instead: its driver controls (▲/▼) hold a concept at full activation for a whole run without touching these baseline values, and every scenario there is automatically compared back against this baseline.</p>
-
-                  <p className="text-neutral-600">After setting values here, open Baseline Equilibrium and click Run. With any concept away from zero, expect a multi-iteration trace toward wherever the structure settles; with everything still at zero, expect immediate convergence back to zero, exactly as described above, and the diagnostics panel there will say so explicitly.</p>
-                </div>
-              )}
-            </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             <div className="bg-white rounded-lg border border-slate-200 p-4">
@@ -13345,7 +13398,7 @@ function SpaghettiEngineApp() {
                         onChange={(e) => updateConcept(c.id, { category: e.target.value })}
                         className="text-xs flex-1 border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-cobalt-500"
                       />
-                      <label className="text-[12.5px] text-neutral-700" title="Starting value for simulations, from -1 (very low) to +1 (very high)">Start</label>
+                      <label className="text-[12.5px] text-neutral-700" title="Starting value for simulations, from -1 (very low) to +1 (very high). If every concept starts at 0, the baseline stays at 0: give the currently active concepts a real value. See More tools below.">Start</label>
                       <input
                         type="number" min={-1} max={1} step={0.05} value={c.initialValue}
                         onChange={(e) => updateConcept(c.id, { initialValue: clamp(parseFloat(e.target.value) || 0) })}
@@ -13390,25 +13443,69 @@ function SpaghettiEngineApp() {
             </div>
             </div>
 
-            <div className="bg-white rounded-lg border border-slate-200 p-4">
-              <div className="flex items-center gap-3 flex-wrap">
-                <h3 className="font-semibold text-sm flex items-center gap-1.5"><Download size={15} className="text-cobalt-700" />Export model tables</h3>
-                <span className="text-xs text-neutral-700">The complete model as tables, for a report, an appendix, or other software.</span>
+            <FoldableBox storageKey="se.fold.editorTools" icon={SlidersHorizontal} title="More tools" summary="Build from an adjacency matrix, export the model tables, and how to set starting values.">
+              <div className="space-y-4">
+                <div className="bg-white rounded-lg border border-slate-200 p-4">
+                  <button onClick={() => setShowMatrixPanel((v) => !v)} className="flex items-center gap-1.5 text-sm font-semibold w-full text-left">
+                    <ClipboardPaste size={15} className="text-cobalt-700" />
+                    Build from an adjacency matrix
+                    {showMatrixPanel ? <ChevronDown size={14} className="ml-auto text-neutral-600" /> : <ChevronRight size={14} className="ml-auto text-neutral-600" />}
+                  </button>
+                  {showMatrixPanel && (
+                    <div className="mt-3 space-y-2">
+                      <p className="text-xs text-neutral-700">
+                        Copy a square weight matrix out of Excel (concept names as both column headers and row labels, cell [row, col] = weight of the edge <em>row → col</em>) and paste it below. This <strong>replaces</strong> the current model.
+                      </p>
+                      <textarea
+                        value={matrixText}
+                        onChange={(e) => setMatrixText(e.target.value)}
+                        placeholder={"Paste directly from Excel, e.g.:\n\t Concept A\tConcept B\tConcept C\nConcept A\t0\t0.5\t0\nConcept B\t-0.25\t0\t0.5\nConcept C\t0\t0\t0"}
+                        className="w-full h-32 text-xs font-mono border border-slate-200 rounded p-2 focus:outline-none focus:ring-1 focus:ring-cobalt-500"
+                      />
+                      <div className="flex items-center gap-2">
+                        <Btn onClick={buildFromMatrix} disabled={!matrixText.trim()}><ClipboardPaste size={13} />Build model from matrix</Btn>
+                        {matrixError && <span className="text-xs text-rose-600">{matrixError}</span>}
+                        {matrixSuccess && <span className="text-xs text-cobalt-700 flex items-center gap-1"><Check size={12} />{matrixSuccess}</span>}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div className="bg-white rounded-lg border border-slate-200 p-4">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <h3 className="font-semibold text-sm flex items-center gap-1.5"><Download size={15} className="text-cobalt-700" />Export model tables</h3>
+                    <span className="text-xs text-neutral-700" title="Concepts: ID, name, module, definition, starting value and number of relationships. Relationships: from, to, weight, effect, strength, the relationship in words, modules, and whether it links two modules. Adjacency matrix: rows are the source, columns the target; it can be pasted back into Build from an adjacency matrix.">For a report, an appendix or other software.</span>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap mt-3">
+                    <Btn variant="accent" onClick={exportModelTablesXlsx} disabled={!concepts.length} title="One Excel file with three sheets: Concepts, Relationships, Adjacency Matrix">
+                      <Table2 size={14} />All three as Excel (.xlsx)
+                    </Btn>
+                    <Btn variant="outline" onClick={() => exportModelTable("concepts")} disabled={!concepts.length}><Download size={13} />Concepts with definitions (CSV)</Btn>
+                    <Btn variant="outline" onClick={() => exportModelTable("relationships")} disabled={!edges.length}><Download size={13} />Relationships (CSV)</Btn>
+                    <Btn variant="outline" onClick={() => exportModelTable("matrix")} disabled={!concepts.length}><Download size={13} />Adjacency matrix (CSV)</Btn>
+                  </div>
+                </div>
+                <div className="bg-white rounded-lg border border-slate-200 p-4">
+                  <button onClick={() => setShowInitialValueHelp((v) => !v)} className="flex items-center gap-1.5 text-sm font-semibold w-full text-left">
+                    <HelpCircle size={15} className="text-cobalt-700" />
+                    How to set each concept's "Initial" value
+                    {showInitialValueHelp ? <ChevronDown size={14} className="ml-auto text-neutral-600" /> : <ChevronRight size={14} className="ml-auto text-neutral-600" />}
+                  </button>
+                  {showInitialValueHelp && (
+                    <div className="mt-3 space-y-2.5 text-xs text-neutral-900">
+                      <p>This is <strong>A(0)</strong>: each concept's activation at the start of a run, on the same -1 (fully suppressed) to +1 (fully active) scale as relationship weights. It's what the <button onClick={() => setTab("equilibrium")} className="underline font-medium text-cobalt-700">Baseline Equilibrium tab</button> starts from.</p>
+
+                      <p><strong>Important: all-zero will always stay at zero.</strong> If every concept is set to 0 here, the Baseline Equilibrium run cannot move away from zero, no matter how strong or complex the causal weights are. This isn't a limit of this app; it's a mathematical property of the tanh/sigmoid update rule itself, since tanh(0) = sigmoid(0) = 0: with nothing pushing a concept away from zero, the model has no way to activate itself from nothing. Use this "all zeros" setup only when you specifically want that structural check ("could this network run away on its own from total rest, e.g. because of a strong self-reinforcing loop") rather than a realistic system state.</p>
+
+                      <p><strong>For a meaningful, non-trivial baseline equilibrium: give at least the currently-active concepts a real starting value</strong>, reflecting the stakeholder-elicited or observed current state of the system, on the same -1 to +1 scale used for weights (e.g. "already strongly present" -&gt; +0.75 to +1; "moderately present" -&gt; +0.25 to +0.5; "actively suppressed" -&gt; negative). This is what produces an equilibrium that actually diverges from zero: the model's own structure then carries those starting conditions forward to wherever the causal relationships settle.</p>
+
+                      <p><strong>Don't use this field to test interventions or policies</strong> once you have a meaningful baseline set up. Setting, say, "Fertiliser use" to +1 to see "what if fertiliser use were at its maximum" changes what the baseline itself represents, so it stops being a clean reference to compare against. For that, use the <button onClick={() => setTab("scenarios")} className="underline font-medium text-cobalt-700">Scenarios &amp; Simulation tab</button> instead: its driver controls (▲/▼) hold a concept at full activation for a whole run without touching these baseline values, and every scenario there is automatically compared back against this baseline.</p>
+
+                      <p className="text-neutral-600">After setting values here, open Baseline Equilibrium and click Run. With any concept away from zero, expect a multi-iteration trace toward wherever the structure settles; with everything still at zero, expect immediate convergence back to zero, exactly as described above, and the diagnostics panel there will say so explicitly.</p>
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="flex items-center gap-2 flex-wrap mt-3">
-                <Btn variant="accent" onClick={exportModelTablesXlsx} disabled={!concepts.length} title="One Excel file with three sheets: Concepts, Relationships, Adjacency Matrix">
-                  <Table2 size={14} />All three as Excel (.xlsx)
-                </Btn>
-                <Btn variant="outline" onClick={() => exportModelTable("concepts")} disabled={!concepts.length}><Download size={13} />Concepts with definitions (CSV)</Btn>
-                <Btn variant="outline" onClick={() => exportModelTable("relationships")} disabled={!edges.length}><Download size={13} />Relationships (CSV)</Btn>
-                <Btn variant="outline" onClick={() => exportModelTable("matrix")} disabled={!concepts.length}><Download size={13} />Adjacency matrix (CSV)</Btn>
-              </div>
-              <p className="text-[12.5px] text-neutral-600 mt-2">
-                Concepts: ID, name, module, definition, starting value, and number of relationships. Relationships: from, to, weight, effect, strength, the relationship in words,
-                modules, and whether it links two modules. Adjacency matrix: rows are the source concept, columns the target, 0 where there is no relationship; it can be pasted
-                back into "Build from an adjacency matrix". The Excel file is the easiest to open in Excel with any regional settings.
-              </p>
-            </div>
+            </FoldableBox>
           </div>
         )}
 
