@@ -1,4 +1,6 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from "react";
+import PathwayMetroMap from "./PathwayMetroMap.jsx";
+import { buildMetroRows, pickMetroPathways } from "./pathwayMetroLayout.js";
 import {
   Plus, Trash2, Play, RotateCcw, Download, Upload, GitCompare,
   Table2, Share2, ChevronDown, ChevronRight,
@@ -10672,6 +10674,15 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
   const [figAccrual, setFigAccrual] = useState(DEFAULT_FIGURE_SETTINGS);
   const [figAccrualOpen, setFigAccrualOpen] = useState(false);
   const [figAccrualBusy, setFigAccrualBusy] = useState(false);
+  // Metro map of the pathways: which pathways it draws, how lines are
+  // coloured, and its own figure settings.
+  const metroRef = useRef(null);
+  const [metroMode, setMetroMode] = useState("top");
+  const [metroLimit, setMetroLimit] = useState(12);
+  const [metroColour, setMetroColour] = useState("lever");
+  const [figMetro, setFigMetro] = useState({ ...DEFAULT_FIGURE_SETTINGS, preset: "double-landscape", widthMm: 174, heightMm: 100, legendPosition: "bottom" });
+  const [figMetroOpen, setFigMetroOpen] = useState(false);
+  const [figMetroBusy, setFigMetroBusy] = useState(false);
   const [hiddenTrajectoryOutcomes, setHiddenTrajectoryOutcomes] = useState(() => new Set());
   const toggleHiddenTrajectoryOutcome = (id) => setHiddenTrajectoryOutcomes((prev) => {
     const next = new Set(prev);
@@ -10827,6 +10838,13 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
     for (let v = y0; v <= y1 + step / 2; v += step) yTicks.push(Math.round(v * 1e6) / 1e6);
     return { series, intermediate, other, frontier, yDomain: [y0, y1], yTicks };
   }, [result, planeMaxPoints]);
+
+  const metroRows = useMemo(() => {
+    if (!result) return [];
+    const picked = pickMetroPathways(result.candidates, { mode: metroMode, limit: metroLimit, ranked: result.summary?.ranked, selectedId });
+    return buildMetroRows(picked, { eps: result.eps });
+  }, [result, metroMode, metroLimit, selectedId]);
+  const metroLeverIds = useMemo(() => (result ? result.levers.map((l) => l.id) : []), [result]);
 
   const selected = selectedId !== null ? candById.get(selectedId) : null;
   const trajectory = useMemo(() => {
@@ -11343,6 +11361,59 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
           </div>
 
           <div className="bg-white rounded-lg border border-slate-200 p-4">
+            <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
+              <h4 className="text-sm font-semibold">Pathway metro map</h4>
+              <div className="flex items-center gap-2 flex-wrap text-[12.5px]">
+                <select value={metroMode} onChange={(e) => setMetroMode(e.target.value)} className="border border-slate-200 rounded px-2 py-1 bg-white" title="Which pathways the map draws">
+                  <option value="top">Highest total outcome gain</option>
+                  <option value="admissible">Admissible pathways only</option>
+                  <option value="frontier">Efficient frontier</option>
+                  <option value="archetypes">Top 3 of each archetype</option>
+                </select>
+                {metroMode !== "archetypes" && (
+                  <select value={metroLimit} onChange={(e) => setMetroLimit(Number(e.target.value))} className="border border-slate-200 rounded px-2 py-1 bg-white" title="How many pathways">
+                    {[6, 8, 12, 16, 20, 30].map((n) => <option key={n} value={n}>{n} pathways</option>)}
+                  </select>
+                )}
+                <select value={metroColour} onChange={(e) => setMetroColour(e.target.value)} className="border border-slate-200 rounded px-2 py-1 bg-white" title="How the lines are coloured">
+                  <option value="lever">Colour by lever of each stage</option>
+                  <option value="opening">Colour by opening lever</option>
+                </select>
+                <Btn variant="outline" onClick={() => setFigMetroOpen((v) => !v)}><SlidersHorizontal size={13} />{figMetroOpen ? "Hide figure options" : "Customize & export"}</Btn>
+              </div>
+            </div>
+            <p className="text-[12.5px] text-neutral-600 mb-2">The pathways drawn as metro lines, after the metro maps of adaptation pathways. Each row is one pathway on the axis of cumulative intervention intensity, starting from Business-as-Usual at 0. A white station marks where the next lever is added, and a black dot marks where the pathway ends. Pathways that share their first stages branch off with a vertical transfer line (marked ↳ in the label), so the shared part is drawn once. A red bar marks the tipping point: the first stage after which an outcome is worse than in Business-as-Usual; the line is dashed beyond it. The columns on the right give the total outcome gain and, per outcome, the change at the end of the pathway against Business-as-Usual (positive is an improvement). Click a row to open that pathway below.</p>
+            {metroRows.length === 0 ? (
+              <p className="text-xs text-neutral-600 italic">No pathways to draw for this choice.</p>
+            ) : (
+              <PathwayMetroMap
+                containerRef={metroRef}
+                rows={metroRows} leverIds={metroLeverIds} outcomes={result.outcomes} nameOf={nameOf}
+                fig={figMetro} colors={figMetro.palette === "default" ? lineColors : figurePalette(figMetro.palette, Math.max(1, metroLeverIds.length))}
+                colourBy={metroColour} selectedId={selectedId} onSelect={selectPathway} eps={result.eps}
+                className="w-full"
+                style={figMetroOpen
+                  ? { width: mmToPx(figMetro.widthMm, 96), height: mmToPx(figMetro.heightMm, 96), maxWidth: "100%" }
+                  : { height: Math.max(220, metroRows.length * 30 + 140) }}
+              />
+            )}
+            {figMetroOpen && (
+              <FigurePanel
+                settings={figMetro} onChange={setFigMetro}
+                exporting={figMetroBusy}
+                onExport={async () => {
+                  setFigMetroBusy(true);
+                  await exportFigure(metroRef.current, "transition-pathways-metro-map.png", figMetro, {
+                    title: figMetro.title || "Transition Pathways: Metro Map",
+                    subtitle: pathwayContextLine,
+                  });
+                  setFigMetroBusy(false);
+                }}
+              />
+            )}
+          </div>
+
+          <div className="bg-white rounded-lg border border-slate-200 p-4">
             <h4 className="text-sm font-semibold mb-2">Rankings by archetype</h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {PATHWAY_ARCHETYPES.map((a) => (
@@ -11746,6 +11817,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
               <Btn variant="outline" onClick={exportLeversCSV}><Download size={13} />Lever profiles (CSV)</Btn>
               <Btn variant="outline" onClick={exportPortfoliosCSV}><Download size={13} />Portfolios (CSV)</Btn>
               <Btn variant="outline" onClick={() => exportFigure(planeRef.current, "transition-pathways-effort-gain.png", figPlane, { title: figPlane.title || "Transition Pathways: Effort-Gain Plane", subtitle: `${pathwayContextLine} · ${s.counts.admissible} of ${s.counts.total} pathways admissible` })}><Download size={13} />Effort-gain plane ({figPlane.format.toUpperCase()})</Btn>
+              <Btn variant="outline" onClick={() => exportFigure(metroRef.current, "transition-pathways-metro-map.png", figMetro, { title: figMetro.title || "Transition Pathways: Metro Map", subtitle: pathwayContextLine })} disabled={!metroRows.length}><Download size={13} />Metro map ({figMetro.format.toUpperCase()})</Btn>
               <Btn variant="outline" onClick={() => exportFigure(trajectoryRef.current, "transition-pathway-trajectory.png", figTrajectory, { title: figTrajectory.title || `Outcome trajectory: ${selectedLabel}`, subtitle: pathwayContextLine })} disabled={!selected}><Download size={13} />Selected trajectory ({figTrajectory.format.toUpperCase()})</Btn>
               <Btn variant="outline" onClick={() => exportFigure(accrualRef.current, "transition-pathway-benefit-accrual.png", figAccrual, { title: figAccrual.title || `Benefit accrual: ${selectedLabel}`, subtitle: `Early Benefit Index ${fmtNum(selected?.ebi)}` })} disabled={!selected || !trajectory || trajectory.accrual.length <= 1}><Download size={13} />Selected benefit accrual ({figAccrual.format.toUpperCase()})</Btn>
             </div>

@@ -31,6 +31,7 @@ Netlify builds and deploys the site from the `main` branch.
 |---|---|
 | `src/SpaghettiEngine.jsx` | The application: the simulation engine, the analyses, and every tab. |
 | `src/AboutTab.jsx` | The About & documentation page (also exports `APP_VERSION` and `CONTACT`). |
+| `src/PathwayMetroMap.jsx`, `src/pathwayMetroLayout.js` | The metro map of transition pathways on the Transition Pathways tab, and its layout (tested in `tests/test_pathway_metro_layout.mjs`). |
 | `src/brand.jsx` | Brand colors, the logo mark, and the hero artwork. |
 | `src/docs-manifest.json` | Page count and size of each PDF, shown on the About page. Generated. |
 | `src/index.css` | Tailwind theme: the `cobalt-*` and `citrus-*` scales, `ink`, `cloud`, `poppy-500`. |
