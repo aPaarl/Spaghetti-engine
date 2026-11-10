@@ -1625,61 +1625,616 @@ function LinearModeNote({ settings }) {
   );
 }
 
-// The export control for the figures drawn by the tool: a button that opens
-// a small panel to choose the width, the format and the resolution. The
-// choice is remembered for the next export.
-const EXPORT_PREF_KEY = "se.figureExport";
-function readExportPrefs() {
-  try { return { widthId: "double", format: "png", dpi: 300, ...JSON.parse(localStorage.getItem(EXPORT_PREF_KEY) || "{}") }; } catch { return { widthId: "double", format: "png", dpi: 300 }; }
+// ============================================================================
+// Figure editor: the pop-up that opens from every "Export figure" button
+// ============================================================================
+// The figure is laid out again by the page at the width it will have in
+// print (so lines and labels are placed by the figure's own code, not
+// stretched), copied as an SVG, and then edited as a copy: font, text size,
+// colours, line thickness, title, framing and cropping. The preview is the
+// file itself, so what is shown is what is saved.
+const FIGURE_FONTS = [
+  { id: "inter", label: "Inter (as on screen)", stack: "Inter, Arial, Helvetica, sans-serif" },
+  { id: "arial", label: "Arial / Helvetica", stack: "Arial, Helvetica, 'Liberation Sans', sans-serif" },
+  { id: "times", label: "Times New Roman", stack: "'Times New Roman', Times, 'Liberation Serif', serif" },
+  { id: "georgia", label: "Georgia", stack: "Georgia, 'Times New Roman', 'Liberation Serif', serif" },
+];
+const EDITOR_PALETTES = [
+  { id: "asShown", label: "As on screen" },
+  { id: "okabeIto", label: "Colour-blind safe (Okabe-Ito)", colors: ["#0072B2", "#E69F00", "#009E73", "#D55E00", "#CC79A7", "#56B4E9", "#F0E442", "#000000"] },
+  { id: "tol", label: "Colour-blind safe (Tol bright)", colors: ["#4477AA", "#EE6677", "#228833", "#CCBB44", "#66CCEE", "#AA3377", "#BBBBBB"] },
+  { id: "grayscale", label: "Greyscale (black and white print)" },
+];
+// Two starting points for figures in a paper. Neither sets the width: that
+// depends on whether the figure fills one column or two.
+const FIGURE_TEMPLATES = [
+  {
+    id: "sans", label: "Journal, sans serif",
+    note: "Arial at 7 pt, colour-blind safe colours, thin lines, no title (it goes in the caption), cropped close, PNG at 600 dpi. In line with the figure guidelines of most science journals (for example Nature, Science, Cell, PLOS).",
+    set: { fontId: "arial", textPt: 7, palette: "okabeIto", lineScale: 0.8, showTitle: false, frame: false, background: "white", autoCrop: true, marginMm: 1, format: "png", dpi: 600 },
+  },
+  {
+    id: "serif", label: "Journal, serif",
+    note: "Times New Roman at 8 pt, colour-blind safe colours that also separate in greyscale, normal lines, no title, cropped close, PDF at 600 dpi. In line with publishers that set text in a serif face (for example Elsevier, APA style) and with theses.",
+    set: { fontId: "times", textPt: 8, palette: "tol", lineScale: 1, showTitle: false, frame: false, background: "white", autoCrop: true, marginMm: 2, format: "pdf", dpi: 600 },
+  },
+];
+const EDITOR_DEFAULTS = {
+  template: "", widthMm: 174, heightMm: 100, fontId: "inter", textPt: 8, palette: "asShown", lineScale: 1,
+  showTitle: true, panelLabel: "", frame: false, background: "white",
+  autoCrop: false, marginMm: 4, trimTop: 0, trimRight: 0, trimBottom: 0, trimLeft: 0,
+  format: "png", dpi: 300,
+};
+const EDITOR_PREF_KEY = "se.figureEditor";
+const EDITOR_KEPT = ["template", "widthMm", "fontId", "textPt", "palette", "lineScale", "showTitle", "frame", "background", "autoCrop", "marginMm", "format", "dpi"];
+function readEditorPrefs() {
+  try { return { ...EDITOR_DEFAULTS, ...JSON.parse(localStorage.getItem(EDITOR_PREF_KEY) || "{}") }; } catch { return { ...EDITOR_DEFAULTS }; }
 }
-function FigureExportButton({ targetRef, baseName, title = "", subtitle = "", disabled = false, label = "Export figure" }) {
-  const [open, setOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [prefs, setPrefs] = useState(readExportPrefs);
-  const boxRef = useRef(null);
-  useDismiss(boxRef, open, () => setOpen(false));
-  const set = (patch) => setPrefs((p) => { const n = { ...p, ...patch }; try { localStorage.setItem(EXPORT_PREF_KEY, JSON.stringify(n)); } catch { /* ignore */ } return n; });
-  const width = EXPORT_WIDTHS.find((w) => w.id === prefs.widthId) || EXPORT_WIDTHS[2];
-  const run = async () => {
-    setBusy(true);
-    try { await exportSvgFigure(targetRef.current, baseName, prefs.format, title, subtitle, { widthMm: width.mm, dpi: prefs.dpi }); } finally { setBusy(false); setOpen(false); }
+function saveEditorPrefs(s) {
+  try { localStorage.setItem(EDITOR_PREF_KEY, JSON.stringify(Object.fromEntries(EDITOR_KEPT.map((k) => [k, s[k]])))); } catch { /* storage unavailable */ }
+}
+
+// The one editor on the page: any export button asks it to open.
+const figureEditorStore = { req: null, listeners: new Set() };
+function openFigureEditor(containerEl, filename, settings = {}, { title = "", subtitle = "" } = {}) {
+  const svg = mainSvgIn(containerEl);
+  if (!svg) { notify("Open the part of the page that holds this figure, then export it again.", { kind: "info", title: "Nothing to export yet" }); return; }
+  figureEditorStore.req = {
+    el: containerEl, baseName: String(filename || "figure").replace(/\.(png|svg|pdf)$/i, ""), title, subtitle,
+    isChart: !!svg.closest(".recharts-wrapper"), isViewBox: !!(svg.viewBox?.baseVal?.width > 0),
+    widthMm: settings.widthMm, heightMm: settings.heightMm, id: Date.now(),
   };
-  const seg = (active) => `px-2 py-1 text-xs ${active ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`;
+  figureEditorStore.listeners.forEach((f) => f());
+}
+function closeFigureEditor() {
+  figureEditorStore.req = null;
+  figureEditorStore.listeners.forEach((f) => f());
+}
+
+// The text size most of the figure uses, in CSS px, as it is drawn now.
+function typicalFontPx(svg) {
+  const vb = svg.viewBox?.baseVal;
+  const k = vb && vb.width > 0 ? svg.getBoundingClientRect().width / vb.width : 1;
+  const sizes = [...svg.querySelectorAll("text")].map((t) => parseFloat(getComputedStyle(t).fontSize) * k).filter((v) => v > 0).sort((a, b) => a - b);
+  return sizes.length ? sizes[Math.floor(sizes.length / 2)] : 12;
+}
+
+// Lays the figure out at widthPx (and heightPx for a chart that fills its
+// box) and copies it: an <svg> in CSS px of that layout, with the drawing
+// in one group and the chart legend redrawn inside it.
+// One capture at a time: each resizes the figure on the page and puts it
+// back, so two at once would leave it at the wrong size.
+let figureCaptureChain = Promise.resolve();
+function captureFigureLayout(el, opts) {
+  const run = figureCaptureChain.then(() => captureFigureLayoutNow(el, opts));
+  figureCaptureChain = run.catch(() => null);
+  return run;
+}
+async function captureFigureLayoutNow(el, { widthPx, heightPx, autoHeight }) {
+  return withResizedChart(el, { widthPx, heightPx, autoHeight }, async () => {
+    const svg = mainSvgIn(el);
+    const rect = svg?.getBoundingClientRect();
+    if (!rect?.width || !rect?.height) return null;
+    const NS = "http://www.w3.org/2000/svg";
+    const vb = svg.viewBox?.baseVal;
+    const k = vb && vb.width > 0 ? rect.width / vb.width : 1;
+    const clone = svg.cloneNode(true);
+    inlineSvgStyles(svg, clone);
+    appendHtmlLegend(el, svg, clone, k);
+    const root = document.createElementNS(NS, "svg");
+    root.setAttribute("xmlns", NS);
+    const g = document.createElementNS(NS, "g");
+    if (Math.abs(k - 1) > 1e-3) g.setAttribute("transform", `scale(${k})`);
+    while (clone.firstChild) g.appendChild(clone.firstChild);
+    // A figure's own white backdrop would stop a transparent background and
+    // a close crop; the editor draws its own.
+    [...g.children].forEach((c) => { if (c.tagName === "rect" && (c.getAttribute("width") === "100%" || Math.abs(parseFloat(c.getAttribute("width")) - (vb?.width || rect.width)) < 1) && /255, 255, 255|#fff/i.test(c.getAttribute("style") || c.getAttribute("fill") || "")) c.remove(); });
+    root.appendChild(g);
+    return { node: root, w: rect.width, h: rect.height };
+  });
+}
+
+function parseCssColor(str) {
+  if (!str) return null;
+  let m = str.match(/rgba?\(\s*([\d.]+)[ ,]+([\d.]+)[ ,]+([\d.]+)(?:[ ,/]+([\d.]+))?\s*\)/i);
+  if (m) return { r: +m[1], g: +m[2], b: +m[3], a: m[4] === undefined ? 1 : +m[4] };
+  m = str.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  if (m) { const h = m[1].length === 3 ? m[1].split("").map((c) => c + c).join("") : m[1]; return { r: parseInt(h.slice(0, 2), 16), g: parseInt(h.slice(2, 4), 16), b: parseInt(h.slice(4, 6), 16), a: 1 }; }
+  return null;
+}
+function rgbToHsl({ r, g, b }) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2;
+  if (max === min) return { h: 0, s: 0, l };
+  const d = max - min, s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  const h = max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return { h: h * 60, s, l };
+}
+const cssRgb = ({ r, g, b, a = 1 }) => (a < 1 ? `rgba(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)}, ${a})` : `rgb(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)})`);
+
+// Swaps the figure's colours for a palette. Colours of the same hue (a
+// module's shades, say) stay one family: they get the same new colour,
+// lighter where the original was lighter. Greys and black are kept.
+function recolourFigure(root, paletteId) {
+  if (paletteId === "asShown") return;
+  const els = [...root.querySelectorAll("*")];
+  const props = ["fill", "stroke", "stop-color"];
+  const read = (el, p) => (el.getAttribute("style") || "").match(new RegExp(`(?:^|;)\\s*${p}\\s*:\\s*([^;]+)`))?.[1]?.trim() || el.getAttribute(p);
+  const write = (el, p, v) => {
+    const st = el.getAttribute("style") || "";
+    const re = new RegExp(`((?:^|;)\\s*${p}\\s*:\\s*)([^;]+)`);
+    if (re.test(st)) el.setAttribute("style", st.replace(re, `$1${v}`));
+    if (el.hasAttribute(p)) el.setAttribute(p, v);
+  };
+  if (paletteId === "grayscale") {
+    els.forEach((el) => props.forEach((p) => {
+      const c = parseCssColor(read(el, p));
+      if (!c) return;
+      const y = 0.299 * c.r + 0.587 * c.g + 0.114 * c.b;
+      write(el, p, cssRgb({ r: y, g: y, b: y, a: c.a }));
+    }));
+    return;
+  }
+  const pal = (EDITOR_PALETTES.find((x) => x.id === paletteId)?.colors || []).map(parseCssColor).map((c) => ({ c, hsl: rgbToHsl(c) })).filter((x) => x.hsl.s > 0.15);
+  if (!pal.length) return;
+  const hueGap = (a, b) => Math.min(Math.abs(a - b), 360 - Math.abs(a - b));
+  // Each family of hues takes the nearest unused palette colour, so green
+  // stays green-ish and red stays red-ish where the palette allows it.
+  const families = [];
+  const used = new Set();
+  const familyOf = (hsl) => {
+    let f = families.find((x) => hueGap(x.h, hsl.h) < 16);
+    if (!f) {
+      const order = pal.map((x, i) => i).sort((i, j) => hueGap(pal[i].hsl.h, hsl.h) - hueGap(pal[j].hsl.h, hsl.h));
+      const pick = order.find((i) => !used.has(i)) ?? order[0];
+      used.add(pick);
+      f = { h: hsl.h, minL: hsl.l, base: pal[pick].c };
+      families.push(f);
+    }
+    f.minL = Math.min(f.minL, hsl.l);
+    return f;
+  };
+  const jobs = [];
+  els.forEach((el) => props.forEach((p) => {
+    const c = parseCssColor(read(el, p));
+    if (!c) return;
+    const hsl = rgbToHsl(c);
+    // Near-black ink and the blue-greys of text and axes are not series
+    // colours, however faintly tinted.
+    const chroma = (Math.max(c.r, c.g, c.b) - Math.min(c.r, c.g, c.b)) / 255;
+    // Pale tints (backgrounds of a quadrant or a card) follow their hue as
+    // a tint of the new colour.
+    const tint = chroma < 0.18 && hsl.l > 0.85 && hsl.s > 0.3;
+    if ((chroma < 0.18 && !tint) || hsl.l > 0.985) return;
+    jobs.push({ el, p, c, hsl, tint, f: tint ? null : familyOf(hsl) });
+  }));
+  jobs.forEach(({ el, p, c, hsl, tint, f }) => {
+    let base = f?.base;
+    if (!base) {
+      const fam = families.slice().sort((x, y) => hueGap(x.h, hsl.h) - hueGap(y.h, hsl.h))[0];
+      base = fam && hueGap(fam.h, hsl.h) < 30 ? fam.base : pal.slice().sort((x, y) => hueGap(x.hsl.h, hsl.h) - hueGap(y.hsl.h, hsl.h))[0].c;
+    }
+    const t = tint ? Math.max(0.8, Math.min(0.97, hsl.l)) : Math.max(0, Math.min(0.85, (hsl.l - f.minL) / Math.max(0.05, 1 - f.minL)));
+    write(el, p, cssRgb({ r: base.r + (255 - base.r) * t, g: base.g + (255 - base.g) * t, b: base.b + (255 - base.b) * t, a: c.a }));
+  });
+}
+
+function setStyleProp(el, p, v) {
+  const st = el.getAttribute("style") || "";
+  const re = new RegExp(`((?:^|;)\\s*${p}\\s*:\\s*)([^;]+)`);
+  el.setAttribute("style", re.test(st) ? st.replace(re, `$1${v}`) : `${st}${st && !st.endsWith(";") ? ";" : ""}${p}:${v}`);
+}
+function getStylePx(el, p) {
+  const m = (el.getAttribute("style") || "").match(new RegExp(`(?:^|;)\\s*${p}\\s*:\\s*([\\d.]+)px`));
+  return m ? parseFloat(m[1]) : parseFloat(el.getAttribute(p)) || null;
+}
+// Bounding box of an element in the coordinates of the svg that holds it.
+function measureInHost(root, el) {
+  let host = document.getElementById("se-figure-measure");
+  if (!host) {
+    host = document.createElement("div");
+    host.id = "se-figure-measure";
+    host.setAttribute("aria-hidden", "true");
+    host.style.cssText = "position:fixed;left:-20000px;top:0;width:10px;height:10px;overflow:hidden;";
+    document.body.appendChild(host);
+  }
+  host.appendChild(root);
+  try { return el.getBBox(); } catch { return null; } finally { host.removeChild(root); }
+}
+
+// Builds the finished figure from a layout copy and the editor settings.
+// Returns the SVG text plus its size in mm and the text size it prints at.
+async function buildEditedFigure(raw, s, { title, subtitle, isViewBox }) {
+  const NS = "http://www.w3.org/2000/svg";
+  const font = FIGURE_FONTS.find((f) => f.id === s.fontId) || FIGURE_FONTS[0];
+  const T = (s.widthMm / 25.4) * 96; // final width in CSS px (96 per inch)
+  const root = raw.node.cloneNode(true);
+  const drawing = root.firstChild;
+  const texts = [...drawing.querySelectorAll("text")];
+  const textParts = [...drawing.querySelectorAll("text, tspan")];
+  textParts.forEach((t) => setStyleProp(t, "font-family", font.stack));
+  recolourFigure(drawing, s.palette);
+  if (Math.abs(s.lineScale - 1) > 1e-3) {
+    drawing.querySelectorAll("path, line, polyline, polygon, circle, ellipse, rect").forEach((el) => {
+      const st = el.getAttribute("style") || "";
+      if (/stroke:\s*none/.test(st) || !/stroke:/.test(st)) return;
+      const w = getStylePx(el, "stroke-width");
+      if (w) setStyleProp(el, "stroke-width", `${(w * s.lineScale).toFixed(2)}px`);
+    });
+  }
+  const content = document.createElementNS(NS, "g");
+  content.appendChild(drawing);
+  root.appendChild(content);
+  const kDraw = (() => { const m = (drawing.getAttribute("transform") || "").match(/scale\(([\d.]+)\)/); return m ? parseFloat(m[1]) : 1; })();
+  const fontsUnits = () => texts.map((t) => (getStylePx(t, "font-size") || 12) * kDraw).sort((a, b) => a - b);
+  const median = (a) => (a.length ? a[Math.floor(a.length / 2)] : 12);
+  const m = (s.marginMm / 25.4) * 96;
+  const trimX = ((s.trimLeft + s.trimRight) / 25.4) * 96, trimY = ((s.trimTop + s.trimBottom) / 25.4) * 96;
+  // The box that is kept, in drawing units: the whole layout, or what is
+  // actually drawn (a close crop), less the trims asked for.
+  const box = () => {
+    if (!s.autoCrop) return { x: 0, y: 0, w: raw.w, h: raw.h };
+    const b = measureInHost(root, content);
+    return b && b.width > 0 ? { x: b.x, y: b.y, w: b.width, h: b.height } : { x: 0, y: 0, w: raw.w, h: raw.h };
+  };
+  let b = box(), finalW = 0, u = 1;
+  const solve = () => {
+    // finalW (units) = kept width + margins, and units per CSS px u = finalW / T.
+    finalW = (b.w) / Math.max(0.2, 1 - (2 * m - trimX) / T);
+    u = finalW / T;
+  };
+  solve();
+  // Text size: scale every font so the typical text prints at textPt.
+  const outPt = median(fontsUnits()) / u * 0.75;
+  const ratio = s.textPt / outPt;
+  if (texts.length && Math.abs(ratio - 1) > 0.02) {
+    textParts.forEach((t) => { const f = getStylePx(t, "font-size") || 12; setStyleProp(t, "font-size", `${(f * ratio).toFixed(2)}px`); });
+    if (s.autoCrop) { b = box(); solve(); }
+  }
+  const printedPt = (median(fontsUnits()) / u) * 0.75;
+  const left = b.x + (s.trimLeft / 25.4) * 96 * u, top0 = b.y + (s.trimTop / 25.4) * 96 * u;
+  const keptW = b.w - trimX * u, keptH = Math.max(10, b.h - trimY * u);
+  // Title band, sized in points like the rest of the text.
+  const pt = (v) => (v / 0.75) * u;
+  const titleFs = pt(s.textPt * 1.2), subFs = pt(s.textPt), labelFs = pt(s.textPt * 1.5);
+  const measureCtx = (exportMeasureCtx ||= document.createElement("canvas").getContext("2d"));
+  const wrap = (text, fs, weight, maxW) => {
+    measureCtx.font = `${weight} ${fs}px ${font.stack}`;
+    const lines = [];
+    String(text).split(/\s+/).filter(Boolean).forEach((w) => { const last = lines[lines.length - 1]; if (last !== undefined && measureCtx.measureText(`${last} ${w}`).width <= maxW) lines[lines.length - 1] = `${last} ${w}`; else lines.push(w); });
+    return lines;
+  };
+  const label = s.panelLabel.trim();
+  measureCtx.font = `700 ${labelFs}px ${font.stack}`;
+  const labelW = label ? measureCtx.measureText(label).width + pt(s.textPt * 0.6) : 0;
+  const tLines = s.showTitle && title ? wrap(title, titleFs, 700, keptW - labelW) : [];
+  const sLines = s.showTitle && subtitle ? wrap(subtitle, subFs, 400, keptW - labelW) : [];
+  let headerH = 0;
+  if (tLines.length || sLines.length) headerH = tLines.length * titleFs * 1.25 + sLines.length * subFs * 1.3 + pt(s.textPt * 0.8);
+  if (label) headerH = Math.max(headerH, labelFs * 1.35);
+  const mU = m * u;
+  const x0 = left - mU, y0 = top0 - mU - headerH;
+  const W = keptW + 2 * mU, H = keptH + headerH + 2 * mU;
+  root.setAttribute("viewBox", `${x0.toFixed(2)} ${y0.toFixed(2)} ${W.toFixed(2)} ${H.toFixed(2)}`);
+  root.setAttribute("font-family", font.stack);
+  if (s.background === "white") {
+    const bg = document.createElementNS(NS, "rect");
+    bg.setAttribute("x", x0); bg.setAttribute("y", y0); bg.setAttribute("width", W); bg.setAttribute("height", H); bg.setAttribute("fill", "#ffffff");
+    root.insertBefore(bg, content);
+  }
+  const addText = (text, x, y, fs, weight, fill) => {
+    const t = document.createElementNS(NS, "text");
+    t.setAttribute("x", x.toFixed(2)); t.setAttribute("y", y.toFixed(2));
+    t.setAttribute("style", `font-family:${font.stack};font-size:${fs.toFixed(2)}px;font-weight:${weight};fill:${fill}`);
+    t.textContent = text;
+    root.appendChild(t);
+  };
+  const hx = left + labelW;
+  let y = top0 - headerH;
+  if (label) addText(label, left, y + labelFs * 0.95, labelFs, 700, "#000000");
+  tLines.forEach((l) => { y += titleFs * 1.25; addText(l, hx, y - titleFs * 0.22, titleFs, 700, "#111827"); });
+  sLines.forEach((l) => { y += subFs * 1.3; addText(l, hx, y - subFs * 0.25, subFs, 400, "#374151"); });
+  if (s.frame) {
+    const sw = pt(0.5);
+    const fr = document.createElementNS(NS, "rect");
+    fr.setAttribute("x", x0 + sw / 2); fr.setAttribute("y", y0 + sw / 2); fr.setAttribute("width", W - sw); fr.setAttribute("height", H - sw);
+    fr.setAttribute("fill", "none"); fr.setAttribute("stroke", "#000000"); fr.setAttribute("stroke-width", sw);
+    root.appendChild(fr);
+  }
+  if (font.id === "inter") {
+    const css = await embeddedFontCss();
+    if (css) { const st = document.createElementNS(NS, "style"); st.textContent = css; root.insertBefore(st, root.firstChild); }
+  }
+  const heightMm = (s.widthMm * H) / W;
+  root.setAttribute("width", `${s.widthMm.toFixed(2)}mm`);
+  root.setAttribute("height", `${heightMm.toFixed(2)}mm`);
+  const text = '<?xml version="1.0" encoding="UTF-8"?>\n' + new XMLSerializer().serializeToString(root);
+  return { svgText: text, widthMm: s.widthMm, heightMm, printedPt, aspect: H / W, isViewBox };
+}
+
+function renderFigurePng(svgText, widthMm, heightMm, dpi, transparent) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round((widthMm / 25.4) * dpi);
+      canvas.height = Math.round((heightMm / 25.4) * dpi);
+      const ctx = canvas.getContext("2d");
+      if (!transparent) { ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, canvas.width, canvas.height); }
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob((blob) => resolve(blob), "image/png");
+    };
+    img.onerror = () => resolve(null);
+    img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgText);
+  });
+}
+
+function saveBlob(blob, name) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = scopedFilename(name);
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+}
+
+function FigureEditorHost() {
+  const req = React.useSyncExternalStore((f) => { figureEditorStore.listeners.add(f); return () => figureEditorStore.listeners.delete(f); }, () => figureEditorStore.req);
+  return req ? <FigureEditor key={req.id} req={req} /> : null;
+}
+
+function EditorSection({ title, children }) {
   return (
-    <div className="relative" ref={boxRef}>
-      <Btn variant="outline" disabled={disabled || busy} onClick={() => setOpen((o) => !o)} aria-expanded={open}><Download size={13} />{busy ? "Exporting…" : label}</Btn>
-      {open && (
-        <div className="absolute right-0 z-30 mt-1 w-72 rounded-lg border border-slate-200 bg-white p-3 shadow-lg space-y-3 text-left" role="dialog" aria-label="Export figure">
-          <div>
-            <div className="text-[12px] font-semibold text-neutral-700 mb-1">Width on the page</div>
-            <div className="space-y-0.5">
-              {EXPORT_WIDTHS.map((w) => (
-                <label key={w.id} className="flex items-center gap-2 text-xs text-neutral-900 cursor-pointer">
-                  <input type="radio" name={`w-${baseName}`} checked={prefs.widthId === w.id} onChange={() => set({ widthId: w.id })} />{w.label}
-                </label>
-              ))}
-            </div>
-          </div>
-          <div>
-            <div className="text-[12px] font-semibold text-neutral-700 mb-1">Format</div>
-            <div className="inline-flex border border-slate-300 rounded overflow-hidden" role="group">
-              {[["png", "PNG"], ["svg", "SVG (vector)"], ["pdf", "PDF"]].map(([f, l], i) => <button key={f} onClick={() => set({ format: f })} className={`${seg(prefs.format === f)} ${i ? "border-l border-slate-300" : ""}`}>{l}</button>)}
-            </div>
-          </div>
-          {prefs.format !== "svg" && (
-            <div>
-              <div className="text-[12px] font-semibold text-neutral-700 mb-1">Resolution</div>
-              <div className="inline-flex border border-slate-300 rounded overflow-hidden" role="group">
-                {[300, 600].map((d, i) => <button key={d} onClick={() => set({ dpi: d })} className={`${seg(prefs.dpi === d)} ${i ? "border-l border-slate-300" : ""}`}>{d} dpi</button>)}
-              </div>
-            </div>
-          )}
-          <p className="text-[11.5px] text-neutral-500 leading-snug">The figure is laid out at {width.mm} mm wide, so its text prints at about 7 to 10 pt. The height follows from the figure.</p>
-          <Btn variant="accent" onClick={run} disabled={busy}><Download size={13} />{busy ? "Exporting…" : `Download ${prefs.format.toUpperCase()}`}</Btn>
-        </div>
-      )}
+    <div className="border-t border-slate-100 pt-3">
+      <div className="text-[12px] font-semibold uppercase tracking-wide text-neutral-600 mb-2">{title}</div>
+      <div className="space-y-2">{children}</div>
     </div>
   );
+}
+// A row with a label. Rows of buttons are a labelled group rather than a
+// <label>, which would hand its text to the first button.
+function EditorRow({ label, group = false, children }) {
+  const Tag = group ? "div" : "label";
+  return <Tag className="flex items-center justify-between gap-2 text-xs text-neutral-900" {...(group ? { role: "group", "aria-label": label } : {})}><span>{label}</span><span className="flex items-center gap-1">{children}</span></Tag>;
+}
+
+function FigureEditor({ req }) {
+  const [s, setS] = useState(() => {
+    const p = readEditorPrefs();
+    return { ...p, widthMm: req.widthMm || p.widthMm, heightMm: req.heightMm || EDITOR_DEFAULTS.heightMm, panelLabel: "", trimTop: 0, trimRight: 0, trimBottom: 0, trimLeft: 0 };
+  });
+  const [title, setTitle] = useState(req.title || "");
+  const [subtitle, setSubtitle] = useState(req.subtitle || "");
+  const [raw, setRaw] = useState(null);
+  const [built, setBuilt] = useState(null);
+  const [preview, setPreview] = useState("");
+  const [capturing, setCapturing] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const baseFontPx = useMemo(() => { const svg = mainSvgIn(req.el); return svg ? typicalFontPx(svg) : 12; }, [req]);
+  // A template stays marked until one of the settings it sets is changed.
+  const set = (patch) => setS((p) => {
+    const t = FIGURE_TEMPLATES.find((x) => x.id === p.template);
+    const breaks = t && Object.keys(patch).some((k) => k in t.set && patch[k] !== t.set[k]);
+    const n = { ...p, ...patch, template: patch.template ?? (breaks ? "" : p.template) };
+    saveEditorPrefs(n);
+    return n;
+  });
+  const applyTemplate = (t) => set({ ...t.set, template: t.id });
+  const close = () => closeFigureEditor();
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") close(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Layout: a drawn figure is laid out at the width that gives its text the
+  // size asked for once scaled to the page; a figure with a fixed drawing
+  // (a viewBox) is laid out at the page width and its fonts scaled instead.
+  const T = (s.widthMm / 25.4) * 96;
+  const layoutW = req.isViewBox ? T : Math.max(240, Math.min(3200, (T * baseFontPx * 0.75) / Math.max(4, s.textPt)));
+  const layoutH = req.isChart ? ((s.heightMm / 25.4) * 96) * (layoutW / T) : undefined;
+  const layoutKey = `${Math.round(layoutW)}x${Math.round(layoutH || 0)}`;
+  useEffect(() => {
+    let live = true;
+    setCapturing(true);
+    const t = setTimeout(async () => {
+      try {
+        const r = await captureFigureLayout(req.el, { widthPx: layoutW, heightPx: layoutH, autoHeight: !req.isChart });
+        if (!live) return;
+        if (!r) setError("This figure is not on the page any more. Close this window and open the figure again.");
+        setRaw(r);
+      } catch (e) {
+        if (live) setError(String(e?.message || e));
+      } finally {
+        if (live) setCapturing(false);
+      }
+    }, 250);
+    return () => { live = false; clearTimeout(t); };
+  }, [layoutKey]);
+
+  useEffect(() => {
+    if (!raw) return undefined;
+    let live = true, url = "";
+    (async () => {
+      const b = await buildEditedFigure(raw, s, { title, subtitle, isViewBox: req.isViewBox });
+      if (!live) return;
+      url = URL.createObjectURL(new Blob([b.svgText], { type: "image/svg+xml" }));
+      setBuilt(b);
+      setPreview(url);
+    })();
+    return () => { live = false; if (url) setTimeout(() => URL.revokeObjectURL(url), 2000); };
+  }, [raw, s, title, subtitle]);
+
+  const download = async () => {
+    if (!built) return;
+    setSaving(true);
+    try {
+      const name = req.baseName;
+      if (s.format === "svg") { saveBlob(new Blob([built.svgText], { type: "image/svg+xml" }), `${name}.svg`); return; }
+      const png = await renderFigurePng(built.svgText, built.widthMm, built.heightMm, s.dpi, s.format === "png" && s.background === "transparent");
+      if (!png) { notify("The figure could not be drawn as an image in this browser. Try SVG instead.", { title: "Export failed" }); return; }
+      if (s.format === "pdf") {
+        const pdf = await pngBlobToPdfBlob(png, s.dpi);
+        if (pdf) saveBlob(pdf, `${name}.pdf`);
+        else { saveBlob(await pngWithDpi(png, s.dpi), `${name}.png`); notify("This browser cannot write PDF files, so a PNG at the same resolution was saved instead.", { kind: "info", title: "Saved as PNG" }); }
+        return;
+      }
+      saveBlob(await pngWithDpi(png, s.dpi), `${name}.png`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const num = (v, lo, hi, d) => { const n = Number(v); return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : d; };
+  const seg = (active) => `px-2 py-1 text-xs ${active ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`;
+  const mmInput = (key, lo, hi, step = 1) => (
+    <input type="number" min={lo} max={hi} step={step} value={s[key]} onChange={(e) => set({ [key]: num(e.target.value, lo, hi, s[key]) })} className="w-16 border border-slate-300 rounded px-1.5 py-0.5 text-xs font-mono" />
+  );
+  const tall = built && built.heightMm > 240;
+  const tpl = FIGURE_TEMPLATES.find((t) => t.id === s.template);
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-slate-900/50 flex items-center justify-center p-2 sm:p-6" role="dialog" aria-modal="true" aria-label="Edit and export figure" onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-[1280px] h-full max-h-[920px] flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-200">
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-neutral-900">Edit and export figure</h2>
+            <p className="text-[12px] text-neutral-600 truncate">{req.title || req.baseName}</p>
+          </div>
+          <button onClick={close} className="text-neutral-600 hover:text-neutral-900 p-1" aria-label="Close"><X size={16} /></button>
+        </div>
+        <div className="flex-1 min-h-0 flex flex-col md:flex-row">
+          <div className="flex-1 min-h-[240px] bg-slate-100 flex flex-col">
+            <div className="flex-1 min-h-0 overflow-auto p-4 flex items-start justify-center">
+              {preview ? (
+                <img src={preview} alt="Preview of the exported figure" className="max-w-full h-auto shadow-md" style={{ background: s.background === "transparent" ? "repeating-conic-gradient(#e5e7eb 0% 25%, #ffffff 0% 50%) 50% / 16px 16px" : "#ffffff", opacity: capturing ? 0.5 : 1 }} />
+              ) : (
+                <div className="text-xs text-neutral-600 mt-10">{error || "Preparing the figure…"}</div>
+              )}
+            </div>
+            <div className="px-4 py-2 border-t border-slate-200 bg-white text-[12px] text-neutral-700 flex flex-wrap gap-x-4 gap-y-1">
+              {built && <span><span className="font-semibold">{built.widthMm.toFixed(0)} × {built.heightMm.toFixed(0)} mm</span>{s.format !== "svg" && ` · ${Math.round((built.widthMm / 25.4) * s.dpi)} × ${Math.round((built.heightMm / 25.4) * s.dpi)} px at ${s.dpi} dpi`}</span>}
+              {built && <span>Text prints at about {built.printedPt.toFixed(1)} pt</span>}
+              {capturing && <span className="text-cobalt-700">Laying the figure out again…</span>}
+              {tall && <span className="text-amber-700">Taller than a journal page (about 240 mm). A wider size or a smaller text size makes it shorter.</span>}
+              {error && preview && <span className="text-red-700">{error}</span>}
+            </div>
+          </div>
+          <div className="w-full md:w-[340px] shrink-0 border-t md:border-t-0 md:border-l border-slate-200 overflow-y-auto p-4 space-y-3">
+            <div>
+              <div className="text-[12px] font-semibold uppercase tracking-wide text-neutral-600 mb-2">Template</div>
+              <div className="grid grid-cols-2 gap-2">
+                {FIGURE_TEMPLATES.map((t) => (
+                  <button key={t.id} onClick={() => applyTemplate(t)} className={`text-left rounded-md border px-2.5 py-2 text-xs ${s.template === t.id ? "border-cobalt-600 bg-cobalt-50 text-cobalt-800" : "border-slate-200 hover:border-slate-400 text-neutral-900"}`}>
+                    <span className="block font-semibold">{t.label}</span>
+                    <span className="block text-[11px] text-neutral-600">{t.id === "sans" ? "Arial 7 pt, 600 dpi PNG" : "Times 8 pt, 600 dpi PDF"}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11.5px] text-neutral-600 mt-1.5 leading-snug">{tpl ? tpl.note : "A template sets the font, text size, colours, lines, title, cropping and format. Every setting below can still be changed. Check your journal's own guidelines for the final word."}</p>
+            </div>
+
+            <EditorSection title="Size">
+              <div className="flex flex-wrap gap-1">
+                {EXPORT_WIDTHS.map((w) => (
+                  <button key={w.id} onClick={() => set({ widthMm: w.mm })} className={`rounded border px-2 py-1 text-xs ${s.widthMm === w.mm ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 hover:border-slate-500"}`} title={w.label}>{w.label.replace(/ \(.*\)/, "")} · {w.mm}</button>
+                ))}
+              </div>
+              <EditorRow label="Width (mm)">{mmInput("widthMm", 30, 400)}</EditorRow>
+              {req.isChart && <EditorRow label="Height (mm)">{mmInput("heightMm", 30, 400)}</EditorRow>}
+              {!req.isChart && <p className="text-[11.5px] text-neutral-600">The height follows from the figure.</p>}
+            </EditorSection>
+
+            <EditorSection title="Text">
+              <EditorRow label="Font">
+                <select value={s.fontId} onChange={(e) => set({ fontId: e.target.value })} className="border border-slate-300 rounded px-1.5 py-0.5 text-xs">
+                  {FIGURE_FONTS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+                </select>
+              </EditorRow>
+              <EditorRow label="Text size (pt)">
+                <input type="range" min={5} max={14} step={0.5} value={s.textPt} onChange={(e) => set({ textPt: Number(e.target.value) })} className="w-24" aria-label="Text size" />
+                <span className="w-9 text-right font-mono">{s.textPt}</span>
+              </EditorRow>
+              <p className="text-[11.5px] text-neutral-600 leading-snug">The size of most labels. Titles are drawn a little larger. Journals usually ask for 5 to 9 pt at the printed size.</p>
+            </EditorSection>
+
+            <EditorSection title="Colours and lines">
+              <EditorRow label="Colours">
+                <select value={s.palette} onChange={(e) => set({ palette: e.target.value })} className="border border-slate-300 rounded px-1.5 py-0.5 text-xs max-w-[190px]">
+                  {EDITOR_PALETTES.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                </select>
+              </EditorRow>
+              <EditorRow label="Line thickness">
+                <input type="range" min={0.5} max={2} step={0.1} value={s.lineScale} onChange={(e) => set({ lineScale: Number(e.target.value) })} className="w-24" aria-label="Line thickness" />
+                <span className="w-9 text-right font-mono">×{s.lineScale.toFixed(1)}</span>
+              </EditorRow>
+              <EditorRow group label="Background">
+                <span className="inline-flex border border-slate-300 rounded overflow-hidden">
+                  {[["white", "White"], ["transparent", "None"]].map(([v, l], i) => <button key={v} onClick={() => set({ background: v })} className={`${seg(s.background === v)} ${i ? "border-l border-slate-300" : ""}`}>{l}</button>)}
+                </span>
+              </EditorRow>
+            </EditorSection>
+
+            <EditorSection title="Title and labels">
+              <label className="flex items-center gap-2 text-xs text-neutral-900"><input type="checkbox" checked={s.showTitle} onChange={(e) => set({ showTitle: e.target.checked })} />Show the title in the figure</label>
+              {s.showTitle && (
+                <>
+                  <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" aria-label="Title" className="w-full border border-slate-300 rounded px-2 py-1 text-xs" />
+                  <input value={subtitle} onChange={(e) => setSubtitle(e.target.value)} placeholder="Subtitle (optional)" aria-label="Subtitle" className="w-full border border-slate-300 rounded px-2 py-1 text-xs" />
+                </>
+              )}
+              <EditorRow label="Panel letter">
+                <input value={s.panelLabel} onChange={(e) => setS((p) => ({ ...p, panelLabel: e.target.value.slice(0, 4) }))} placeholder="a" aria-label="Panel letter" className="w-16 border border-slate-300 rounded px-1.5 py-0.5 text-xs" />
+              </EditorRow>
+              <p className="text-[11.5px] text-neutral-600 leading-snug">Most journals put the title in the caption and mark the panels of a figure with a, b, c.</p>
+            </EditorSection>
+
+            <EditorSection title="Framing and cropping">
+              <label className="flex items-center gap-2 text-xs text-neutral-900"><input type="checkbox" checked={s.autoCrop} onChange={(e) => set({ autoCrop: e.target.checked })} />Crop to what is drawn</label>
+              <EditorRow label="Margin (mm)">{mmInput("marginMm", 0, 20, 0.5)}</EditorRow>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+                <EditorRow label="Trim top">{mmInput("trimTop", 0, 200, 0.5)}</EditorRow>
+                <EditorRow label="Trim bottom">{mmInput("trimBottom", 0, 200, 0.5)}</EditorRow>
+                <EditorRow label="Trim left">{mmInput("trimLeft", 0, 200, 0.5)}</EditorRow>
+                <EditorRow label="Trim right">{mmInput("trimRight", 0, 200, 0.5)}</EditorRow>
+              </div>
+              <label className="flex items-center gap-2 text-xs text-neutral-900"><input type="checkbox" checked={s.frame} onChange={(e) => set({ frame: e.target.checked })} />Draw a thin frame around the figure</label>
+            </EditorSection>
+
+            <EditorSection title="File">
+              <EditorRow group label="Format">
+                <span className="inline-flex border border-slate-300 rounded overflow-hidden">
+                  {[["png", "PNG"], ["svg", "SVG"], ["pdf", "PDF"]].map(([f, l], i) => <button key={f} onClick={() => set({ format: f })} className={`${seg(s.format === f)} ${i ? "border-l border-slate-300" : ""}`}>{l}</button>)}
+                </span>
+              </EditorRow>
+              {s.format !== "svg" && (
+                <EditorRow group label="Resolution">
+                  <span className="inline-flex border border-slate-300 rounded overflow-hidden">
+                    {[300, 600, 1200].map((d, i) => <button key={d} onClick={() => set({ dpi: d })} className={`${seg(s.dpi === d)} ${i ? "border-l border-slate-300" : ""}`}>{d} dpi</button>)}
+                  </span>
+                </EditorRow>
+              )}
+              <p className="text-[11.5px] text-neutral-600 leading-snug">
+                {s.format === "svg" ? "Vector: stays sharp at any size and opens in Illustrator, Inkscape or PowerPoint. Its size is set in millimetres." : s.format === "pdf" ? "A one-page PDF at the size of the figure, with the figure as a high-resolution image." : "An image with its print size recorded, so Word and LaTeX place it at the right width."}
+              </p>
+            </EditorSection>
+          </div>
+        </div>
+        <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-slate-200">
+          <button onClick={() => { setS({ ...EDITOR_DEFAULTS, widthMm: s.widthMm, heightMm: s.heightMm }); saveEditorPrefs({ ...EDITOR_DEFAULTS, widthMm: s.widthMm }); setTitle(req.title || ""); setSubtitle(req.subtitle || ""); }} className="text-xs text-neutral-700 underline hover:text-neutral-900">Reset to the screen style</button>
+          <div className="flex items-center gap-2">
+            <Btn variant="outline" onClick={close}>Cancel</Btn>
+            <Btn variant="accent" onClick={download} disabled={!built || capturing || saving}><Download size={13} />{saving ? "Saving…" : `Download ${s.format.toUpperCase()}`}</Btn>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// The export button of a figure: opens the figure editor.
+function FigureExportButton({ targetRef, baseName, title = "", subtitle = "", disabled = false, label = "Export figure" }) {
+  return <Btn variant="outline" disabled={disabled} onClick={() => openFigureEditor(targetRef.current, baseName, {}, { title, subtitle })}><Download size={13} />{label}</Btn>;
 }
 
 // The publication-figure controls panel. Every field writes straight into
@@ -7994,7 +8549,7 @@ function BaselineEquilibriumTab({
                     exporting={figConvergenceBusy}
                     onExport={async () => {
                       setFigConvergenceBusy(true);
-                      await exportFigure(convergenceRef.current, "baseline-convergence.png", figConvergence, {
+                      openFigureEditor(convergenceRef.current, "baseline-convergence.png", figConvergence, {
                         title: figConvergence.title || "Baseline Equilibrium: Convergence Plot",
                         subtitle: `${result.converged ? "Converged" : result.diverged ? "Diverged (unbounded growth)" : "Did not converge"} in ${result.iterationsRun} iterations${effectiveSquash === "linear" ? ", no squashing function" : ""}`,
                       });
@@ -9306,19 +9861,6 @@ async function svgElementToPngBlob(containerEl, { title, subtitle, scale = 2, pa
   return svgCloneToPngBlob(built.clone, built.width, built.height, scale);
 }
 
-// A native-vector export: no rasterization, so it stays crisp at any size
-// and is directly editable in Illustrator or Inkscape. Its width and height
-// are written in millimetres, so it is placed at its physical size.
-async function svgElementToSvgBlob(containerEl, { title, subtitle, padding = 16 } = {}) {
-  const svg = mainSvgIn(containerEl);
-  const built = svg && await buildAnnotatedSvgClone(svg, { title, subtitle, padding, containerEl });
-  if (!built) return null;
-  const mm = (px) => ((px * 25.4) / 96).toFixed(2);
-  built.clone.setAttribute("width", `${mm(built.width)}mm`);
-  built.clone.setAttribute("height", `${mm(built.height)}mm`);
-  const svgData = '<?xml version="1.0" encoding="UTF-8"?>\n' + new XMLSerializer().serializeToString(built.clone);
-  return { blob: new Blob([svgData], { type: "image/svg+xml" }), width: built.width, height: built.height };
-}
 
 // ============================================================================
 // Publication-figure customization
@@ -9381,7 +9923,7 @@ async function waitForStableSvg(containerEl) {
     prev = now;
   }
 }
-async function withResizedChart(containerEl, { widthMm, heightMm, shrinkWPx = 0, shrinkHPx = 0, autoHeight = false }, fn) {
+async function withResizedChart(containerEl, { widthMm, heightMm, widthPx, heightPx, shrinkWPx = 0, shrinkHPx = 0, autoHeight = false }, fn) {
   if (!containerEl) return null;
   const prevWidth = containerEl.style.width, prevHeight = containerEl.style.height;
   const prevMaxWidth = containerEl.style.maxWidth;
@@ -9389,10 +9931,10 @@ async function withResizedChart(containerEl, { widthMm, heightMm, shrinkWPx = 0,
   // buildAnnotatedSvgClone adds around the chart, so the FINAL exported
   // canvas — chart plus that band — comes out at exactly widthMm × heightMm,
   // not that size plus a bit more for the title.
-  containerEl.style.width = `${Math.max(20, mmToPx(widthMm, 96) - shrinkWPx)}px`;
+  containerEl.style.width = `${Math.max(20, Math.round(widthPx ?? (mmToPx(widthMm, 96) - shrinkWPx)))}px`;
   // A hand-drawn figure sets its own height from its width; only a Recharts
   // chart, which fills its box, gets a height.
-  if (!autoHeight) containerEl.style.height = `${Math.max(20, mmToPx(heightMm, 96) - shrinkHPx)}px`;
+  if (!autoHeight) containerEl.style.height = `${Math.max(20, Math.round(heightPx ?? (mmToPx(heightMm, 96) - shrinkHPx)))}px`;
   containerEl.style.maxWidth = "none";
   setFigureExporting(true);
   // A short pause for the ResizeObserver behind Recharts' ResponsiveContainer
@@ -9549,54 +10091,6 @@ const EXPORT_WIDTHS = [
   { id: "page", label: "Full page, landscape (250 mm)", mm: 250 },
 ];
 
-// Saves a figure drawn by the tool itself (not a Recharts chart): laid out
-// at the chosen width, with its own height.
-async function exportSvgFigure(containerEl, baseName, format = "png", title = "", subtitle = "", { widthMm = 174, dpi = 300 } = {}) {
-  if (!mainSvgIn(containerEl)) { notify("Open the part of the page that holds this figure, then export it again.", { kind: "info", title: "Nothing to export yet" }); return; }
-  await exportFigure(containerEl, `${baseName}.png`, { ...DEFAULT_FIGURE_SETTINGS, widthMm, heightMm: widthMm, dpi, format }, { title, subtitle });
-}
-
-// One entry point for every export: lays the figure out at the physical
-// width asked for (and, for a Recharts chart, the height), captures it with
-// its title and subtitle, and saves it as PNG (with its resolution
-// recorded), SVG (in millimetres) or PDF (page size of the figure).
-async function exportFigure(containerEl, filename, settings, { title, subtitle } = {}) {
-  if (!containerEl || !mainSvgIn(containerEl)) { notify("Open the part of the page that holds this figure, then export it again.", { kind: "info", title: "Nothing to export yet" }); return; }
-  const padding = 16;
-  const innerW = mmToPx(settings.widthMm, 96) - padding * 2;
-  const headerH = title ? exportHeaderHeight(wrapExportText(title, 13, 700, innerW).length, subtitle ? wrapExportText(subtitle, 11, 400, innerW).length : 0) : 0;
-  const autoHeight = !mainSvgIn(containerEl).closest(".recharts-wrapper");
-  const save = (blob, name) => {
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = scopedFilename(name);
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
-  };
-  let laidOutH = 0;
-  await withResizedChart(containerEl, { widthMm: settings.widthMm, heightMm: settings.heightMm, shrinkWPx: padding * 2, shrinkHPx: padding * 2 + headerH, autoHeight }, async () => {
-    laidOutH = mainSvgIn(containerEl).getBoundingClientRect().height;
-    if (settings.format === "svg") {
-      const result = await svgElementToSvgBlob(containerEl, { title, subtitle, padding });
-      if (result) save(result.blob, filename.replace(/\.png$/, ".svg"));
-      return;
-    }
-    const scale = settings.dpi / 96;
-    const result = await svgElementToPngBlob(containerEl, { title, subtitle, scale, padding });
-    if (!result) return;
-    if (settings.format === "pdf") {
-      const pdf = await pngBlobToPdfBlob(result.blob, settings.dpi);
-      save(pdf || result.blob, filename.replace(/\.png$/, pdf ? ".pdf" : ".png"));
-      if (!pdf) notify("This browser cannot write PDF files (it lacks CompressionStream), so a high-resolution PNG was downloaded instead.", { kind: "info", title: "Saved as PNG" });
-      return;
-    }
-    save(await pngWithDpi(result.blob, settings.dpi), filename);
-  });
-  if (autoHeight && settings.widthMm < 200) {
-    const hMm = Math.round(((laidOutH + padding * 2 + headerH) * 25.4) / 96);
-    if (hMm > 240) notify(`This figure came out ${hMm} mm tall, which is more than a journal page holds. The full-page width lays it out in two columns and keeps it shorter.`, { kind: "info", title: "Tall figure" });
-  }
-}
 
 
 // The Network tab's canvas isn't a single <svg> the way a Recharts chart is
@@ -10853,7 +11347,7 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
                     exporting={figResponseBusy}
                     onExport={async () => {
                       setFigResponseBusy(true);
-                      await exportFigure(responseChartRef.current, "transition-response-curves.png", figResponse, {
+                      openFigureEditor(responseChartRef.current, "transition-response-curves.png", figResponse, {
                         title: figResponse.title || `Response curves: ${result.interventionName} (${transitionRangeLabel(result.direction)})`,
                         subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}`,
                       });
@@ -10903,7 +11397,7 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
                     exporting={figSlopeBusy}
                     onExport={async () => {
                       setFigSlopeBusy(true);
-                      await exportFigure(slopeChartRef.current, "transition-marginal-benefit.png", figSlope, {
+                      openFigureEditor(slopeChartRef.current, "transition-marginal-benefit.png", figSlope, {
                         title: figSlope.title || `Marginal benefit: ${result.interventionName}`,
                         subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}`,
                       });
@@ -10922,8 +11416,8 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
               <Btn variant="outline" onClick={exportSlopeCSV}><Download size={13} />Marginal benefit curves (CSV)</Btn>
               <Btn variant="outline" onClick={exportTableCSV}><Download size={13} />TP table (CSV)</Btn>
               <Btn variant="outline" onClick={exportRankingsCSV} disabled={!kpis}><Download size={13} />Rankings (CSV)</Btn>
-              <Btn variant="outline" onClick={() => exportFigure(responseChartRef.current, "transition-response-curves.png", figResponse, { title: figResponse.title || `Response curves: ${result.interventionName} (${transitionRangeLabel(result.direction)})`, subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}` })}><Download size={13} />Response chart ({figResponse.format.toUpperCase()})</Btn>
-              <Btn variant="outline" onClick={() => exportFigure(slopeChartRef.current, "transition-marginal-benefit.png", figSlope, { title: figSlope.title || `Marginal benefit: ${result.interventionName}`, subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}` })}><Download size={13} />Marginal chart ({figSlope.format.toUpperCase()})</Btn>
+              <Btn variant="outline" onClick={() => openFigureEditor(responseChartRef.current, "transition-response-curves.png", figResponse, { title: figResponse.title || `Response curves: ${result.interventionName} (${transitionRangeLabel(result.direction)})`, subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}` })}><Download size={13} />Response chart ({figResponse.format.toUpperCase()})</Btn>
+              <Btn variant="outline" onClick={() => openFigureEditor(slopeChartRef.current, "transition-marginal-benefit.png", figSlope, { title: figSlope.title || `Marginal benefit: ${result.interventionName}`, subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}` })}><Download size={13} />Marginal chart ({figSlope.format.toUpperCase()})</Btn>
             </div>
             <p className="text-[11.5px] text-neutral-600 mt-2 italic">PDF export is not yet implemented (see the roadmap note at the bottom of the page). Use PNG for images and CSV for data in the meantime.</p>
           </div>
@@ -11941,7 +12435,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
                     exporting={figPlaneBusy}
                     onExport={async () => {
                       setFigPlaneBusy(true);
-                      await exportFigure(planeRef.current, "transition-pathways-effort-gain.png", figPlane, {
+                      openFigureEditor(planeRef.current, "transition-pathways-effort-gain.png", figPlane, {
                         title: figPlane.title || "Transition Pathways: Effort-Gain Plane",
                         subtitle: `${pathwayContextLine} · ${s.counts.admissible} of ${s.counts.total} pathways admissible`,
                       });
@@ -12059,7 +12553,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
                           exporting={figTrajectoryBusy}
                           onExport={async () => {
                             setFigTrajectoryBusy(true);
-                            await exportFigure(trajectoryRef.current, "transition-pathway-trajectory.png", figTrajectory, {
+                            openFigureEditor(trajectoryRef.current, "transition-pathway-trajectory.png", figTrajectory, {
                               title: figTrajectory.title || `Outcome trajectory: ${selectedLabel}`,
                               subtitle: pathwayContextLine,
                             });
@@ -12096,7 +12590,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
                           exporting={figAccrualBusy}
                           onExport={async () => {
                             setFigAccrualBusy(true);
-                            await exportFigure(accrualRef.current, "transition-pathway-benefit-accrual.png", figAccrual, {
+                            openFigureEditor(accrualRef.current, "transition-pathway-benefit-accrual.png", figAccrual, {
                               title: figAccrual.title || `Benefit accrual: ${selectedLabel}`,
                               subtitle: `Early Benefit Index ${fmtNum(selected.ebi)}: share of the final gain realized against share of effort spent`,
                             });
@@ -12233,9 +12727,9 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
               <Btn variant="outline" onClick={exportStagesCSV} disabled={!selected}><Download size={13} />Selected pathway stages (CSV)</Btn>
               <Btn variant="outline" onClick={exportLeversCSV}><Download size={13} />Lever profiles (CSV)</Btn>
               <Btn variant="outline" onClick={exportPortfoliosCSV}><Download size={13} />Portfolios (CSV)</Btn>
-              <Btn variant="outline" disabled={!advancedOpen} title={advancedOpen ? undefined : "Open Advanced results to export this chart"} onClick={() => exportFigure(planeRef.current, "transition-pathways-effort-gain.png", figPlane, { title: figPlane.title || "Transition Pathways: Effort-Gain Plane", subtitle: `${pathwayContextLine} · ${s.counts.admissible} of ${s.counts.total} pathways admissible` })}><Download size={13} />Effort-gain plane ({figPlane.format.toUpperCase()})</Btn>
-              <Btn variant="outline" onClick={() => exportFigure(trajectoryRef.current, "transition-pathway-trajectory.png", figTrajectory, { title: figTrajectory.title || `Outcome trajectory: ${selectedLabel}`, subtitle: pathwayContextLine })} disabled={!selected || !advancedOpen} title={advancedOpen ? undefined : "Open Advanced results to export this chart"}><Download size={13} />Selected trajectory ({figTrajectory.format.toUpperCase()})</Btn>
-              <Btn variant="outline" onClick={() => exportFigure(accrualRef.current, "transition-pathway-benefit-accrual.png", figAccrual, { title: figAccrual.title || `Benefit accrual: ${selectedLabel}`, subtitle: `Early Benefit Index ${fmtNum(selected?.ebi)}` })} disabled={!selected || !advancedOpen || !trajectory || trajectory.accrual.length <= 1} title={advancedOpen ? undefined : "Open Advanced results to export this chart"}><Download size={13} />Selected benefit accrual ({figAccrual.format.toUpperCase()})</Btn>
+              <Btn variant="outline" disabled={!advancedOpen} title={advancedOpen ? undefined : "Open Advanced results to export this chart"} onClick={() => openFigureEditor(planeRef.current, "transition-pathways-effort-gain.png", figPlane, { title: figPlane.title || "Transition Pathways: Effort-Gain Plane", subtitle: `${pathwayContextLine} · ${s.counts.admissible} of ${s.counts.total} pathways admissible` })}><Download size={13} />Effort-gain plane ({figPlane.format.toUpperCase()})</Btn>
+              <Btn variant="outline" onClick={() => openFigureEditor(trajectoryRef.current, "transition-pathway-trajectory.png", figTrajectory, { title: figTrajectory.title || `Outcome trajectory: ${selectedLabel}`, subtitle: pathwayContextLine })} disabled={!selected || !advancedOpen} title={advancedOpen ? undefined : "Open Advanced results to export this chart"}><Download size={13} />Selected trajectory ({figTrajectory.format.toUpperCase()})</Btn>
+              <Btn variant="outline" onClick={() => openFigureEditor(accrualRef.current, "transition-pathway-benefit-accrual.png", figAccrual, { title: figAccrual.title || `Benefit accrual: ${selectedLabel}`, subtitle: `Early Benefit Index ${fmtNum(selected?.ebi)}` })} disabled={!selected || !advancedOpen || !trajectory || trajectory.accrual.length <= 1} title={advancedOpen ? undefined : "Open Advanced results to export this chart"}><Download size={13} />Selected benefit accrual ({figAccrual.format.toUpperCase()})</Btn>
             </div>
             <p className="text-[11.5px] text-neutral-600 mt-2">The Export Analysis Workbook in the header also includes these results (pathways, rankings, stages of the top pathways, lever profiles, portfolios, and the invariance and robustness tests).</p>
           </div>
@@ -12464,6 +12958,7 @@ export default function SpaghettiEngine() {
   return (
     <AppCrashBoundary>
       <SpaghettiEngineApp />
+      <FigureEditorHost />
     </AppCrashBoundary>
   );
 }
@@ -14216,7 +14711,7 @@ function SpaghettiEngineApp() {
                               ];
                               for (const t of targets) {
                                 // eslint-disable-next-line no-await-in-loop
-                                await exportFigure(t.ref.current, `scenario-trajectory-${t.key}.png`, figTrajComparison, { title: figTrajComparison.title || t.title, subtitle: "Trajectory comparison" });
+                                openFigureEditor(t.ref.current, `scenario-trajectory-${t.key}.png`, figTrajComparison, { title: figTrajComparison.title || t.title, subtitle: "Trajectory comparison" });
                               }
                               setFigTrajComparisonBusy(false);
                             }}
