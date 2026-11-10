@@ -29,7 +29,7 @@ import { toBlob as domNodeToPngBlob } from "html-to-image";
 import AboutTab, { APP_VERSION, CONTACT } from "./AboutTab.jsx";
 import PathwayMetroMap from "./PathwayMetroMap.jsx";
 import TransitionSmallMultiples from "./TransitionSmallMultiples.jsx";
-import { ConvergenceChart, SteadyStateBars, ScenarioComparisonFigure, ScenarioGroupedBars, SensitivityCurves, PrioritizationMatrix, RankedBars, QUADRANTS, quadrantOf, SCENARIO_COLORS, FIG } from "./AnalysisFigures.jsx";
+import { ConvergenceChart, SteadyStateBars, ScenarioComparisonFigure, ScenarioGroupedBars, SensitivityCurves, PrioritizationMatrix, RankedBars, QUADRANTS, quadrantOf, SCENARIO_COLORS, FIG, setFigureExporting } from "./AnalysisFigures.jsx";
 import { metroRows } from "./pathwayMetroLayout.js";
 import { bootLibrary, saveModel, loadModel, setActive, createModel, renameModel, duplicateModel, deleteModel, readIndex, modelKey } from "./modelLibrary.js";
 import { BrandMark } from "./brand.jsx";
@@ -1621,6 +1621,63 @@ function LinearModeNote({ settings }) {
       <span>
         No squashing function is selected. Where feedback in the model amplifies itself, a run is stopped once a concept passes ±{LINEAR_DIVERGENCE_LIMIT} and its value is only where it happened to stop, so curves and rankings that include such runs are not meaningful. The Baseline Equilibrium tab shows whether the model settles without squashing.
       </span>
+    </div>
+  );
+}
+
+// The export control for the figures drawn by the tool: a button that opens
+// a small panel to choose the width, the format and the resolution. The
+// choice is remembered for the next export.
+const EXPORT_PREF_KEY = "se.figureExport";
+function readExportPrefs() {
+  try { return { widthId: "double", format: "png", dpi: 300, ...JSON.parse(localStorage.getItem(EXPORT_PREF_KEY) || "{}") }; } catch { return { widthId: "double", format: "png", dpi: 300 }; }
+}
+function FigureExportButton({ targetRef, baseName, title = "", subtitle = "", disabled = false, label = "Export figure" }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [prefs, setPrefs] = useState(readExportPrefs);
+  const boxRef = useRef(null);
+  useDismiss(boxRef, open, () => setOpen(false));
+  const set = (patch) => setPrefs((p) => { const n = { ...p, ...patch }; try { localStorage.setItem(EXPORT_PREF_KEY, JSON.stringify(n)); } catch { /* ignore */ } return n; });
+  const width = EXPORT_WIDTHS.find((w) => w.id === prefs.widthId) || EXPORT_WIDTHS[2];
+  const run = async () => {
+    setBusy(true);
+    try { await exportSvgFigure(targetRef.current, baseName, prefs.format, title, subtitle, { widthMm: width.mm, dpi: prefs.dpi }); } finally { setBusy(false); setOpen(false); }
+  };
+  const seg = (active) => `px-2 py-1 text-xs ${active ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`;
+  return (
+    <div className="relative" ref={boxRef}>
+      <Btn variant="outline" disabled={disabled || busy} onClick={() => setOpen((o) => !o)} aria-expanded={open}><Download size={13} />{busy ? "Exporting…" : label}</Btn>
+      {open && (
+        <div className="absolute right-0 z-30 mt-1 w-72 rounded-lg border border-slate-200 bg-white p-3 shadow-lg space-y-3 text-left" role="dialog" aria-label="Export figure">
+          <div>
+            <div className="text-[12px] font-semibold text-neutral-700 mb-1">Width on the page</div>
+            <div className="space-y-0.5">
+              {EXPORT_WIDTHS.map((w) => (
+                <label key={w.id} className="flex items-center gap-2 text-xs text-neutral-900 cursor-pointer">
+                  <input type="radio" name={`w-${baseName}`} checked={prefs.widthId === w.id} onChange={() => set({ widthId: w.id })} />{w.label}
+                </label>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="text-[12px] font-semibold text-neutral-700 mb-1">Format</div>
+            <div className="inline-flex border border-slate-300 rounded overflow-hidden" role="group">
+              {[["png", "PNG"], ["svg", "SVG (vector)"], ["pdf", "PDF"]].map(([f, l], i) => <button key={f} onClick={() => set({ format: f })} className={`${seg(prefs.format === f)} ${i ? "border-l border-slate-300" : ""}`}>{l}</button>)}
+            </div>
+          </div>
+          {prefs.format !== "svg" && (
+            <div>
+              <div className="text-[12px] font-semibold text-neutral-700 mb-1">Resolution</div>
+              <div className="inline-flex border border-slate-300 rounded overflow-hidden" role="group">
+                {[300, 600].map((d, i) => <button key={d} onClick={() => set({ dpi: d })} className={`${seg(prefs.dpi === d)} ${i ? "border-l border-slate-300" : ""}`}>{d} dpi</button>)}
+              </div>
+            </div>
+          )}
+          <p className="text-[11.5px] text-neutral-500 leading-snug">The figure is laid out at {width.mm} mm wide, so its text prints at about 7 to 10 pt. The height follows from the figure.</p>
+          <Btn variant="accent" onClick={run} disabled={busy}><Download size={13} />{busy ? "Exporting…" : `Download ${prefs.format.toUpperCase()}`}</Btn>
+        </div>
+      )}
     </div>
   );
 }
@@ -6931,9 +6988,7 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
             <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
               <h4 className="text-sm font-semibold">Sensitivity curves</h4>
               <div className="flex gap-2">
-                {["png", "svg"].map((fmt) => (
-                  <Btn key={fmt} variant="outline" onClick={() => exportSvgFigure(sensCurvesRef.current, "sensitivity-curves", fmt, "Sensitivity curves", `${concepts.find((c) => c.id === sensInput)?.name} held from ${sensMin} to ${sensMax}`)}><Download size={13} />{fmt.toUpperCase()}</Btn>
-                ))}
+                <FigureExportButton targetRef={sensCurvesRef} baseName="sensitivity-curves" title="Sensitivity curves" subtitle={`${concepts.find((c) => c.id === sensInput)?.name} held from ${sensMin} to ${sensMax}`} />
               </div>
             </div>
             <p className="text-[12.5px] text-neutral-600 mb-3">One panel per concept you watch. Left to right, {concepts.find((c) => c.id === sensInput)?.name} is held at a higher value; the line shows where the watched concept settles each time. A flat line means it does not respond; a steep part is where it responds most.</p>
@@ -6952,9 +7007,7 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
               <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
                 <h4 className="text-sm font-semibold">Tornado chart: what moves {concepts.find((c) => c.id === result.primaryOutput)?.name} most</h4>
                 <div className="flex gap-2">
-                  {["png", "svg"].map((fmt) => (
-                    <Btn key={fmt} variant="outline" onClick={() => exportSvgFigure(tornadoRef.current, "sensitivity-tornado", fmt, `Tornado chart: impact on ${concepts.find((c) => c.id === result.primaryOutput)?.name}`)}><Download size={13} />{fmt.toUpperCase()}</Btn>
-                  ))}
+                  <FigureExportButton targetRef={tornadoRef} baseName="sensitivity-tornado" title={`Tornado chart: impact on ${concepts.find((c) => c.id === result.primaryOutput)?.name}`} />
                 </div>
               </div>
               <p className="text-[12.5px] text-neutral-600 mb-3">Every other concept is held at {sensMin} and then at {sensMax}, one at a time. The bar is how much that changes {concepts.find((c) => c.id === result.primaryOutput)?.name} (the first concept you watch). Green raises it, orange lowers it; the 12 strongest are shown.</p>
@@ -7846,9 +7899,7 @@ function BaselineEquilibriumTab({
             <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
               <h4 className="text-sm font-semibold">How the system settles</h4>
               <div className="flex gap-2">
-                {["png", "svg"].map((fmt) => (
-                  <Btn key={fmt} variant="outline" onClick={() => exportSvgFigure(convergencePanelsRef.current, "baseline-convergence", fmt, "Baseline Equilibrium: how the system settles")}><Download size={13} />{fmt.toUpperCase()}</Btn>
-                ))}
+                <FigureExportButton targetRef={convergencePanelsRef} baseName="baseline-convergence" title="Baseline Equilibrium: how the system settles" />
               </div>
             </div>
             <p className="text-[12.5px] text-neutral-600 mb-3">One panel per module. Each line is a concept, from its starting value at iteration 0 to where it ends on the right, with its final value. A line that runs flat has settled.</p>
@@ -7861,9 +7912,7 @@ function BaselineEquilibriumTab({
             <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
               <h4 className="text-sm font-semibold">Where each concept settles</h4>
               <div className="flex gap-2">
-                {["png", "svg"].map((fmt) => (
-                  <Btn key={fmt} variant="outline" onClick={() => exportSvgFigure(steadyRef.current, "baseline-steady-state", fmt, "Baseline Equilibrium: steady state")}><Download size={13} />{fmt.toUpperCase()}</Btn>
-                ))}
+                <FigureExportButton targetRef={steadyRef} baseName="baseline-steady-state" title="Baseline Equilibrium: steady state" />
               </div>
             </div>
             <p className="text-[12.5px] text-neutral-600 mb-3">The bar shows where each concept settles, and the open circle where it started. Bars to the right end above 0, bars to the left below 0.</p>
@@ -7918,7 +7967,7 @@ function BaselineEquilibriumTab({
                   <ResponsiveContainer>
                     <LineChart data={result.series.map((pt) => ({ iteration: pt.iteration, ...pt.values }))}>
                       {figConvergence.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
-                      <XAxis dataKey="iteration" tick={{ fontSize: figConvergence.tickFontSize }} label={{ value: figConvergence.xLabel || "Iteration", position: "insideBottom", offset: -5, fontSize: figConvergence.axisFontSize }} />
+                      <XAxis dataKey="iteration" type="number" domain={[0, "dataMax"]} allowDecimals={false} tick={{ fontSize: figConvergence.tickFontSize }} label={{ value: figConvergence.xLabel || "Iteration", position: "insideBottom", offset: -5, fontSize: figConvergence.axisFontSize }} />
                       <YAxis domain={effectiveSquash === "linear" || result.diverged ? ["auto", "auto"] : [-1, 1]} tick={{ fontSize: figConvergence.tickFontSize }} tickFormatter={(v) => fmtDec(v, figConvergence.decimals)} label={{ value: figConvergence.yLabel || "Activation", angle: -90, position: "insideLeft", fontSize: figConvergence.axisFontSize }} />
                       <RTooltip />
                       {figConvergence.legendPosition !== "hidden" && (
@@ -9052,84 +9101,222 @@ const CHART_EXPORT_FONT = "Inter, system-ui, sans-serif";
 // standalone), and bakes in a title/subtitle so the figure still says what
 // it is once it's saved outside the app. Returns the annotated clone plus
 // its final pixel dimensions; callers rasterize or serialize it as needed.
-function buildAnnotatedSvgClone(svg, { title, subtitle, padding = 16 } = {}) {
+// The chart's own <svg> inside a container: the largest one, so a small icon
+// in a button or a legend swatch is never taken for the figure.
+function mainSvgIn(containerEl) {
+  if (!containerEl) return null;
+  const all = [...containerEl.querySelectorAll("svg")].filter((s) => !s.parentElement?.closest("svg"));
+  let best = null, area = 0;
+  all.forEach((s) => { const r = s.getBoundingClientRect(); if (r.width * r.height > area) { area = r.width * r.height; best = s; } });
+  return best;
+}
+
+// Presentation properties that page CSS (index.css, Tailwind, Recharts'
+// own classes) can set on SVG elements. A serialized SVG loses the page's
+// stylesheets, so each is copied onto the clone as an inline style.
+const SVG_STYLE_PROPS = ["fill", "fill-opacity", "stroke", "stroke-width", "stroke-dasharray", "stroke-opacity", "stroke-linecap", "stroke-linejoin", "opacity", "font-family", "font-size", "font-weight", "font-style", "text-anchor", "dominant-baseline", "letter-spacing", "visibility", "display", "paint-order"];
+function inlineSvgStyles(orig, clone) {
+  const a = [orig, ...orig.querySelectorAll("*")];
+  const b = [clone, ...clone.querySelectorAll("*")];
+  for (let i = 0; i < a.length && i < b.length; i++) {
+    const el = a[i], cl = b[i];
+    if (!(el instanceof SVGElement) || el.tagName === "defs" || el.closest("defs")) continue;
+    const cs = getComputedStyle(el);
+    const parts = [];
+    SVG_STYLE_PROPS.forEach((p) => {
+      const v = cs.getPropertyValue(p);
+      if (!v) return;
+      if (p === "font-family") { parts.push(`font-family:${EXPORT_FONT_STACK}`); return; }
+      parts.push(`${p}:${v}`);
+    });
+    cl.setAttribute("style", parts.join(";"));
+    cl.removeAttribute("class");
+  }
+}
+
+// Recharts draws its legend as HTML next to the <svg>, so a plain SVG
+// export loses it. Each legend item (its icon and its label) is redrawn
+// inside the exported SVG at the place it has on screen.
+function appendHtmlLegend(containerEl, svg, clone, k = 1) {
+  const NS = "http://www.w3.org/2000/svg";
+  const wrap = svg.closest(".recharts-wrapper")?.querySelector(".recharts-legend-wrapper");
+  if (!wrap) return;
+  const base = svg.getBoundingClientRect();
+  const g = document.createElementNS(NS, "g");
+  wrap.querySelectorAll(".recharts-legend-item").forEach((item) => {
+    const icon = item.querySelector("svg");
+    const label = item.querySelector(".recharts-legend-item-text");
+    if (icon) {
+      const r = icon.getBoundingClientRect();
+      const ic = icon.cloneNode(true);
+      inlineSvgStyles(icon, ic);
+      ic.setAttribute("x", ((r.left - base.left) / k).toFixed(1));
+      ic.setAttribute("y", ((r.top - base.top) / k).toFixed(1));
+      ic.setAttribute("width", (r.width / k).toFixed(1));
+      ic.setAttribute("height", (r.height / k).toFixed(1));
+      ic.removeAttribute("style");
+      g.appendChild(ic);
+    }
+    if (label) {
+      const r = label.getBoundingClientRect();
+      const cs = getComputedStyle(label);
+      const t = document.createElementNS(NS, "text");
+      t.setAttribute("x", ((r.left - base.left) / k).toFixed(1));
+      t.setAttribute("y", ((r.top - base.top + r.height * 0.78) / k).toFixed(1));
+      t.setAttribute("style", `font-family:${EXPORT_FONT_STACK};font-size:${parseFloat(cs.fontSize) / k}px;font-weight:${cs.fontWeight};fill:#111827`);
+      t.textContent = label.textContent;
+      g.appendChild(t);
+    }
+  });
+  clone.appendChild(g);
+}
+
+// Inter, embedded in the exported file, so the figure looks the same on a
+// computer that does not have the font (and in the PNG, which is drawn from
+// the SVG as an image and cannot load fonts from the web). Fetched once
+// from the stylesheet the page already uses; when that fails, the export
+// falls back to Arial or Helvetica.
+const EXPORT_FONT_STACK = "Inter, Arial, Helvetica, sans-serif";
+let embeddedFontCssPromise = null;
+function embeddedFontCss() {
+  if (embeddedFontCssPromise) return embeddedFontCssPromise;
+  embeddedFontCssPromise = (async () => {
+    try {
+      const link = [...document.querySelectorAll('link[rel="stylesheet"]')].find((l) => /fonts\.googleapis\.com/.test(l.href));
+      if (!link) return "";
+      const css = await (await fetch(link.href)).text();
+      const blocks = css.match(/@font-face\s*{[^}]*}/g) || [];
+      const latin = blocks.filter((b) => /unicode-range:[^;]*U\+0000-00FF/i.test(b));
+      const out = await Promise.all(latin.map(async (b) => {
+        const url = (b.match(/url\(([^)]+)\)/) || [])[1];
+        const weight = (b.match(/font-weight:\s*(\d+)/) || [])[1] || "400";
+        if (!url) return "";
+        const buf = new Uint8Array(await (await fetch(url.replace(/["']/g, ""))).arrayBuffer());
+        let bin = "";
+        for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+        return `@font-face{font-family:Inter;font-style:normal;font-weight:${weight};src:url(data:font/woff2;base64,${btoa(bin)}) format("woff2");}`;
+      }));
+      return out.join("");
+    } catch {
+      return "";
+    }
+  })();
+  return embeddedFontCssPromise;
+}
+
+// Clones the chart's <svg> into a standalone figure: page styles inlined,
+// the Recharts legend redrawn inside it, a white background, the title and
+// subtitle as a header band, and the font embedded. Coordinates are CSS
+// pixels of the chart as laid out at export time; the caller sets the
+// physical size. A chart drawn in its own units (a viewBox scaled to fit,
+// as the metro map is) is scaled to its laid-out size.
+let exportMeasureCtx = null;
+function wrapExportText(text, fs, weight, maxW) {
+  if (!exportMeasureCtx) exportMeasureCtx = document.createElement("canvas").getContext("2d");
+  exportMeasureCtx.font = `${weight} ${fs}px ${EXPORT_FONT_STACK}`;
+  const lines = [];
+  String(text).split(/\s+/).filter(Boolean).forEach((word) => {
+    const last = lines[lines.length - 1];
+    if (last !== undefined && exportMeasureCtx.measureText(`${last} ${word}`).width <= maxW) lines[lines.length - 1] = `${last} ${word}`;
+    else lines.push(word);
+  });
+  return lines.length ? lines : [""];
+}
+// Height of the title band: the same numbers buildAnnotatedSvgClone draws with.
+function exportHeaderHeight(nTitle, nSub) {
+  if (!nTitle) return 0;
+  const t = 13 + (nTitle - 1) * 13 * 1.25;
+  return nSub ? t + 6 + 11 + (nSub - 1) * 11 * 1.3 + 10 : t + 10;
+}
+async function buildAnnotatedSvgClone(svg, { title, subtitle, padding: pad0 = 16, containerEl = null } = {}) {
   const rect = svg.getBoundingClientRect();
   if (!rect.width || !rect.height) return null;
   const NS = "http://www.w3.org/2000/svg";
-  const headerH = title ? (subtitle ? 50 : 28) : 0;
+  const vb = svg.viewBox?.baseVal;
+  const k = vb && vb.width > 0 ? rect.width / vb.width : 1;
+  const padding = pad0;
+  const titleFs = 13, subFs = 11;
+  // A title or subtitle wider than the figure wraps onto further lines.
+  const titleLines = title ? wrapExportText(title, titleFs, 700, rect.width) : [];
+  const subLines = title && subtitle ? wrapExportText(subtitle, subFs, 400, rect.width) : [];
+  const headerH = exportHeaderHeight(titleLines.length, subLines.length);
   const W = Math.ceil(rect.width + padding * 2);
   const H = Math.ceil(rect.height + padding * 2 + headerH);
   const clone = svg.cloneNode(true);
+  inlineSvgStyles(svg, clone);
+  clone.removeAttribute("style");
+  clone.removeAttribute("class");
+  appendHtmlLegend(containerEl, svg, clone, k);
   clone.setAttribute("xmlns", NS);
   clone.setAttribute("width", W);
   clone.setAttribute("height", H);
   clone.setAttribute("viewBox", `0 0 ${W} ${H}`);
-  const bg = document.createElementNS(NS, "rect");
-  bg.setAttribute("width", "100%"); bg.setAttribute("height", "100%"); bg.setAttribute("fill", "#ffffff");
-  // Move the chart's own markup (still sized/positioned for the original
-  // rect) into a translated group, so it lands below the title and inset
-  // by the padding, instead of pinned to the top-left corner of the
-  // now-larger canvas.
-  // A chart drawn in its own units (a viewBox scaled to fit, as the pathways
-  // metro map is) is scaled to its on-screen size; for Recharts, whose
-  // viewBox equals its size, the scale is 1.
-  const vb = svg.viewBox?.baseVal;
-  const k = vb && vb.width > 0 ? rect.width / vb.width : 1;
+  clone.setAttribute("font-family", EXPORT_FONT_STACK);
   const group = document.createElementNS(NS, "g");
   group.setAttribute("transform", `translate(${padding}, ${padding + headerH})${Math.abs(k - 1) > 1e-3 ? ` scale(${k})` : ""}`);
   while (clone.firstChild) group.appendChild(clone.firstChild);
+  const fontCss = await embeddedFontCss();
+  if (fontCss) {
+    const style = document.createElementNS(NS, "style");
+    style.textContent = fontCss;
+    clone.appendChild(style);
+  }
+  const bg = document.createElementNS(NS, "rect");
+  bg.setAttribute("width", W); bg.setAttribute("height", H); bg.setAttribute("fill", "#ffffff");
   clone.appendChild(bg);
   clone.appendChild(group);
-  if (title) {
+  const addText = (text, y, fs, weight, fill) => {
     const t = document.createElementNS(NS, "text");
-    t.setAttribute("x", padding); t.setAttribute("y", padding + 15);
-    t.setAttribute("font-family", CHART_EXPORT_FONT);
-    t.setAttribute("font-size", "15"); t.setAttribute("font-weight", "600"); t.setAttribute("fill", "#0f172a");
-    t.textContent = title;
+    t.setAttribute("x", padding); t.setAttribute("y", y);
+    t.setAttribute("style", `font-family:${EXPORT_FONT_STACK};font-size:${fs}px;font-weight:${weight};fill:${fill}`);
+    t.textContent = text;
     clone.appendChild(t);
-    if (subtitle) {
-      const st = document.createElementNS(NS, "text");
-      st.setAttribute("x", padding); st.setAttribute("y", padding + 33);
-      st.setAttribute("font-family", CHART_EXPORT_FONT);
-      st.setAttribute("font-size", "11.5"); st.setAttribute("fill", "#64748b");
-      st.textContent = subtitle;
-      clone.appendChild(st);
-    }
-  }
+  };
+  titleLines.forEach((line, i) => addText(line, padding + titleFs + i * titleFs * 1.25, titleFs, 700, "#111827"));
+  const subTop = padding + titleFs + (titleLines.length - 1) * titleFs * 1.25 + 6;
+  subLines.forEach((line, i) => addText(line, subTop + subFs + i * subFs * 1.3, subFs, 400, "#374151"));
   return { clone, width: W, height: H };
 }
 
-function svgElementToPngBlob(containerEl, { title, subtitle, scale = 2, padding = 16 } = {}) {
+function svgCloneToPngBlob(clone, W, H, scale) {
   return new Promise((resolve) => {
-    const svg = containerEl?.querySelector("svg");
-    const built = svg && buildAnnotatedSvgClone(svg, { title, subtitle, padding });
-    if (!built) { resolve(null); return; }
-    const { clone, width: W, height: H } = built;
     const svgData = new XMLSerializer().serializeToString(clone);
-    const svgUrl = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgData);
     const img = new Image();
     img.onload = () => {
       const canvas = document.createElement("canvas");
       canvas.width = Math.round(W * scale);
       canvas.height = Math.round(H * scale);
       const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.scale(scale, scale);
       ctx.drawImage(img, 0, 0, W, H);
       canvas.toBlob((blob) => resolve(blob ? { blob, width: W, height: H } : null), "image/png");
     };
     img.onerror = () => resolve(null);
-    img.src = svgUrl;
+    img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgData);
   });
 }
 
-// A native-vector export: no rasterization, so it stays crisp at any size
-// and is directly editable in Illustrator/Inkscape — the format academic
-// journals most often ask for.
-function svgElementToSvgBlob(containerEl, { title, subtitle, padding = 16 } = {}) {
-  const svg = containerEl?.querySelector("svg");
-  const built = svg && buildAnnotatedSvgClone(svg, { title, subtitle, padding });
+async function svgElementToPngBlob(containerEl, { title, subtitle, scale = 2, padding = 16 } = {}) {
+  const svg = mainSvgIn(containerEl);
+  const built = svg && await buildAnnotatedSvgClone(svg, { title, subtitle, padding, containerEl });
   if (!built) return null;
-  const svgData = new XMLSerializer().serializeToString(built.clone);
+  // Fonts embedded as data URLs need a moment to decode inside the image.
+  return svgCloneToPngBlob(built.clone, built.width, built.height, scale);
+}
+
+// A native-vector export: no rasterization, so it stays crisp at any size
+// and is directly editable in Illustrator or Inkscape. Its width and height
+// are written in millimetres, so it is placed at its physical size.
+async function svgElementToSvgBlob(containerEl, { title, subtitle, padding = 16 } = {}) {
+  const svg = mainSvgIn(containerEl);
+  const built = svg && await buildAnnotatedSvgClone(svg, { title, subtitle, padding, containerEl });
+  if (!built) return null;
+  const mm = (px) => ((px * 25.4) / 96).toFixed(2);
+  built.clone.setAttribute("width", `${mm(built.width)}mm`);
+  built.clone.setAttribute("height", `${mm(built.height)}mm`);
+  const svgData = '<?xml version="1.0" encoding="UTF-8"?>\n' + new XMLSerializer().serializeToString(built.clone);
   return { blob: new Blob([svgData], { type: "image/svg+xml" }), width: built.width, height: built.height };
 }
 
@@ -9182,7 +9369,19 @@ const fmtDec = (v, d) => (Number.isFinite(v) ? Number(v).toFixed(d) : "");
 // restores the on-screen size. This is also what "live preview" uses: the
 // panel applies the same resize while it's open, so what the analyst sees
 // while adjusting settings is pixel-for-pixel what export will capture.
-async function withResizedChart(containerEl, { widthMm, heightMm, shrinkWPx = 0, shrinkHPx = 0 }, fn) {
+// Recharts animates its lines into a new size; waits until the drawing
+// stops changing (at most two seconds) so the capture is the final picture.
+async function waitForStableSvg(containerEl) {
+  const sig = () => Array.from(containerEl.querySelectorAll("svg path, svg line, svg text")).map((n) => n.getAttribute("d") || `${n.getAttribute("x")},${n.getAttribute("y")},${n.getAttribute("x1")},${n.textContent}`).join("|");
+  let prev = sig();
+  for (let i = 0; i < 20; i++) {
+    await new Promise((r) => setTimeout(r, 100));
+    const now = sig();
+    if (now === prev) return;
+    prev = now;
+  }
+}
+async function withResizedChart(containerEl, { widthMm, heightMm, shrinkWPx = 0, shrinkHPx = 0, autoHeight = false }, fn) {
   if (!containerEl) return null;
   const prevWidth = containerEl.style.width, prevHeight = containerEl.style.height;
   const prevMaxWidth = containerEl.style.maxWidth;
@@ -9191,18 +9390,36 @@ async function withResizedChart(containerEl, { widthMm, heightMm, shrinkWPx = 0,
   // canvas — chart plus that band — comes out at exactly widthMm × heightMm,
   // not that size plus a bit more for the title.
   containerEl.style.width = `${Math.max(20, mmToPx(widthMm, 96) - shrinkWPx)}px`;
-  containerEl.style.height = `${Math.max(20, mmToPx(heightMm, 96) - shrinkHPx)}px`;
+  // A hand-drawn figure sets its own height from its width; only a Recharts
+  // chart, which fills its box, gets a height.
+  if (!autoHeight) containerEl.style.height = `${Math.max(20, mmToPx(heightMm, 96) - shrinkHPx)}px`;
   containerEl.style.maxWidth = "none";
+  setFigureExporting(true);
   // A short pause for the ResizeObserver behind Recharts' ResponsiveContainer
   // to see the new box and finish laying out inside it. A timer rather than
   // requestAnimationFrame: rAF callbacks are paused entirely while the tab
   // isn't the visible one, which would hang this indefinitely; a timer still
   // fires (Chrome throttles a background tab's timers to at most once a
   // second, but never stops them outright).
-  await new Promise((r) => setTimeout(r, 80));
+  await new Promise((r) => setTimeout(r, autoHeight ? 250 : 120));
+  await waitForStableSvg(containerEl);
+  // A Recharts legend with many entries can take most of the box and squash
+  // the plot into a strip. Give the figure extra height so the plot keeps at
+  // least 60% of the height asked for.
+  if (!autoHeight) {
+    const legend = containerEl.querySelector(".recharts-legend-wrapper");
+    const boxH = containerEl.getBoundingClientRect().height;
+    const legendH = legend ? legend.getBoundingClientRect().height : 0;
+    if (legendH > boxH * 0.4) {
+      containerEl.style.height = `${Math.round(boxH + legendH - boxH * 0.4)}px`;
+      await new Promise((r) => setTimeout(r, 150));
+      await waitForStableSvg(containerEl);
+    }
+  }
   try {
     return await fn();
   } finally {
+    setFigureExporting(false);
     containerEl.style.width = prevWidth;
     containerEl.style.height = prevHeight;
     containerEl.style.maxWidth = prevMaxWidth;
@@ -9321,29 +9538,47 @@ async function pngWithDpi(blob, dpi) {
 // chunk, and the PDF's own page box respectively), so pasting the result
 // into a document reproduces the millimetre size directly, with no manual
 // resizing.
-// Saves a chart drawn as one SVG with its own viewBox (the metro map, the
-// outcome panels, the baseline and scenario figures) at its natural size:
-// one unit is one CSS pixel, at 300 dpi.
-async function exportSvgFigure(containerEl, baseName, format = "png", title = "", subtitle = "") {
-  const svg = containerEl?.querySelector("svg");
-  if (!svg) return;
-  const vb = svg.viewBox.baseVal;
-  const mm = (px) => Math.ceil((px * 25.4) / 96);
-  await exportFigure(containerEl, `${baseName}.png`, { ...DEFAULT_FIGURE_SETTINGS, widthMm: mm(vb.width + 32), heightMm: mm(vb.height + 32 + (title ? 50 : 0)), format }, { title, subtitle });
+// Column widths of a journal page, so an exported figure drops into a
+// manuscript at its final size. The figure is laid out at that width (1 mm
+// is 96/25.4 CSS pixels), so its 12 px text prints at about 9 pt, its small
+// labels at 7 to 8 pt, whatever the width of the window it was exported from.
+const EXPORT_WIDTHS = [
+  { id: "single", label: "Single column (85 mm)", mm: 85 },
+  { id: "onehalf", label: "1.5 column (120 mm)", mm: 120 },
+  { id: "double", label: "Double column (174 mm)", mm: 174 },
+  { id: "page", label: "Full page, landscape (250 mm)", mm: 250 },
+];
+
+// Saves a figure drawn by the tool itself (not a Recharts chart): laid out
+// at the chosen width, with its own height.
+async function exportSvgFigure(containerEl, baseName, format = "png", title = "", subtitle = "", { widthMm = 174, dpi = 300 } = {}) {
+  if (!mainSvgIn(containerEl)) { notify("Open the part of the page that holds this figure, then export it again.", { kind: "info", title: "Nothing to export yet" }); return; }
+  await exportFigure(containerEl, `${baseName}.png`, { ...DEFAULT_FIGURE_SETTINGS, widthMm, heightMm: widthMm, dpi, format }, { title, subtitle });
 }
 
+// One entry point for every export: lays the figure out at the physical
+// width asked for (and, for a Recharts chart, the height), captures it with
+// its title and subtitle, and saves it as PNG (with its resolution
+// recorded), SVG (in millimetres) or PDF (page size of the figure).
 async function exportFigure(containerEl, filename, settings, { title, subtitle } = {}) {
-  if (!containerEl) return;
+  if (!containerEl || !mainSvgIn(containerEl)) { notify("Open the part of the page that holds this figure, then export it again.", { kind: "info", title: "Nothing to export yet" }); return; }
   const padding = 16;
-  const headerH = title ? (subtitle ? 50 : 28) : 0;
-  await withResizedChart(containerEl, { widthMm: settings.widthMm, heightMm: settings.heightMm, shrinkWPx: padding * 2, shrinkHPx: padding * 2 + headerH }, async () => {
+  const innerW = mmToPx(settings.widthMm, 96) - padding * 2;
+  const headerH = title ? exportHeaderHeight(wrapExportText(title, 13, 700, innerW).length, subtitle ? wrapExportText(subtitle, 11, 400, innerW).length : 0) : 0;
+  const autoHeight = !mainSvgIn(containerEl).closest(".recharts-wrapper");
+  const save = (blob, name) => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = scopedFilename(name);
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  };
+  let laidOutH = 0;
+  await withResizedChart(containerEl, { widthMm: settings.widthMm, heightMm: settings.heightMm, shrinkWPx: padding * 2, shrinkHPx: padding * 2 + headerH, autoHeight }, async () => {
+    laidOutH = mainSvgIn(containerEl).getBoundingClientRect().height;
     if (settings.format === "svg") {
-      const result = svgElementToSvgBlob(containerEl, { title, subtitle, padding });
-      if (!result) return;
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(result.blob);
-      a.download = scopedFilename(filename.replace(/\.png$/, ".svg"));
-      a.click();
+      const result = await svgElementToSvgBlob(containerEl, { title, subtitle, padding });
+      if (result) save(result.blob, filename.replace(/\.png$/, ".svg"));
       return;
     }
     const scale = settings.dpi / 96;
@@ -9351,22 +9586,18 @@ async function exportFigure(containerEl, filename, settings, { title, subtitle }
     if (!result) return;
     if (settings.format === "pdf") {
       const pdf = await pngBlobToPdfBlob(result.blob, settings.dpi);
-      const blob = pdf || result.blob;
-      const ext = pdf ? "pdf" : "png";
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = scopedFilename(filename.replace(/\.png$/, `.${ext}`));
-      a.click();
+      save(pdf || result.blob, filename.replace(/\.png$/, pdf ? ".pdf" : ".png"));
       if (!pdf) notify("This browser cannot write PDF files (it lacks CompressionStream), so a high-resolution PNG was downloaded instead.", { kind: "info", title: "Saved as PNG" });
       return;
     }
-    const tagged = await pngWithDpi(result.blob, settings.dpi);
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(tagged);
-    a.download = scopedFilename(filename);
-    a.click();
+    save(await pngWithDpi(result.blob, settings.dpi), filename);
   });
+  if (autoHeight && settings.widthMm < 200) {
+    const hMm = Math.round(((laidOutH + padding * 2 + headerH) * 25.4) / 96);
+    if (hMm > 240) notify(`This figure came out ${hMm} mm tall, which is more than a journal page holds. The full-page width lays it out in two columns and keeps it shorter.`, { kind: "info", title: "Tall figure" });
+  }
 }
+
 
 // The Network tab's canvas isn't a single <svg> the way a Recharts chart is
 // — it's a React Flow tree (HTML node cards, an SVG edge layer, the
@@ -10468,9 +10699,7 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
             <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
               <h4 className="text-sm font-semibold">Intervention prioritization matrix</h4>
               <div className="flex gap-2">
-                {["png", "svg"].map((fmt) => (
-                  <Btn key={fmt} variant="outline" onClick={() => exportSvgFigure(matrixRef.current, "transition-prioritization-matrix", fmt, "Intervention prioritization matrix", `${result.interventionName} (${transitionRangeLabel(result.direction)})`)}><Download size={13} />{fmt.toUpperCase()}</Btn>
-                ))}
+                <FigureExportButton targetRef={matrixRef} baseName="transition-prioritization-matrix" title="Intervention prioritization matrix" subtitle={`${result.interventionName} (${transitionRangeLabel(result.direction)})`} />
               </div>
             </div>
             <p className="text-[12.5px] text-neutral-600 mb-3">Each numbered dot is an outcome that responds. Further left, the outcome already gains most of its effect at a low intensity; higher up, the effect is larger. Green dots rise, orange dots fall; the numbers match the lists below. The lines split the plot at the middle intensity (0.5) and at the average effect.</p>
@@ -10541,17 +10770,7 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
                   <h4 className="text-sm font-semibold">How each outcome responds</h4>
                   <div className="flex gap-2">
-                    {["png", "svg"].map((fmt) => (
-                      <Btn key={fmt} variant="outline" onClick={async () => {
-                        const svg = multiplesRef.current?.querySelector("svg");
-                        if (!svg) return;
-                        const vb = svg.viewBox.baseVal;
-                        const mm = (px) => Math.ceil((px * 25.4) / 96);
-                        await exportFigure(multiplesRef.current, "transition-point-panels.png", { ...DEFAULT_FIGURE_SETTINGS, widthMm: mm(vb.width + 32), heightMm: mm(vb.height + 32 + 50), format: fmt }, {
-                          title: `How each outcome responds to ${result.interventionName} (${transitionRangeLabel(result.direction)})`, subtitle: "Response curve, marginal benefit and transition point per outcome",
-                        });
-                      }}><Download size={13} />{fmt.toUpperCase()}</Btn>
-                    ))}
+                    <FigureExportButton targetRef={multiplesRef} baseName="transition-point-panels" title={`How each outcome responds to ${result.interventionName} (${transitionRangeLabel(result.direction)})`} subtitle="Response curve, marginal benefit and transition point per outcome" />
                   </div>
                 </div>
                 <p className="text-[12.5px] text-neutral-600 mb-2">One panel per outcome. The line is where the outcome settles at each intensity of {result.interventionName}; the bars below are the marginal benefit of each step. The dashed line is the transition point: from there on, the bars shrink and each extra unit of effort adds less. The label gives the share of the total effect already reached at that point.</p>
@@ -11507,21 +11726,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
                       {[11, 13, 15, 17].map((n) => <option key={n} value={n}>{n} px</option>)}
                     </select>
                   </label>
-                  {["png", "svg"].map((fmt) => (
-                    <Btn key={fmt} variant="outline" disabled={metroBusy} onClick={async () => {
-                      const svg = metroRef.current?.querySelector("svg");
-                      if (!svg) return;
-                      const vb = svg.viewBox.baseVal;
-                      setMetroBusy(true);
-                      // Saved at the drawing's natural size (one unit is one CSS pixel), at 300 dpi;
-                      // the Text setting sets how large the labels print.
-                      const mm = (px) => Math.ceil((px * 25.4) / 96);
-                      await exportFigure(metroRef.current, "transition-pathways-metro-map.png", { ...DEFAULT_FIGURE_SETTINGS, widthMm: mm(vb.width + 32), heightMm: mm(vb.height + 32 + 50), format: fmt }, {
-                        title: "Transition Pathways: metro map", subtitle: pathwayContextLine,
-                      });
-                      setMetroBusy(false);
-                    }}><Download size={13} />{fmt.toUpperCase()}</Btn>
-                  ))}
+                  <FigureExportButton targetRef={metroRef} baseName="transition-pathways-metro-map" title="Transition Pathways: metro map" subtitle={pathwayContextLine} />
                 </div>
               </div>
               <p className="text-[12.5px] text-neutral-600 mb-2">Pathways drawn as routes, in the style of adaptation pathways maps. Each intervention has its own colour: a route of one intervention is a solid line, a combined pathway a dashed line in the colour of each stage's lever. An open circle is a transition point, where the next lever is added; the vertical lines are the transfers from a route to the routes that continue it. A filled circle ends a route; a bar ends a route past a tipping point, where at least one outcome ends worse than Business-as-Usual. The scorecard gives the total outcome gain and each outcome's end state. Shown: the top routes (by total outcome gain, or by the outcome you sort by), the selected pathway, and every shorter route they grow out of. Click a route to open it under Advanced results.</p>
@@ -11702,7 +11907,6 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
                           layout={figPlane.legendPosition === "left" || figPlane.legendPosition === "right" ? "vertical" : "horizontal"}
                           verticalAlign={figPlane.legendPosition === "left" || figPlane.legendPosition === "right" ? "middle" : figPlane.legendPosition}
                           align={figPlane.legendPosition === "left" || figPlane.legendPosition === "right" ? figPlane.legendPosition : "center"}
-                          height={figPlane.legendPosition === "top" || figPlane.legendPosition === "bottom" ? 42 : undefined}
                         />
                       )}
                       {figPlane.title && <text x="50%" y={14} textAnchor="middle" fontSize={figPlane.titleFontSize} fontWeight={600} fill="#0f172a">{figPlane.title}</text>}
@@ -11711,7 +11915,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
                       {plane.series.map((a, i) => (
                         <Scatter key={a.key} name={a.label} data={a.data} fill={figPlane.palette === "default" ? a.color : figurePalette(figPlane.palette, PATHWAY_ARCHETYPES.length)[i]} fillOpacity={figPlane.opacity} onClick={(p) => selectPathway(p?.payload?.id ?? p?.id)} isAnimationActive={false} />
                       ))}
-                      <Scatter name="Efficient frontier" data={plane.frontier} fill="none" line={{ stroke: "#334155", strokeDasharray: "5 4", strokeWidth: figPlane.lineWidth }} shape={() => null} legendType="plainline" isAnimationActive={false} />
+                      <Scatter name="Efficient frontier" data={plane.frontier} fill="#334155" line={{ stroke: "#334155", strokeDasharray: "5 4", strokeWidth: figPlane.lineWidth }} shape={() => null} legendType="plainline" isAnimationActive={false} />
                       {selected && (
                         <Scatter
                           name="Selected" data={[{ x: round3(selected.cii), y: round3(selected.tog), id: selected.id }]}
@@ -13879,9 +14083,7 @@ function SpaghettiEngineApp() {
                       <button onClick={() => setComparisonMode("change")} className={`px-2 py-1 ${comparisonMode === "change" ? "bg-slate-900 text-white" : "bg-white hover:bg-slate-50"}`}>Change vs baseline</button>
                       <button onClick={() => setComparisonMode("state")} className={`px-2 py-1 border-l border-slate-300 ${comparisonMode === "state" ? "bg-slate-900 text-white" : "bg-white hover:bg-slate-50"}`}>End state</button>
                     </div>
-                    {["png", "svg"].map((fmt) => (
-                      <Btn key={fmt} variant="outline" disabled={!Object.keys(results).length} onClick={() => exportSvgFigure(comparisonFigRef.current, "scenario-comparison", fmt, "Scenario comparison", `${comparisonMode === "change" ? "Change relative to the baseline" : "End state"}: ${comparedIds.map((id) => comparisonNames[id]).join(", ")}`)}><Download size={13} />{fmt.toUpperCase()}</Btn>
-                    ))}
+                    <FigureExportButton targetRef={comparisonFigRef} baseName="scenario-comparison" title="Scenario comparison" subtitle={`${comparisonMode === "change" ? "Change relative to the baseline" : "End state"}: ${comparedIds.map((id) => comparisonNames[id]).join(", ")}`} disabled={!Object.keys(results).length} />
                     <Btn variant="outline" onClick={exportComparisonCSV} disabled={!Object.keys(results).length}><Download size={13} />CSV</Btn>
                   </div>
                 </div>
@@ -13944,9 +14146,7 @@ function SpaghettiEngineApp() {
                     <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
                       <h4 className="text-sm font-semibold">End state of every concept, baseline and scenarios</h4>
                       <div className="flex gap-2">
-                        {["png", "svg"].map((fmt) => (
-                          <Btn key={fmt} variant="outline" onClick={() => exportSvgFigure(comparisonBarRef.current, "scenario-end-states", fmt, "Scenario comparison: end states", `Scenarios: ${["baseline", ...comparedIds].map((id) => comparisonNames[id]).join(", ")}`)}><Download size={13} />{fmt.toUpperCase()}</Btn>
-                        ))}
+                        <FigureExportButton targetRef={comparisonBarRef} baseName="scenario-end-states" title="Scenario comparison: end states" subtitle={`Scenarios: ${["baseline", ...comparedIds].map((id) => comparisonNames[id]).join(", ")}`} />
                       </div>
                     </div>
                     <p className="text-[12.5px] text-neutral-600 mb-3">For each concept, one bar per run: the baseline in grey and each scenario in its own colour. The table below gives the same numbers.</p>
@@ -14033,7 +14233,7 @@ function SpaghettiEngineApp() {
                               <ResponsiveContainer>
                                 <LineChart data={trajectoryComparison[key]}>
                                   {figTrajComparison.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
-                                  <XAxis dataKey="iteration" tick={{ fontSize: figTrajComparison.tickFontSize }} label={figTrajComparison.xLabel ? { value: figTrajComparison.xLabel, position: "insideBottom", offset: -2, fontSize: figTrajComparison.axisFontSize } : undefined} />
+                                  <XAxis dataKey="iteration" type="number" domain={[0, "dataMax"]} allowDecimals={false} tick={{ fontSize: figTrajComparison.tickFontSize }} label={figTrajComparison.xLabel ? { value: figTrajComparison.xLabel, position: "insideBottom", offset: -2, fontSize: figTrajComparison.axisFontSize } : undefined} />
                                   <YAxis domain={key === "difference" || settings.squashFunction === "linear" ? ["auto", "auto"] : [-1, 1]} tick={{ fontSize: figTrajComparison.tickFontSize }} tickFormatter={(v) => fmtDec(v, figTrajComparison.decimals)} label={figTrajComparison.yLabel ? { value: figTrajComparison.yLabel, angle: -90, position: "insideLeft", fontSize: figTrajComparison.axisFontSize } : undefined} />
                                   <RTooltip />
                                   {figTrajComparison.legendPosition !== "hidden" && (

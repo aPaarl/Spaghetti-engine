@@ -14,6 +14,7 @@
 
 import React from "react";
 import { metroTicks } from "./pathwayMetroLayout.js";
+import { useFigureExporting } from "./AnalysisFigures.jsx";
 
 // One colour per lever, in the order the levers were chosen (colour-blind
 // safe first, then further distinct hues).
@@ -57,11 +58,14 @@ export function routeLabel(c, nameOf) {
 
 export default function PathwayMetroMap({ rows, outcomes, levers, nameOf, selectedId, bestId, onSelect, fontSize = 13 }) {
   const fs = fontSize;
+  // An exported copy is laid out narrower, so that at a journal's column
+  // width its text stays at a readable size.
+  const compact = useFigureExporting();
   const colorOf = (leverId) => METRO_LEVER_COLORS[Math.max(0, levers.findIndex((l) => l.id === leverId)) % METRO_LEVER_COLORS.length];
 
   // Route names up to 430 px wide sit on one line; longer ones wrap at a " + ".
   const labels = rows.map((r) => routeLabel(r.c, nameOf));
-  const maxLabel = 430;
+  const maxLabel = compact ? 250 : 430;
   const wrapped = labels.map((l) => (textW(l, fs, true) <= maxLabel ? [l] : wrap(l, fs, maxLabel, " + ", true)));
   const rowHs = wrapped.map((w) => Math.round(fs * (2.3 + 1.2 * (w.length - 1))));
   const labelW = Math.max(140, ...wrapped.flat().map((l) => textW(l, fs, true))) + 24;
@@ -75,11 +79,11 @@ export default function PathwayMetroMap({ rows, outcomes, levers, nameOf, select
   const headLines = Math.max(...heads.map((h) => h.lines.length + (h.note ? 1 : 0)));
   const headH = headLines * headPx * 1.2 + 8;
 
-  const left = 8, plotX = left + labelW, plotW = 460, plotEnd = plotX + plotW;
-  const scoreX = plotEnd + 36;
+  const left = 8, plotX = left + labelW, plotW = compact ? 320 : 460, plotEnd = plotX + plotW;
+  const scoreX = plotEnd + (compact ? 20 : 36);
   const colX = []; colWs.reduce((acc, w) => { colX.push(acc); return acc + w; }, scoreX);
   const scoreEnd = scoreX + colWs.reduce((a, b) => a + b, 0);
-  const W = Math.max(scoreEnd + 8, plotX + 560);
+  const W = Math.max(scoreEnd + 8, plotX + (compact ? 380 : 560));
   const top = headH + 10;
   const plotH = rowHs.reduce((a, b) => a + b, 0);
   const axisY = top + plotH + 6;
