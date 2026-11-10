@@ -19,7 +19,7 @@ import { metroTicks } from "./pathwayMetroLayout.js";
 // safe first, then further distinct hues).
 export const METRO_LEVER_COLORS = ["#0072b2", "#e69f00", "#009e73", "#cc79a7", "#d55e00", "#56b4e9", "#7a5195", "#8c6d1f", "#2f4b7c", "#c0392b"];
 const INK = "#111827";
-const MUTED = "#4b5563";
+const MUTED = "#374151";
 
 const signed = (v) => (v > 0 ? "+" : v < 0 ? "-" : "") + Math.abs(v).toFixed(2);
 

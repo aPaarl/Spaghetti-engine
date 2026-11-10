@@ -14,7 +14,7 @@
 import React from "react";
 
 const INK = "#111827";
-const MUTED = "#4b5563";
+const MUTED = "#374151";
 const GRID = "#e5e7eb";
 const TYPE_COLORS = {
   Early: "#0072b2", Middle: "#e69f00", Late: "#d55e00", Proportional: "#7a5195", Flat: "#9ca3af",

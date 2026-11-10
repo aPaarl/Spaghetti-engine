@@ -29,7 +29,7 @@ import { toBlob as domNodeToPngBlob } from "html-to-image";
 import AboutTab, { APP_VERSION, CONTACT } from "./AboutTab.jsx";
 import PathwayMetroMap from "./PathwayMetroMap.jsx";
 import TransitionSmallMultiples from "./TransitionSmallMultiples.jsx";
-import { ConvergenceChart, SteadyStateBars, ScenarioComparisonFigure } from "./AnalysisFigures.jsx";
+import { ConvergenceChart, SteadyStateBars, ScenarioComparisonFigure, ScenarioGroupedBars, SensitivityCurves, PrioritizationMatrix, RankedBars, QUADRANTS, quadrantOf, SCENARIO_COLORS, FIG } from "./AnalysisFigures.jsx";
 import { metroRows } from "./pathwayMetroLayout.js";
 import { bootLibrary, saveModel, loadModel, setActive, createModel, renameModel, duplicateModel, deleteModel, readIndex, modelKey } from "./modelLibrary.js";
 import { BrandMark } from "./brand.jsx";
@@ -6461,8 +6461,13 @@ function InfluenceRoutesTab({ concepts, edges, config, setConfig, onHighlight })
     <div className="space-y-5">
       <InfluenceRoutesGuide />
 
-      <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-3">
+      <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-3" data-routes-setup>
+        <div>
+          <h3 className="font-semibold text-sm">Which routes do you want to see?</h3>
+          <p className="text-[12.5px] text-neutral-600">Pick a kind of route, then narrow it down if you like. The results update straight away.</p>
+        </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-medium text-neutral-700 w-28 shrink-0">Kind of route</span>
           {ROUTE_KINDS.map((k) => (
             <button key={k.key} onClick={() => set({ kind: k.key })} title={k.help}
               className={`px-2.5 py-1 rounded-md border text-xs ${effective.kind === k.key ? "bg-slate-900 border-slate-900 text-white" : "bg-white border-slate-300 text-neutral-900 hover:bg-slate-50"}`}>
@@ -6471,6 +6476,7 @@ function InfluenceRoutesTab({ concepts, edges, config, setConfig, onHighlight })
           ))}
         </div>
         <div className="flex items-center gap-3 flex-wrap text-xs text-neutral-900">
+          <span className="text-xs font-medium text-neutral-700 w-28 shrink-0">Narrow down</span>
           {(effective.kind === "within" || effective.kind === "between") && (
             <label className="flex items-center gap-1.5">{effective.kind === "within" ? "Module" : "Module A"}
               <select value={moduleA} onChange={(e) => set({ moduleA: e.target.value })} className="border border-slate-300 rounded px-1.5 py-0.5 bg-white">
@@ -6521,23 +6527,26 @@ function InfluenceRoutesTab({ concepts, edges, config, setConfig, onHighlight })
       </div>
 
       {unavailable ? (
-        <div className="rounded-md border border-slate-200 bg-white p-4 text-xs text-neutral-700">{unavailable}</div>
+        <>
+          <div className="rounded-md border border-slate-200 bg-white p-4 text-xs text-neutral-700">{unavailable}</div>
+          <FeedbackLoopsSection concepts={concepts} edges={edges} onHighlight={onHighlight} />
+        </>
       ) : result && (
         <>
-          <MethodPanel
-            title="Method & diagnostics for these routes"
-            stats={[
-              { label: "Routes found", value: result.truncated ? `${result.paths.length}+ (capped)` : result.paths.length, tone: result.truncated ? "warn" : undefined, hint: "Simple directed routes (no concept visited twice) matching the selection above." },
-              { label: "Same-direction (+) / opposite (−)", value: `${result.positive} / ${result.negative}` },
-              { label: "Combined strength", value: result.totalStrength, hint: "Sum of the strengths of every route found." },
-              { label: "Bottleneck", value: bottleneck ? bottleneck.name : "none", tone: bottleneck ? "warn" : undefined, hint: "A concept carrying at least half of the combined route strength." },
-            ]}
-          >
-            <p><strong>Strength</strong> is the product of the absolute weights along a route, the usual FCM indirect-effect measure: a route is never stronger than its weakest relationship, and longer chains fade. <strong>Sign</strong> is the product of the signs: + means the first concept pushes the last one in the same direction, &minus; in the opposite direction.</p>
-            <p><strong>This is structure, not simulation.</strong> Routes show the routes along which influence <em>can</em> travel. How much actually arrives depends on the transfer function, feedback and everything else acting on the same concepts, which the simulation tabs capture and this tab does not.</p>
-            <p><strong>Bridge concepts</strong> are ranked by the share of combined route strength that passes <em>through</em> them (as an intermediate step, not a start or end). "Boundary crossings" counts how often a route changes module at that concept, which marks it as a coupling point. A concept carrying half or more of the strength is flagged as a bottleneck: the selected routes largely depend on it, which makes it a place where coordination between subsystems is needed. The 50% threshold is a convention of this tool.</p>
-            <p><strong>Enumeration is capped</strong> at 6 relationships per route, {ROUTE_KEEP_LIMIT.toLocaleString()} routes and {ROUTE_EXPANSION_LIMIT.toLocaleString()} search steps, so a dense network cannot freeze the page{result.truncated ? ". This selection hit the cap, so counts and shares are based on the routes found before it; narrow the selection (shorter length, a From/To concept) for complete figures" : ""}.</p>
-          </MethodPanel>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3" data-routes-summary>
+            {[
+              { label: "Routes found", value: result.truncated ? `${result.paths.length}+` : result.paths.length, note: result.truncated ? "capped: narrow the selection for complete figures" : "matching the selection above" },
+              { label: "Same direction / opposite", value: <><span className="text-green-700">{result.positive}</span> <span className="text-neutral-400">/</span> <span className="text-orange-700">{result.negative}</span></>, note: "routes that push the end concept up / down" },
+              { label: "Combined strength", value: result.totalStrength, note: "sum over every route found" },
+              { label: "Bottleneck", value: bottleneck ? bottleneck.name : "None", note: bottleneck ? `carries ${Math.round(bottleneck.share * 100)}% of the strength` : "no concept carries half of the strength", warn: !!bottleneck },
+            ].map((t) => (
+              <div key={t.label} className={`bg-white rounded-lg border p-3 ${t.warn ? "border-orange-200" : "border-slate-200"}`}>
+                <div className="text-[12px] text-neutral-600">{t.label}</div>
+                <div className={`text-lg font-semibold leading-tight mt-0.5 ${t.warn ? "text-orange-800" : "text-neutral-900"}`}>{t.value}</div>
+                <div className="text-[12px] text-neutral-500 mt-0.5">{t.note}</div>
+              </div>
+            ))}
+          </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
             <div className="bg-white rounded-lg border border-slate-200 p-4">
@@ -6609,6 +6618,8 @@ function InfluenceRoutesTab({ concepts, edges, config, setConfig, onHighlight })
             </div>
           </div>
 
+          <FeedbackLoopsSection concepts={concepts} edges={edges} onHighlight={onHighlight} />
+
           <div className="bg-white rounded-lg border border-slate-200 p-4">
             <div className="flex items-center gap-3 mb-2">
               <h3 className="font-semibold text-sm">Strongest routes</h3>
@@ -6662,10 +6673,25 @@ function InfluenceRoutesTab({ concepts, edges, config, setConfig, onHighlight })
               </div>
             )}
           </div>
+
+          <MethodPanel
+            fold
+            title="Method & diagnostics for these routes"
+            stats={[
+              { label: "Routes found", value: result.truncated ? `${result.paths.length}+ (capped)` : result.paths.length, tone: result.truncated ? "warn" : undefined, hint: "Simple directed routes (no concept visited twice) matching the selection above." },
+              { label: "Same-direction (+) / opposite (−)", value: `${result.positive} / ${result.negative}` },
+              { label: "Combined strength", value: result.totalStrength, hint: "Sum of the strengths of every route found." },
+              { label: "Bottleneck", value: bottleneck ? bottleneck.name : "none", tone: bottleneck ? "warn" : undefined, hint: "A concept carrying at least half of the combined route strength." },
+            ]}
+          >
+            <p><strong>Strength</strong> is the product of the absolute weights along a route, the usual FCM indirect-effect measure: a route is never stronger than its weakest relationship, and longer chains fade. <strong>Sign</strong> is the product of the signs: + means the first concept pushes the last one in the same direction, &minus; in the opposite direction.</p>
+            <p><strong>This is structure, not simulation.</strong> Routes show the routes along which influence <em>can</em> travel. How much actually arrives depends on the transfer function, feedback and everything else acting on the same concepts, which the simulation tabs capture and this tab does not.</p>
+            <p><strong>Bridge concepts</strong> are ranked by the share of combined route strength that passes <em>through</em> them (as an intermediate step, not a start or end). "Boundary crossings" counts how often a route changes module at that concept, which marks it as a coupling point. A concept carrying half or more of the strength is flagged as a bottleneck: the selected routes largely depend on it, which makes it a place where coordination between subsystems is needed. The 50% threshold is a convention of this tool.</p>
+            <p><strong>Enumeration is capped</strong> at 6 relationships per route, {ROUTE_KEEP_LIMIT.toLocaleString()} routes and {ROUTE_EXPANSION_LIMIT.toLocaleString()} search steps, so a dense network cannot freeze the page{result.truncated ? ". This selection hit the cap, so counts and shares are based on the routes found before it; narrow the selection (shorter length, a From/To concept) for complete figures" : ""}.</p>
+          </MethodPanel>
         </>
       )}
 
-      <FeedbackLoopsSection concepts={concepts} edges={edges} onHighlight={onHighlight} />
     </div>
   );
 }
@@ -6681,6 +6707,9 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
   const [sensMax, setSensMax] = useState(1);
   const [sensSteps, setSensSteps] = useState(20);
   const [sensCompareIds, setSensCompareIds] = useState([]);
+  const [sensFilter, setSensFilter] = useState("");
+  const sensCurvesRef = useRef(null);
+  const tornadoRef = useRef(null);
 
   // Excludes the current input concept, the same way Transition Point
   // Analysis's availableOutcomeConcepts excludes its intervention concept:
@@ -6749,16 +6778,17 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
       return { name: c.name, low: round2(lo), high: round2(hi), impact: round2(hi - lo) };
     }).sort((a, b) => Math.abs(b.impact) - Math.abs(a.impact)).slice(0, 12);
 
-    setResult({ curveData, elasticity, tornado, scenarioIds, multi, primaryOutput, __modelVersion: modelVersion });
+    setResult({ curveData, elasticity, tornado, scenarioIds, multi, primaryOutput, outputs: [...sensOutputs], inputId: sensInput, __modelVersion: modelVersion });
   };
   const isStale = !!result && result.__modelVersion !== modelVersion;
 
   const lineColors = ["#2456d6", "#c2410c", "#7c3aed", "#0f766e", "#be123c", "#4d7c0f"];
   const lineKeys = useMemo(() => {
     if (!result) return [];
-    if (!result.multi) return sensOutputs.map((id) => ({ key: id, label: concepts.find((c) => c.id === id)?.name }));
+    const outs = result.outputs || sensOutputs;
+    if (!result.multi) return outs.map((id) => ({ key: id, label: concepts.find((c) => c.id === id)?.name }));
     const keys = [];
-    sensOutputs.forEach((id) => result.scenarioIds.forEach((scId) => keys.push({
+    outs.forEach((id) => result.scenarioIds.forEach((scId) => keys.push({
       key: `${id}__${scId}`,
       label: `${concepts.find((c) => c.id === id)?.name} (${scenarios.find((s) => s.id === scId)?.name})`,
     })));
@@ -6783,79 +6813,90 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
           <div className="pt-2 border-t border-slate-100">
             <p className="font-medium text-neutral-900 mb-1.5">Steps</p>
             <ol className="list-decimal list-inside space-y-1">
-              <li>Choose the input concept to sweep (Step 1).</li>
-              <li>Choose one or more output concepts to observe as the input changes (Step 2).</li>
-              <li>Set the range the input sweeps across, from Range min to Range max (Step 3).</li>
-              <li>Choose how many increments to sample across that range (Step 4).</li>
-              <li>Optionally, tick one or more scenarios under "Compare across scenarios" to run the sweep against those instead of just the active scenario.</li>
-              <li>Click Run analysis (Step 5) to generate the sensitivity curves, tornado chart, and elasticity table.</li>
+              <li>Choose the concept to change (step 1).</li>
+              <li>Choose one or more concepts to watch (step 2).</li>
+              <li>Choose the range and how finely to sample it (step 3). Optionally, compare the sweep across scenarios.</li>
+              <li>Click Run analysis. The reading, the sensitivity curves and the tornado chart appear below; the elasticity metrics, impact ranking and response table are under Advanced results.</li>
             </ol>
           </div>
         </div>
       </FoldableBox>
 
-      <div className="bg-white rounded-lg border border-slate-200 p-4">
-        <h3 className="font-semibold text-sm mb-3">Run an analysis</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div>
-            <label className="text-xs text-neutral-700 font-medium">Step 1: Input concept</label>
+      <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-4" data-sensitivity-setup>
+        <div>
+          <h3 className="font-semibold text-sm">Run a sensitivity analysis</h3>
+          <p className="text-[12.5px] text-neutral-600">Hold one concept at a range of values and see where the concepts you care about settle each time.</p>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="rounded-md border border-slate-200 p-3">
+            <div className="flex items-center gap-2 mb-1.5"><span className="w-5 h-5 rounded-full bg-cobalt-700 text-white text-[11.5px] font-semibold flex items-center justify-center">1</span><span className="text-xs font-semibold text-neutral-900">What do you want to change?</span></div>
             <select
-              value={sensInput || ""}
+              value={sensInput || ""} aria-label="Concept to change"
               onChange={(e) => { setSensInput(e.target.value); setSensOutputs((os) => os.filter((o) => o !== e.target.value)); }}
-              className="w-full mt-1 text-xs border border-slate-200 rounded px-2 py-1.5"
+              className="w-full text-xs border border-slate-300 rounded px-2 py-1.5 bg-white"
             >
-              <option value="" disabled>Select…</option>
+              <option value="" disabled>Choose a concept…</option>
               {concepts.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
+            <p className="text-[12px] text-neutral-500 mt-1.5">This concept is held fixed at each value of the range in turn.</p>
           </div>
-          <div className="col-span-2">
-            <label className="text-xs text-neutral-700 font-medium">Step 2: Output concept(s)</label>
-            <div className="mt-1 flex flex-wrap gap-1 max-h-[70px] overflow-auto border border-slate-200 rounded p-1.5">
-              {availableOutputConcepts.map((c) => (
+          <div className="rounded-md border border-slate-200 p-3 lg:col-span-2">
+            <div className="flex items-center gap-2 mb-1.5"><span className="w-5 h-5 rounded-full bg-cobalt-700 text-white text-[11.5px] font-semibold flex items-center justify-center">2</span><span className="text-xs font-semibold text-neutral-900">What do you want to watch?</span>
+              <span className="text-[12px] text-neutral-500">{sensOutputs.length ? `${sensOutputs.length} chosen` : "choose one or more"}</span>
+              {sensOutputs.length > 0 && <button onClick={() => setSensOutputs([])} className="ml-auto text-[12px] text-cobalt-700 hover:underline">Clear</button>}
+            </div>
+            <input value={sensFilter} onChange={(e) => setSensFilter(e.target.value)} placeholder="Find a concept…" className="w-full text-xs border border-slate-300 rounded px-2 py-1 mb-1.5" />
+            <div className="flex flex-wrap gap-1 max-h-28 overflow-auto">
+              {availableOutputConcepts.filter((c) => !sensFilter || c.name.toLowerCase().includes(sensFilter.toLowerCase())).map((c) => (
                 <button
-                  key={c.id} onClick={() => toggleOutput(c.id)}
-                  className={`text-[11.5px] px-1.5 py-0.5 rounded border ${sensOutputs.includes(c.id) ? "border-cobalt-700 bg-cobalt-50 text-cobalt-800" : "border-slate-200 text-neutral-700 hover:border-slate-400"}`}
+                  key={c.id} onClick={() => toggleOutput(c.id)} aria-pressed={sensOutputs.includes(c.id)}
+                  className={`text-[12px] px-2 py-0.5 rounded-full border ${sensOutputs.includes(c.id) ? "border-cobalt-700 bg-cobalt-700 text-white" : "border-slate-300 text-neutral-800 hover:border-slate-500"}`}
                 >
-                  {c.name}
+                  {sensOutputs.includes(c.id) ? "✓ " : ""}{c.name}
                 </button>
               ))}
             </div>
           </div>
-          <div>
-            <label className="text-xs text-neutral-700 font-medium">Step 4: Increments</label>
-            <select value={sensSteps} onChange={(e) => setSensSteps(parseInt(e.target.value))} className="w-full mt-1 text-xs border border-slate-200 rounded px-2 py-1.5">
-              <option value={10}>10</option>
-              <option value={20}>20</option>
-              <option value={50}>50</option>
-            </select>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-3">
-          <div>
-            <label className="text-xs text-neutral-700 font-medium">Step 3: Range min</label>
-            <input type="number" step={0.1} min={-1} max={1} value={sensMin} onChange={(e) => setSensMin(clamp(parseFloat(e.target.value) || 0))} className="w-full mt-1 text-xs border border-slate-200 rounded px-2 py-1.5" />
-          </div>
-          <div>
-            <label className="text-xs text-neutral-700 font-medium">Range max</label>
-            <input type="number" step={0.1} min={-1} max={1} value={sensMax} onChange={(e) => setSensMax(clamp(parseFloat(e.target.value) || 0))} className="w-full mt-1 text-xs border border-slate-200 rounded px-2 py-1.5" />
-          </div>
-          <div className="col-span-2">
-            <label className="text-xs text-neutral-700 font-medium">Compare across scenarios (optional)</label>
-            <div className="mt-1 flex flex-wrap gap-1 max-h-[38px] overflow-auto">
-              {scenarios.map((s) => (
-                <button
-                  key={s.id} onClick={() => toggleCompareScenario(s.id)}
-                  className={`text-[11.5px] px-1.5 py-0.5 rounded border ${sensCompareIds.includes(s.id) ? "border-purple-600 bg-purple-50 text-purple-800" : "border-slate-200 text-neutral-700 hover:border-slate-400"}`}
-                >
-                  {s.name}
-                </button>
-              ))}
+          <div className="rounded-md border border-slate-200 p-3 lg:col-span-3">
+            <div className="flex items-center gap-2 mb-2"><span className="w-5 h-5 rounded-full bg-cobalt-700 text-white text-[11.5px] font-semibold flex items-center justify-center">3</span><span className="text-xs font-semibold text-neutral-900">Over which range, and how finely?</span></div>
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs">
+              <div className="inline-flex border border-slate-300 rounded overflow-hidden" role="group" aria-label="Range">
+                {[[-1, 1, "Whole scale (-1 to +1)"], [0, 1, "Up only (0 to +1)"], [-1, 0, "Down only (-1 to 0)"]].map(([lo, hi, label], k) => (
+                  <button key={label} onClick={() => { setSensMin(lo); setSensMax(hi); }} className={`px-2.5 py-1 ${k ? "border-l border-slate-300" : ""} ${sensMin === lo && sensMax === hi ? "bg-slate-900 text-white" : "bg-white hover:bg-slate-50"}`}>{label}</button>
+                ))}
+              </div>
+              <label className="flex items-center gap-1.5 text-neutral-700">or from
+                <input type="number" step={0.1} min={-1} max={1} value={sensMin} onChange={(e) => setSensMin(clamp(parseFloat(e.target.value) || 0))} className="w-16 border border-slate-300 rounded px-1.5 py-0.5" aria-label="Range from" />
+                to
+                <input type="number" step={0.1} min={-1} max={1} value={sensMax} onChange={(e) => setSensMax(clamp(parseFloat(e.target.value) || 0))} className="w-16 border border-slate-300 rounded px-1.5 py-0.5" aria-label="Range to" />
+              </label>
+              <div className="inline-flex border border-slate-300 rounded overflow-hidden" role="group" aria-label="Detail">
+                {[[10, "Coarse (11 points)"], [20, "Normal (21 points)"], [50, "Fine (51 points)"]].map(([n, label], k) => (
+                  <button key={n} onClick={() => setSensSteps(n)} className={`px-2.5 py-1 ${k ? "border-l border-slate-300" : ""} ${sensSteps === n ? "bg-slate-900 text-white" : "bg-white hover:bg-slate-50"}`}>{label}</button>
+                ))}
+              </div>
             </div>
+            {scenarios.length > 1 && (
+              <details className="mt-3 text-xs">
+                <summary className="cursor-pointer text-neutral-700">Compare across scenarios (optional){sensCompareIds.length ? `: ${sensCompareIds.length} chosen` : ""}</summary>
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  {scenarios.map((sc) => (
+                    <button key={sc.id} onClick={() => toggleCompareScenario(sc.id)} aria-pressed={sensCompareIds.includes(sc.id)}
+                      className={`text-[12px] px-2 py-0.5 rounded-full border ${sensCompareIds.includes(sc.id) ? "border-purple-600 bg-purple-50 text-purple-800" : "border-slate-300 text-neutral-800 hover:border-slate-500"}`}>
+                      {sc.name}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[12px] text-neutral-500 mt-1">Without a choice the sweep runs on the active scenario.</p>
+              </details>
+            )}
           </div>
         </div>
-        <div className="mt-4">
-          <Btn variant="accent" onClick={runAnalysis} disabled={!sensInput || sensOutputs.length === 0 || sensMin >= sensMax}><Play size={14} />Step 5: Run analysis</Btn>
-          {sensMin >= sensMax && <span className="text-xs text-rose-600 ml-2">Range min must be less than max.</span>}
+        <div className="flex flex-wrap items-center gap-3">
+          <Btn variant="accent" onClick={runAnalysis} disabled={!sensInput || sensOutputs.length === 0 || sensMin >= sensMax}><Play size={14} />Run analysis</Btn>
+          <span className="text-[12.5px] text-neutral-600">
+            {!sensInput ? "Choose a concept to change (step 1)." : sensOutputs.length === 0 ? "Choose at least one concept to watch (step 2)." : sensMin >= sensMax ? <span className="text-rose-600">The start of the range must be below its end.</span> : `Holds ${concepts.find((c) => c.id === sensInput)?.name} at ${Math.max(2, sensSteps) + 1} values from ${sensMin} to ${sensMax}.`}
+          </span>
         </div>
       </div>
 
@@ -6863,71 +6904,67 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
         <>
           {isStale && <StaleResultBanner label="this sensitivity analysis" />}
 
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
-            <h4 className="text-sm font-semibold mb-2">Sensitivity curves</h4>
-            <div className="w-full h-72">
-              <ResponsiveContainer>
-                <LineChart data={result.curveData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="input" tick={{ fontSize: 12 }} label={{ value: concepts.find((c) => c.id === sensInput)?.name, position: "insideBottom", offset: -5, fontSize: 11 }} />
-                  <YAxis domain={[(dMin) => Math.min(-0.1, dMin - 0.05), (dMax) => Math.max(0.1, dMax + 0.05)]} tick={{ fontSize: 12 }} />
-                  <RTooltip />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <ReferenceLine y={0} stroke="#cbd5e1" />
-                  <ReferenceLine x={0} stroke="#cbd5e1" />
-                  {lineKeys.map((lk, i) => (
-                    <Line key={lk.key} type="monotone" dataKey={lk.key} name={lk.label} stroke={lineColors[i % lineColors.length]} strokeWidth={2} dot={{ r: 2 }} />
-                  ))}
-                </LineChart>
-              </ResponsiveContainer>
+          {(() => {
+            const inName = concepts.find((c) => c.id === sensInput)?.name || "the input";
+            const ranked = [...result.elasticity].map((e) => {
+              const key = result.multi ? `${e.id}__${result.scenarioIds[0]}` : e.id;
+              const d = (result.curveData[result.curveData.length - 1][key] ?? 0) - (result.curveData[0][key] ?? 0);
+              return { ...e, d, span: e.max - e.min };
+            }).sort((a, b) => b.span - a.span);
+            const strong = ranked.filter((r) => r.span >= 0.2), weak = ranked.filter((r) => r.span < 0.05);
+            const lead = ranked[0];
+            return (
+              <div className="rounded-lg border border-cobalt-200 bg-cobalt-50 p-4" data-sensitivity-reading>
+                <h4 className="text-sm font-semibold text-neutral-900 mb-1">What this shows</h4>
+                <p className="text-xs text-neutral-900 leading-relaxed">
+                  {lead && lead.span >= 0.05
+                    ? <>Of the concepts you watched, <strong>{lead.name}</strong> responds most to {inName}: it settles between {lead.min.toFixed(2)} and {lead.max.toFixed(2)} across the range{Math.abs(lead.d) >= 0.05 ? <>, and ends {lead.d > 0 ? "higher" : "lower"} when {inName} is high</> : <>, but ends at about the same level at both ends of the range</>}.</>
+                    : <>None of the concepts you watched respond much to {inName}: each settles within 0.05 of the same value across the whole range.</>}
+                  {strong.length > 1 && <> {strong.length} of {ranked.length} respond strongly (they move by 0.2 or more).</>}
+                  {weak.length > 0 && weak.length < ranked.length && <> {weak.map((w) => w.name).join(", ")} {weak.length === 1 ? "hardly responds" : "hardly respond"}.</>}
+                </p>
+              </div>
+            );
+          })()}
+
+          <div className="bg-white rounded-lg border border-slate-200 p-4" data-chart="sensitivity-curves">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+              <h4 className="text-sm font-semibold">Sensitivity curves</h4>
+              <div className="flex gap-2">
+                {["png", "svg"].map((fmt) => (
+                  <Btn key={fmt} variant="outline" onClick={() => exportSvgFigure(sensCurvesRef.current, "sensitivity-curves", fmt, "Sensitivity curves", `${concepts.find((c) => c.id === sensInput)?.name} held from ${sensMin} to ${sensMax}`)}><Download size={13} />{fmt.toUpperCase()}</Btn>
+                ))}
+              </div>
+            </div>
+            <p className="text-[12.5px] text-neutral-600 mb-3">One panel per concept you watch. Left to right, {concepts.find((c) => c.id === sensInput)?.name} is held at a higher value; the line shows where the watched concept settles each time. A flat line means it does not respond; a steep part is where it responds most.</p>
+            <div ref={sensCurvesRef}>
+              <SensitivityCurves
+                data={result.curveData} inputName={concepts.find((c) => c.id === (result.inputId || sensInput))?.name || "Input"}
+                outputs={(result.outputs || sensOutputs).map((id) => ({ id, name: concepts.find((c) => c.id === id)?.name || id }))}
+                lines={result.multi
+                  ? (result.outputs || sensOutputs).flatMap((id) => result.scenarioIds.map((scId, k) => ({ key: `${id}__${scId}`, outputId: id, scenarioName: scenarios.find((x) => x.id === scId)?.name || scId, color: SCENARIO_COLORS[k % SCENARIO_COLORS.length] })))
+                  : (result.outputs || sensOutputs).map((id) => ({ key: id, outputId: id, scenarioName: "", color: SCENARIO_COLORS[0] }))}
+              />
             </div>
           </div>
 
-          <MethodPanel
-            stats={[
-              { label: "Sweep", value: `${sensMin} → ${sensMax}, ${Math.max(2, sensSteps) + 1} points` },
-              {
-                label: "Simulation runs",
-                value: (Math.max(2, sensSteps) + 1) * (result.scenarioIds?.length || 1) + 2 * Math.max(0, concepts.length - 1),
-                hint: "One full run per sweep point per scenario for the response curves, plus two runs per concept (low end and high end) for the tornado chart.",
-              },
-              { label: "Transfer function / λ", value: transferFunctionLabel(settings) },
-              {
-                label: "Tornado entries shown",
-                value: `${result.tornado.length} of ${Math.max(0, concepts.length - 1)}`,
-                tone: result.tornado.length < concepts.length - 1 ? "warn" : undefined,
-                hint: "The chart is capped at the 12 concepts with the largest absolute impact.",
-              },
-            ]}
-          >
-            <p><strong>Elasticity here is a secant, not a derivative.</strong> It is computed as (value at the top of the sweep &minus; value at the bottom) &divide; the width of the sweep, so only the two endpoints are used. A response that rises then falls, or that is flat at both ends but steep in the middle, can therefore report an elasticity near zero while actually moving a great deal. Always read it against the Min/Max columns and the shape of the curve above; if those disagree with the elasticity figure, the curve is the honest account.</p>
-            <p><strong>The tornado chart varies one concept at a time.</strong> Each bar is the difference between two runs with that single concept locked low and locked high, everything else left as it is. This is a one-at-a-time design, so it captures no interactions: two concepts that matter enormously together but little apart will both show short bars. It also applies the same {sensMin}&nbsp;to&nbsp;{sensMax} range to every concept regardless of whether that span is plausible for each one.</p>
-            <p><strong>The swept concept is held fixed, not merely started there.</strong> Each point locks the input at that value for the entire run, so the curve answers "where does the system settle while this is held here", not "what happens if this is nudged and then released".</p>
-            <p><strong>Every point is an equilibrium, not a moment in time.</strong> The x-axis is an input level and the y-axis is a settled state; nothing here describes how long a transition would take or what the system does on the way.</p>
-          </MethodPanel>
-
-          {/* Stacked, not side by side: the tornado needs the full width so
-              long concept names stay on one line without crushing the bars. */}
-          <div className="grid grid-cols-1 gap-5">
             <div className="bg-white rounded-lg border border-slate-200 p-4" data-chart="sensitivity-scores">
-              <h4 className="text-sm font-semibold mb-1">Tornado chart: impact on {concepts.find((c) => c.id === result.primaryOutput)?.name}</h4>
-              <p className="text-[12.5px] text-neutral-600 mb-2">Every other concept swept from {sensMin} to {sensMax} one at a time; ranked by how much it moves the primary output.</p>
-              <div className="w-full" style={{ height: Math.max(200, result.tornado.length * 24 + 40) }}>
-                <ResponsiveContainer>
-                  <BarChart data={result.tornado} layout="vertical" margin={{ left: 8, right: 16 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <XAxis type="number" tick={{ fontSize: 12 }} />
-                    <YAxis type="category" dataKey="name" width={labelAxisWidth(result.tornado.map((d) => d.name))} interval={0} tick={(p) => <SingleLineTick {...p} />} />
-                    <RTooltip />
-                    <ReferenceLine x={0} stroke="#94a3b8" />
-                    <Bar dataKey="impact" radius={[0, 3, 3, 0]}>
-                      {result.tornado.map((d, i) => <Cell key={i} fill={d.impact >= 0 ? "#16a34a" : "#dc2626"} />)}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+                <h4 className="text-sm font-semibold">Tornado chart: what moves {concepts.find((c) => c.id === result.primaryOutput)?.name} most</h4>
+                <div className="flex gap-2">
+                  {["png", "svg"].map((fmt) => (
+                    <Btn key={fmt} variant="outline" onClick={() => exportSvgFigure(tornadoRef.current, "sensitivity-tornado", fmt, `Tornado chart: impact on ${concepts.find((c) => c.id === result.primaryOutput)?.name}`)}><Download size={13} />{fmt.toUpperCase()}</Btn>
+                  ))}
+                </div>
+              </div>
+              <p className="text-[12.5px] text-neutral-600 mb-3">Every other concept is held at {sensMin} and then at {sensMax}, one at a time. The bar is how much that changes {concepts.find((c) => c.id === result.primaryOutput)?.name} (the first concept you watch). Green raises it, orange lowers it; the 12 strongest are shown.</p>
+              <div ref={tornadoRef}>
+                <RankedBars rows={result.tornado.map((d) => ({ name: d.name, value: d.impact }))} axisLabel={`Change in ${concepts.find((c) => c.id === result.primaryOutput)?.name} between the low and the high end`} />
               </div>
             </div>
 
+          <FoldableBox storageKey="se.fold.sensitivityAdvanced" title="Advanced results" icon={FlaskConical} summary="The elasticity metrics, the impact ranking and the full response table.">
+            <div className="space-y-5">
             <div className="bg-white rounded-lg border border-slate-200 p-4">
               <div className="flex items-center justify-between mb-2">
                 <h4 className="text-sm font-semibold">Elasticity metrics</h4>
@@ -6981,7 +7018,6 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
                 </table>
               </div>
             </div>
-          </div>
 
           <div className="bg-white rounded-lg border border-slate-200 p-4">
             <h4 className="text-sm font-semibold mb-2">Response table</h4>
@@ -7004,6 +7040,32 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
               </table>
             </div>
           </div>
+            </div>
+          </FoldableBox>
+
+          <MethodPanel
+            fold
+            stats={[
+              { label: "Sweep", value: `${sensMin} → ${sensMax}, ${Math.max(2, sensSteps) + 1} points` },
+              {
+                label: "Simulation runs",
+                value: (Math.max(2, sensSteps) + 1) * (result.scenarioIds?.length || 1) + 2 * Math.max(0, concepts.length - 1),
+                hint: "One full run per sweep point per scenario for the response curves, plus two runs per concept (low end and high end) for the tornado chart.",
+              },
+              { label: "Transfer function / λ", value: transferFunctionLabel(settings) },
+              {
+                label: "Tornado entries shown",
+                value: `${result.tornado.length} of ${Math.max(0, concepts.length - 1)}`,
+                tone: result.tornado.length < concepts.length - 1 ? "warn" : undefined,
+                hint: "The chart is capped at the 12 concepts with the largest absolute impact.",
+              },
+            ]}
+          >
+            <p><strong>Elasticity here is a secant, not a derivative.</strong> It is computed as (value at the top of the sweep &minus; value at the bottom) &divide; the width of the sweep, so only the two endpoints are used. A response that rises then falls, or that is flat at both ends but steep in the middle, can therefore report an elasticity near zero while actually moving a great deal. Always read it against the Min/Max columns and the shape of the curve above; if those disagree with the elasticity figure, the curve is the honest account.</p>
+            <p><strong>The tornado chart varies one concept at a time.</strong> Each bar is the difference between two runs with that single concept locked low and locked high, everything else left as it is. This is a one-at-a-time design, so it captures no interactions: two concepts that matter enormously together but little apart will both show short bars. It also applies the same {sensMin}&nbsp;to&nbsp;{sensMax} range to every concept regardless of whether that span is plausible for each one.</p>
+            <p><strong>The swept concept is held fixed, not merely started there.</strong> Each point locks the input at that value for the entire run, so the curve answers "where does the system settle while this is held here", not "what happens if this is nudged and then released".</p>
+            <p><strong>Every point is an equilibrium, not a moment in time.</strong> The x-axis is an input level and the y-axis is a settled state; nothing here describes how long a transition would take or what the system does on the way.</p>
+          </MethodPanel>
         </>
       )}
     </div>
@@ -7184,6 +7246,37 @@ function MonteCarloTab({ concepts, edges, scenarios, activeScenarioId, settings,
       {result && (
         <>
           {isStale && <StaleResultBanner label="Monte Carlo result" />}
+          {(() => {
+            // A plain-language reading of the runs for a non-expert: how
+            // robust the picture is, which concepts are firm and which are
+            // uncertain, and which could end on either side of 0.
+            const pc = result.perConcept;
+            const band = (p) => p.p95 - p.p5;
+            const firm = pc.filter((p) => band(p) < 0.1);
+            const loose = [...pc].filter((p) => band(p) >= 0.3).sort((a, b) => band(b) - band(a));
+            const flips = pc.filter((p) => p.p5 < -0.05 && p.p95 > 0.05);
+            const rate = result.convergenceRate;
+            const names = (arr, n = 3) => arr.slice(0, n).map((p) => p.name).join(", ") + (arr.length > n ? ` and ${arr.length - n} more` : "");
+            const share = pc.length ? firm.length / pc.length : 0;
+            const verdict = rate < 0.9 ? "fragile" : share >= 0.7 && flips.length === 0 ? "robust" : share >= 0.4 && flips.length <= 2 ? "mostly robust" : "uncertain";
+            const tone = verdict === "robust" ? "border-emerald-200 bg-emerald-50" : verdict === "mostly robust" ? "border-cobalt-200 bg-cobalt-50" : "border-amber-200 bg-amber-50";
+            return (
+              <div className={`rounded-lg border p-4 ${tone}`} data-mc-interpretation>
+                <h3 className="font-semibold text-sm text-neutral-900 mb-1">What these results mean</h3>
+                <p className="text-xs text-neutral-900 leading-relaxed mb-2">
+                  The model was run {result.runs} times, each time with every relationship weight changed at random by up to ±{result.config?.weightSpread ?? weightSpread}{(result.config?.initialSpread ?? 0) > 0 ? ` and every starting value by up to ±${result.config.initialSpread}` : ""}. This mimics how unsure the participants could be about the exact strengths. Overall the picture is <strong>{verdict}</strong>.
+                </p>
+                <ul className="text-xs text-neutral-900 leading-relaxed space-y-1 list-disc pl-5">
+                  <li>{rate >= 0.99 ? "Every run settled, so the end states below are real resting points." : `${Math.round(rate * 100)}% of the runs settled. The others kept moving, so read their values with care.`}</li>
+                  <li>{firm.length ? <><strong>{firm.length} of {pc.length} concepts</strong> end up in almost the same place in nearly every run (within 0.1){firm.length < pc.length ? <>, for example {names(firm)}</> : ""}. You can rely on these.</> : "No concept ends in the same place in nearly every run: the outcome depends strongly on the exact weights."}</li>
+                  {loose.length > 0 && <li><strong>Most uncertain:</strong> {names(loose)}. In 9 out of 10 runs {loose.length === 1 ? "it ends" : "they end"} somewhere in a band of 0.3 or wider, so the exact level is not settled by the model.</li>}
+                  {flips.length > 0 ? <li><strong>Could go either way:</strong> {names(flips)} {flips.length === 1 ? "ends" : "end"} above 0 in some runs and below 0 in others. Whether {flips.length === 1 ? "it rises or falls" : "these rise or fall"} depends on weights the group is unsure about, which makes {flips.length === 1 ? "it" : "them"} a good topic for discussion.</li>
+                    : <li>No concept switches between ending above and below 0, so the direction of every result holds up.</li>}
+                </ul>
+                <p className="text-[12px] text-neutral-600 mt-2">"In 9 out of 10 runs" refers to the 5% to 95% range in the table below.</p>
+              </div>
+            );
+          })()}
           <div className="bg-white rounded-lg border border-slate-200 p-4">
             <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
               <h3 className="font-semibold text-sm">
@@ -7731,6 +7824,22 @@ function BaselineEquilibriumTab({
               <span className="text-xs text-neutral-700">{result.converged ? `after ${result.iterationsRun} iteration${result.iterationsRun === 1 ? "" : "s"}` : `stopped after ${result.iterationsRun} iterations`} &middot; {stability.status}</span>
             </div>
             <p className="text-xs text-neutral-900 mt-1.5">{equilibriumExplanation}</p>
+            {(() => {
+              const moves = concepts.map((c) => ({ c, v: result.final[c.id] ?? 0, d: (result.final[c.id] ?? 0) - (usedInit?.[c.id] ?? 0) }));
+              const up = moves.filter((m) => m.v > 0.05).length, down = moves.filter((m) => m.v < -0.05).length;
+              const top = [...moves].sort((a, b) => Math.abs(b.d) - Math.abs(a.d)).slice(0, 3);
+              const sgn = (x) => `${x >= 0 ? "+" : "-"}${Math.abs(x).toFixed(2)}`;
+              return (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3" data-baseline-tiles>
+                  <div className="bg-white/80 rounded-md border border-white px-3 py-2"><div className="text-[12px] text-neutral-600">Iterations run</div><div className="text-lg font-semibold text-neutral-900">{result.iterationsRun}</div></div>
+                  <div className="bg-white/80 rounded-md border border-white px-3 py-2"><div className="text-[12px] text-neutral-600">Concepts ending above 0</div><div className="text-lg font-semibold text-emerald-700">{up}</div></div>
+                  <div className="bg-white/80 rounded-md border border-white px-3 py-2"><div className="text-[12px] text-neutral-600">Concepts ending below 0</div><div className="text-lg font-semibold text-orange-700">{down}</div></div>
+                  <div className="bg-white/80 rounded-md border border-white px-3 py-2"><div className="text-[12px] text-neutral-600">Moved most from the start</div>
+                    <div className="text-[12.5px] text-neutral-900 leading-snug">{top.map((m) => <div key={m.c.id} className="flex justify-between gap-2"><span>{m.c.name}</span><span className="font-mono font-semibold">{sgn(m.d)}</span></div>)}</div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           <div className="bg-white rounded-lg border border-slate-200 p-4">
@@ -7742,7 +7851,7 @@ function BaselineEquilibriumTab({
                 ))}
               </div>
             </div>
-            <p className="text-[12.5px] text-neutral-600 mb-2">Each panel is one module. Every line is a concept, from its starting value (left) to where it ends (right, with its value). Lines that flatten out have settled.</p>
+            <p className="text-[12.5px] text-neutral-600 mb-3">One panel per module. Each line is a concept, from its starting value at iteration 0 to where it ends on the right, with its final value. A line that runs flat has settled.</p>
             <div ref={convergencePanelsRef} data-chart="baseline-convergence" className="overflow-x-auto">
               <ConvergenceChart series={result.series} concepts={concepts} converged={result.converged} diverged={result.diverged} iterationsRun={result.iterationsRun} linear={effectiveSquash === "linear"} />
             </div>
@@ -7757,7 +7866,7 @@ function BaselineEquilibriumTab({
                 ))}
               </div>
             </div>
-            <p className="text-[12.5px] text-neutral-600 mb-2">The bar is the steady state of each concept; the dashed mark is where it started.</p>
+            <p className="text-[12.5px] text-neutral-600 mb-3">The bar shows where each concept settles, and the open circle where it started. Bars to the right end above 0, bars to the left below 0.</p>
             <div ref={steadyRef} className="overflow-x-auto">
               <SteadyStateBars concepts={concepts} final={result.final} initial={usedInit} />
             </div>
@@ -10090,6 +10199,8 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
   const [tpDirection, setTpDirection] = useState("increase");
   const [tpOutcomes, setTpOutcomes] = useState([]);
   const [tpResolution, setTpResolution] = useState(100);
+  const [tpFilter, setTpFilter] = useState("");
+  const matrixRef = useRef(null);
   const [tpFlatThreshold, setTpFlatThreshold] = useState(0.015);
   const [running, setRunning] = useState(false);
 
@@ -10191,7 +10302,7 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
 
   const matrixData = useMemo(() => {
     if (!result) return [];
-    return result.rows.map((r) => ({ x: round2(r.tp), y: round2(Math.abs(r.effect)), name: r.outcomeName, effect: r.effect }));
+    return result.rows.filter((r) => r.responseType !== "Flat").map((r) => ({ x: round2(r.tp), y: round2(Math.abs(r.effect)), name: r.outcomeName, effect: r.effect }));
   }, [result]);
   const matrixYSplit = useMemo(() => {
     if (!matrixData.length) return 0;
@@ -10274,78 +10385,112 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
 
         <p className="font-medium text-neutral-900 mt-2 mb-1">Steps</p>
         <ol className="list-decimal pl-5 space-y-0.5">
-          <li>Choose the intervention variable to sweep (Step 1).</li>
-          <li>Choose its direction: increase from 0 to +1, or decrease from 0 to -1 (Step 2). These are the two ways a scenario can drive a concept (▲ at +1, ▼ at -1).</li>
-          <li>Choose one or more outcome variables to observe (Step 3), or use "All variables" to select every other concept at once.</li>
-          <li>Choose the intensity resolution, i.e. how many steps to sample across the sweep (Step 4), and, optionally, adjust the flat-response threshold used to classify an outcome with little to no response.</li>
-          <li>Click Run analysis (Step 5) to generate the response curves, marginal-benefit curves, transition point table, and rankings.</li>
+          <li>Choose the intervention and whether to raise or lower it (step 1).</li>
+          <li>Choose the outcomes you care about, or All (step 2).</li>
+          <li>Choose how finely to step the intervention, and optionally the threshold below which a response counts as flat (step 3).</li>
+          <li>Click Run analysis. The prioritization matrix comes first, then the transition point table; the per-outcome curves are under Advanced results.</li>
         </ol>
         </div>
       </FoldableBox>
 
-      <div className="bg-white rounded-lg border border-slate-200 p-4">
-        <h3 className="font-semibold text-sm mb-3">Run an analysis</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div>
-            <label className="text-xs text-neutral-700 font-medium">Step 1: Intervention variable</label>
+      <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-4" data-tp-setup>
+        <div>
+          <h3 className="font-semibold text-sm">Run a transition point analysis</h3>
+          <p className="text-[12.5px] text-neutral-600">Raise (or lower) one intervention step by step, and find for each outcome the intensity from which extra effort pays off less.</p>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="rounded-md border border-slate-200 p-3">
+            <div className="flex items-center gap-2 mb-1.5"><span className="w-5 h-5 rounded-full bg-cobalt-700 text-white text-[11.5px] font-semibold flex items-center justify-center">1</span><span className="text-xs font-semibold text-neutral-900">Which intervention, in which direction?</span></div>
             <select
-              value={tpIntervention}
+              value={tpIntervention} aria-label="Intervention"
               onChange={(e) => { setTpIntervention(e.target.value); setTpOutcomes((os) => os.filter((o) => o !== e.target.value)); }}
-              className="w-full mt-1 text-xs border border-slate-200 rounded px-2 py-1.5"
+              className="w-full text-xs border border-slate-300 rounded px-2 py-1.5 bg-white"
             >
-              <option value="" disabled>Select…</option>
+              <option value="" disabled>Choose a concept…</option>
               {concepts.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
-          </div>
-          <div>
-            <label className="text-xs text-neutral-700 font-medium">Step 2: Direction</label>
-            <div className="flex mt-1 border border-slate-200 rounded overflow-hidden">
-              <button onClick={() => setTpDirection("increase")} className={`flex-1 text-xs py-1.5 ${tpDirection === "increase" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}>Increase (0→1)</button>
-              <button onClick={() => setTpDirection("decrease")} className={`flex-1 text-xs py-1.5 ${tpDirection === "decrease" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}>Decrease (0→-1)</button>
+            <div className="flex mt-2 border border-slate-300 rounded overflow-hidden" role="group" aria-label="Direction">
+              <button onClick={() => setTpDirection("increase")} className={`flex-1 text-xs py-1.5 ${tpDirection === "increase" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}>▲ Increase (0 to +1)</button>
+              <button onClick={() => setTpDirection("decrease")} className={`flex-1 text-xs py-1.5 border-l border-slate-300 ${tpDirection === "decrease" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}>▼ Decrease (0 to -1)</button>
             </div>
           </div>
-          <div>
-            <label className="text-xs text-neutral-700 font-medium">Step 4: Intensity resolution</label>
-            <select value={tpResolution} onChange={(e) => setTpResolution(parseInt(e.target.value))} className="w-full mt-1 text-xs border border-slate-200 rounded px-2 py-1.5">
-              <option value={50}>50 increments</option>
-              <option value={100}>100 increments</option>
-              <option value={200}>200 increments</option>
-              <option value={500}>500 increments</option>
-            </select>
+          <div className="rounded-md border border-slate-200 p-3 lg:col-span-2">
+            <div className="flex items-center gap-2 mb-1.5"><span className="w-5 h-5 rounded-full bg-cobalt-700 text-white text-[11.5px] font-semibold flex items-center justify-center">2</span><span className="text-xs font-semibold text-neutral-900">Which outcomes do you care about?</span>
+              <span className="text-[12px] text-neutral-500">{tpOutcomes.length ? `${tpOutcomes.length} chosen` : "choose one or more"}</span>
+              <span className="ml-auto flex gap-1.5">
+                <button onClick={selectAllOutcomes} className="text-[12px] px-2 py-0.5 rounded border border-slate-300 text-neutral-800 hover:border-slate-500">All</button>
+                <button onClick={clearOutcomes} className="text-[12px] px-2 py-0.5 rounded border border-slate-300 text-neutral-800 hover:border-slate-500">Clear</button>
+              </span>
+            </div>
+            <input value={tpFilter} onChange={(e) => setTpFilter(e.target.value)} placeholder="Find a concept…" className="w-full text-xs border border-slate-300 rounded px-2 py-1 mb-1.5" />
+            <div className="flex flex-wrap gap-1 max-h-28 overflow-auto">
+              {availableOutcomeConcepts.filter((c) => !tpFilter || c.name.toLowerCase().includes(tpFilter.toLowerCase())).map((c) => (
+                <button
+                  key={c.id} onClick={() => toggleOutcome(c.id)} aria-pressed={tpOutcomes.includes(c.id)}
+                  className={`text-[12px] px-2 py-0.5 rounded-full border ${tpOutcomes.includes(c.id) ? "border-cobalt-700 bg-cobalt-700 text-white" : "border-slate-300 text-neutral-800 hover:border-slate-500"}`}
+                >
+                  {tpOutcomes.includes(c.id) ? "✓ " : ""}{c.name}
+                </button>
+              ))}
+            </div>
           </div>
-          <div>
-            <label className="text-xs text-neutral-700 font-medium" title="Below this, an outcome's total range across the whole sweep is classified as a 'Flat' (no meaningful) response.">Flat-response threshold <HelpCircle size={10} className="inline text-neutral-500" /></label>
-            <input type="number" step={0.005} min={0} max={1} value={tpFlatThreshold} onChange={(e) => setTpFlatThreshold(Math.max(0, parseFloat(e.target.value) || 0))} className="w-full mt-1 text-xs border border-slate-200 rounded px-2 py-1.5" />
+          <div className="rounded-md border border-slate-200 p-3 lg:col-span-3">
+            <div className="flex items-center gap-2 mb-1.5"><span className="w-5 h-5 rounded-full bg-cobalt-700 text-white text-[11.5px] font-semibold flex items-center justify-center">3</span><span className="text-xs font-semibold text-neutral-900">How finely should the intervention be stepped?</span></div>
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs">
+              <div className="inline-flex border border-slate-300 rounded overflow-hidden" role="group" aria-label="Resolution">
+                {[[50, "Quick (50 steps)"], [100, "Normal (100)"], [200, "Fine (200)"], [500, "Very fine (500)"]].map(([n, label], k) => (
+                  <button key={n} onClick={() => setTpResolution(n)} className={`px-2.5 py-1 ${k ? "border-l border-slate-300" : ""} ${tpResolution === n ? "bg-slate-900 text-white" : "bg-white hover:bg-slate-50"}`}>{label}</button>
+                ))}
+              </div>
+              <label className="flex items-center gap-1.5 text-neutral-700" title="Below this, an outcome's total range across the whole sweep is classified as a 'Flat' (no meaningful) response.">
+                Count a response as flat below
+                <input type="number" step={0.005} min={0} max={1} value={tpFlatThreshold} onChange={(e) => setTpFlatThreshold(Math.max(0, parseFloat(e.target.value) || 0))} className="w-20 border border-slate-300 rounded px-1.5 py-0.5" />
+                <HelpCircle size={11} className="text-neutral-500" />
+              </label>
+            </div>
           </div>
         </div>
-        <div className="mt-3">
-          <label className="text-xs text-neutral-700 font-medium">Step 3: Outcome variable(s)</label>
-          <div className="mt-1 flex items-center gap-2 mb-1.5">
-            <button onClick={selectAllOutcomes} className="text-[11.5px] px-1.5 py-0.5 rounded border border-slate-200 text-neutral-700 hover:border-slate-400">All variables</button>
-            <button onClick={clearOutcomes} className="text-[11.5px] px-1.5 py-0.5 rounded border border-slate-200 text-neutral-700 hover:border-slate-400">Clear</button>
-          </div>
-          <div className="flex flex-wrap gap-1 max-h-[70px] overflow-auto border border-slate-200 rounded p-1.5">
-            {availableOutcomeConcepts.map((c) => (
-              <button
-                key={c.id} onClick={() => toggleOutcome(c.id)}
-                className={`text-[11.5px] px-1.5 py-0.5 rounded border ${tpOutcomes.includes(c.id) ? "border-cobalt-700 bg-cobalt-50 text-cobalt-800" : "border-slate-200 text-neutral-700 hover:border-slate-400"}`}
-              >
-                {c.name}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="mt-4">
+        <div className="flex flex-wrap items-center gap-3">
           <Btn variant="accent" onClick={runAnalysis} disabled={!tpIntervention || tpOutcomes.filter((o) => o !== tpIntervention).length === 0 || running}>
-            <Play size={14} />{running ? "Running…" : "Step 5: Run analysis"}
+            <Play size={14} />{running ? "Running…" : "Run analysis"}
           </Btn>
-          {!tpIntervention && <span className="text-xs text-neutral-600 ml-2">Select an intervention variable to begin.</span>}
+          <span className="text-[12.5px] text-neutral-600">
+            {!tpIntervention ? "Choose an intervention (step 1)." : tpOutcomes.filter((o) => o !== tpIntervention).length === 0 ? "Choose at least one outcome (step 2)." : `${tpDirection === "increase" ? "Raises" : "Lowers"} ${concepts.find((c) => c.id === tpIntervention)?.name} in ${tpResolution} steps and follows ${tpOutcomes.filter((o) => o !== tpIntervention).length} outcome${tpOutcomes.filter((o) => o !== tpIntervention).length === 1 ? "" : "s"}.`}
+          </span>
         </div>
       </div>
 
       {result && (
         <>
           {isStale && <StaleResultBanner label="this transition point analysis" />}
+
+          <div className="bg-white rounded-lg border border-slate-200 p-4" data-tp-matrix>
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+              <h4 className="text-sm font-semibold">Intervention prioritization matrix</h4>
+              <div className="flex gap-2">
+                {["png", "svg"].map((fmt) => (
+                  <Btn key={fmt} variant="outline" onClick={() => exportSvgFigure(matrixRef.current, "transition-prioritization-matrix", fmt, "Intervention prioritization matrix", `${result.interventionName} (${transitionRangeLabel(result.direction)})`)}><Download size={13} />{fmt.toUpperCase()}</Btn>
+                ))}
+              </div>
+            </div>
+            <p className="text-[12.5px] text-neutral-600 mb-3">Each numbered dot is an outcome that responds. Further left, the outcome already gains most of its effect at a low intensity; higher up, the effect is larger. Green dots rise, orange dots fall; the numbers match the lists below. The lines split the plot at the middle intensity (0.5) and at the average effect.</p>
+            <div ref={matrixRef}>
+              <PrioritizationMatrix points={matrixData} xSplit={0.5} ySplit={matrixYSplit} />
+            </div>
+            {result.rows.length > matrixData.length && <p className="text-[12.5px] text-neutral-600 mt-2">Left out: {result.rows.length - matrixData.length} outcome{result.rows.length - matrixData.length === 1 ? "" : "s"} that hardly respond (flat response), listed in the table below.</p>}
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2 mt-3">
+              {QUADRANTS.map((q) => {
+                const items = matrixData.filter((d) => quadrantOf(d, 0.5, matrixYSplit) === q.key).sort((a, b) => b.y - a.y);
+                return (
+                  <div key={q.key} className="rounded-md border px-3 py-2" style={{ background: q.fill, borderColor: q.fill === "#f8fafc" ? "#e2e8f0" : q.fill }}>
+                    <div className="text-xs font-semibold" style={{ color: q.ink }}>{q.label} <span className="font-normal text-neutral-600">({items.length})</span></div>
+                    <div className="text-[12px] text-neutral-600 mb-1">{q.text}</div>
+                    {items.length ? <ul className="text-[12.5px] text-neutral-900 space-y-0.5">{items.map((d) => <li key={d.name} className="flex justify-between gap-2"><span><span className="inline-flex w-5 h-5 mr-1 rounded-full text-white text-[10.5px] font-semibold items-center justify-center align-middle" style={{ background: d.effect >= 0 ? "#15803d" : "#c2410c" }}>{matrixData.indexOf(d) + 1}</span>{d.effect >= 0 ? "▲" : "▼"} {d.name}</span><span className="font-mono text-neutral-600">{d.effect >= 0 ? "+" : ""}{d.effect.toFixed(2)}</span></li>)}</ul> : <p className="text-[12px] italic text-neutral-500">none</p>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
 
           <div className="bg-white rounded-lg border border-slate-200 p-4">
             <div className="flex items-center justify-between mb-2">
@@ -10377,39 +10522,6 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
                 ))}
               </tbody>
             </table>
-          </div>
-
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
-            <h4 className="text-sm font-semibold mb-1">Intervention prioritization matrix</h4>
-            <p className="text-[12.5px] text-neutral-600 mb-2">X: transition point (the intensity from which returns diminish). Y: |effect size|. Point color: green = outcome improves, red = outcome declines.</p>
-            <div className="w-full h-80">
-              <ResponsiveContainer>
-                <ScatterChart margin={{ top: 10, right: 20, bottom: 20, left: 10 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis type="number" dataKey="x" domain={[0, 1]} tick={{ fontSize: 12 }} label={{ value: "Transition Point", position: "insideBottom", offset: -12, fontSize: 11 }} />
-                  <YAxis type="number" dataKey="y" tick={{ fontSize: 12 }} label={{ value: "Effect Size", angle: -90, position: "insideLeft", fontSize: 11 }} />
-                  <ZAxis range={[80, 80]} />
-                  <RTooltip cursor={{ strokeDasharray: "3 3" }} content={({ active, payload }) => active && payload?.[0] ? (
-                    <div className="bg-white border border-slate-200 rounded shadow-sm p-2 text-[12.5px]">
-                      <div className="font-semibold">{payload[0].payload.name}</div>
-                      <div>TP = {payload[0].payload.x}</div>
-                      <div>Effect = {payload[0].payload.effect >= 0 ? "+" : ""}{payload[0].payload.effect}</div>
-                    </div>
-                  ) : null} />
-                  <ReferenceLine x={0.5} stroke="#94a3b8" />
-                  <ReferenceLine y={matrixYSplit} stroke="#94a3b8" />
-                  <Scatter data={matrixData}>
-                    {matrixData.map((d, i) => <Cell key={i} fill={d.effect >= 0 ? "#16a34a" : "#dc2626"} />)}
-                  </Scatter>
-                </ScatterChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="grid grid-cols-2 gap-2 mt-2 text-[11.5px] text-neutral-600">
-              <div><strong className="text-neutral-900">Quick Wins</strong>: low TP, high effect</div>
-              <div><strong className="text-neutral-900">Strategic Investments</strong>: high TP, high effect</div>
-              <div><strong className="text-neutral-900">Small Improvements</strong>: low TP, low effect</div>
-              <div><strong className="text-neutral-900">Poor Leverage Points</strong>: high TP, low effect</div>
-            </div>
           </div>
 
           {synergy && (
@@ -11370,25 +11482,6 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
             </div>
           )}
 
-          <MethodPanel
-            stats={[
-              { label: "Pathways evaluated", value: result.candidates.length.toLocaleString(), hint: "Every pathway and every shorter opening of it is a candidate." },
-              { label: "Admissible", value: `${s.counts.admissible} of ${s.counts.total}`, hint: `Converged, no trade-offs, and a total outcome gain of at least ${fmtNum(s.gMin)} (${Math.round((Number(result.config.minGainShare) || 0) * 100)}% of the best, or the flat threshold per outcome).` },
-              { label: "Simulation runs", value: result.runs.toLocaleString(), hint: "One run to equilibrium per sampled intensity, per lever, per stage (main analysis)." },
-              { label: "Did not converge", value: `${s.counts.nonConverged}`, tone: s.counts.nonConverged ? "warn" : undefined, hint: "Pathways with a stage that did not settle to the global convergence threshold within the iteration limit (usually a sustained oscillation, or with no squashing function, a runaway). They are reported but not classified." },
-              ...(result.imprecise !== undefined ? [{ label: `Settled to ${result.settingsUsed.convergenceThreshold}`, value: `${(result.runs - result.imprecise).toLocaleString()} of ${result.runs.toLocaleString()}`, tone: result.imprecise ? "warn" : undefined, hint: `Transition points compare neighbouring changes of the gain curve, which magnifies whatever is left of a run that has not quite settled, so every run continues until no concept changes by more than ${result.settingsUsed.convergenceThreshold} per iteration. Runs that stop short of that at the iteration limit give less precise transition points.` }] : []),
-              { label: "Transition point precision", value: `±${round2(1 / result.N)}`, hint: "A transition point can only fall on one of the sampled intensity steps." },
-              { label: "Transfer function / λ", value: transferFunctionLabel(result.settingsUsed) },
-              { label: "Update / iterations", value: `${result.settingsUsed.updateRule ?? "relative"}, synchronous, ≤ ${result.settingsUsed.maxIterations}`, hint: `Pathway runs are always synchronous (deterministic) and use this analysis's own iteration limit (at least ${TP_MIN_ITERATIONS}); everything else follows the global simulation settings.` },
-              { label: "Path dependence", value: result.invariance.tested ? `${result.invariance.pathDependent} of ${result.invariance.tested} lever sets` : "not tested", tone: result.invariance.pathDependent ? "warn" : undefined, hint: "Invariance test: the lever sets of the top pathways were simulated in every order at the same intensities. Different end states mean the order decides where the system ends up." },
-            ]}
-          >
-            <p><strong>Pathways are built stage by stage from Business-as-Usual.</strong> Business-as-Usual is the equilibrium of the model's own starting values with no scenario applied. In each stage a lever is swept from its current intensity to 1 in {result.N} steps, each run starting from the equilibrium the pathway has reached, with the earlier levers held in place. {result.rule === "tp" ? "The lever is implemented at its conditional transition point: the sampled intensity at which the marginal benefit of the lever to the total outcome gain declines most steeply, or 1 if it does not decline before full intensity. A lever whose gain at that point is no higher than the gain the pathway has already reached is not added." : "The lever is implemented at full intensity (the reference rule)."} A stage at full intensity (the reference rule, or a scale-up stage) can lower the total gain, when the lever worsens the outcomes beyond its transition point; such stage gains are shown in orange, and the efficient frontier and the rankings show whether the stage is worth taking.</p>
-            <p><strong>This is the transition point of the Transition Point tab, applied to the total outcome gain.</strong> The marginal benefit is the change in the gain per step of intensity, and benefit is counted in each outcome's desirable direction as set above, rather than in the direction the outcome happens to move. Every run continues until no concept changes by more than {result.settingsUsed.convergenceThreshold} per iteration, because comparing neighbouring changes of the gain curve magnifies whatever is left of a run that has not quite settled.</p>
-            <p><strong>Metrics.</strong> TOG is the weighted, direction-signed improvement of the outcomes relative to Business-as-Usual; CII the sum of final intensities times effort weights; PEI their ratio; the average TP the mean conditional transition point; SS the number of outcomes improved by more than {result.eps}; IG the gain beyond what the same levers achieve on their own at the same intensities (strongly negative when each lever alone already moves much of the system, so their separate effects overlap). The Early Benefit Index is the area under the accrual curve of gain against effort, traced at the sweep resolution within each stage (the stage-level formula uses only the stage end points; the finer curve keeps single-stage pathways classifiable).</p>
-            <p><strong>Archetype thresholds are relative.</strong> Quartiles and quintiles are taken across the {s.counts.admissible} admissible pathways of this run{s.counts.admissible < 10 ? ", which is a small set, so the thresholds are coarse" : ""}. The rules are conventions that structure the comparison, not properties of the system; the robustness test shows how much the top pathways depend on the simulation settings.</p>
-            <p><strong>What this does not tell you.</strong> Stages are implementation phases, not periods of time, and each is assumed to last long enough for the system to settle. Implemented levers are assumed to stay in place. Results are relative comparisons between pathways in the units of the map, implications of the causal structure as drawn rather than forecasts.</p>
-          </MethodPanel>
 
           {metro && metro.rows.length > 0 && (
             <div className="bg-white rounded-lg border border-slate-200 p-4" data-metro-map>
@@ -11942,6 +12035,27 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
             </div>
             <p className="text-[11.5px] text-neutral-600 mt-2">The Export Analysis Workbook in the header also includes these results (pathways, rankings, stages of the top pathways, lever profiles, portfolios, and the invariance and robustness tests).</p>
           </div>
+
+          <MethodPanel
+            fold
+            stats={[
+              { label: "Pathways evaluated", value: result.candidates.length.toLocaleString(), hint: "Every pathway and every shorter opening of it is a candidate." },
+              { label: "Admissible", value: `${s.counts.admissible} of ${s.counts.total}`, hint: `Converged, no trade-offs, and a total outcome gain of at least ${fmtNum(s.gMin)} (${Math.round((Number(result.config.minGainShare) || 0) * 100)}% of the best, or the flat threshold per outcome).` },
+              { label: "Simulation runs", value: result.runs.toLocaleString(), hint: "One run to equilibrium per sampled intensity, per lever, per stage (main analysis)." },
+              { label: "Did not converge", value: `${s.counts.nonConverged}`, tone: s.counts.nonConverged ? "warn" : undefined, hint: "Pathways with a stage that did not settle to the global convergence threshold within the iteration limit (usually a sustained oscillation, or with no squashing function, a runaway). They are reported but not classified." },
+              ...(result.imprecise !== undefined ? [{ label: `Settled to ${result.settingsUsed.convergenceThreshold}`, value: `${(result.runs - result.imprecise).toLocaleString()} of ${result.runs.toLocaleString()}`, tone: result.imprecise ? "warn" : undefined, hint: `Transition points compare neighbouring changes of the gain curve, which magnifies whatever is left of a run that has not quite settled, so every run continues until no concept changes by more than ${result.settingsUsed.convergenceThreshold} per iteration. Runs that stop short of that at the iteration limit give less precise transition points.` }] : []),
+              { label: "Transition point precision", value: `±${round2(1 / result.N)}`, hint: "A transition point can only fall on one of the sampled intensity steps." },
+              { label: "Transfer function / λ", value: transferFunctionLabel(result.settingsUsed) },
+              { label: "Update / iterations", value: `${result.settingsUsed.updateRule ?? "relative"}, synchronous, ≤ ${result.settingsUsed.maxIterations}`, hint: `Pathway runs are always synchronous (deterministic) and use this analysis's own iteration limit (at least ${TP_MIN_ITERATIONS}); everything else follows the global simulation settings.` },
+              { label: "Path dependence", value: result.invariance.tested ? `${result.invariance.pathDependent} of ${result.invariance.tested} lever sets` : "not tested", tone: result.invariance.pathDependent ? "warn" : undefined, hint: "Invariance test: the lever sets of the top pathways were simulated in every order at the same intensities. Different end states mean the order decides where the system ends up." },
+            ]}
+          >
+            <p><strong>Pathways are built stage by stage from Business-as-Usual.</strong> Business-as-Usual is the equilibrium of the model's own starting values with no scenario applied. In each stage a lever is swept from its current intensity to 1 in {result.N} steps, each run starting from the equilibrium the pathway has reached, with the earlier levers held in place. {result.rule === "tp" ? "The lever is implemented at its conditional transition point: the sampled intensity at which the marginal benefit of the lever to the total outcome gain declines most steeply, or 1 if it does not decline before full intensity. A lever whose gain at that point is no higher than the gain the pathway has already reached is not added." : "The lever is implemented at full intensity (the reference rule)."} A stage at full intensity (the reference rule, or a scale-up stage) can lower the total gain, when the lever worsens the outcomes beyond its transition point; such stage gains are shown in orange, and the efficient frontier and the rankings show whether the stage is worth taking.</p>
+            <p><strong>This is the transition point of the Transition Point tab, applied to the total outcome gain.</strong> The marginal benefit is the change in the gain per step of intensity, and benefit is counted in each outcome's desirable direction as set above, rather than in the direction the outcome happens to move. Every run continues until no concept changes by more than {result.settingsUsed.convergenceThreshold} per iteration, because comparing neighbouring changes of the gain curve magnifies whatever is left of a run that has not quite settled.</p>
+            <p><strong>Metrics.</strong> TOG is the weighted, direction-signed improvement of the outcomes relative to Business-as-Usual; CII the sum of final intensities times effort weights; PEI their ratio; the average TP the mean conditional transition point; SS the number of outcomes improved by more than {result.eps}; IG the gain beyond what the same levers achieve on their own at the same intensities (strongly negative when each lever alone already moves much of the system, so their separate effects overlap). The Early Benefit Index is the area under the accrual curve of gain against effort, traced at the sweep resolution within each stage (the stage-level formula uses only the stage end points; the finer curve keeps single-stage pathways classifiable).</p>
+            <p><strong>Archetype thresholds are relative.</strong> Quartiles and quintiles are taken across the {s.counts.admissible} admissible pathways of this run{s.counts.admissible < 10 ? ", which is a small set, so the thresholds are coarse" : ""}. The rules are conventions that structure the comparison, not properties of the system; the robustness test shows how much the top pathways depend on the simulation settings.</p>
+            <p><strong>What this does not tell you.</strong> Stages are implementation phases, not periods of time, and each is assumed to last long enough for the system to settle. Implemented levers are assumed to stay in place. Results are relative comparisons between pathways in the units of the map, implications of the causal structure as drawn rather than forecasts.</p>
+          </MethodPanel>
         </>
       )}
     </div>
@@ -12180,19 +12294,19 @@ const TAB_GROUPS = [
     ],
   },
   {
-    id: "sensitivity", label: "Sensitivity analyses",
-    hint: "Test how far the results depend on the weights and starting values. Mainly for the analyst.",
-    tabs: [
-      { id: "sensitivity", label: "Sensitivity Analysis", icon: SlidersHorizontal },
-      { id: "montecarlo", label: "Monte Carlo", icon: Dices },
-    ],
-  },
-  {
     id: "transition", label: "Transition analyses",
     hint: "Find tipping points and effective routes to change. Mainly for the analyst.",
     tabs: [
       { id: "transition", label: "Transition Point Analysis", icon: TrendingUp },
       { id: "pathways", label: "Transition Pathways", icon: Waypoints },
+    ],
+  },
+  {
+    id: "sensitivity", label: "Sensitivity analyses",
+    hint: "Test how far the results depend on the weights and starting values. Mainly for the analyst.",
+    tabs: [
+      { id: "sensitivity", label: "Sensitivity Analysis", icon: SlidersHorizontal },
+      { id: "montecarlo", label: "Monte Carlo", icon: Dices },
     ],
   },
   {
@@ -13369,7 +13483,7 @@ function SpaghettiEngineApp() {
 
       {tab !== "about" && !basic && <AnalysisScopeBar viewInfo={viewInfo} modules={modules} networkView={networkView} setNetworkView={setNetworkView} />}
 
-      <div className="flex-1 overflow-auto p-3 sm:p-5 bg-slate-50">
+      <div className="se-content flex-1 overflow-auto p-3 sm:p-5 bg-slate-50">
         {/* A display error in one tab stays in that tab: the rest of the app,
             the tab bar, and the model are unaffected, and switching tabs
             (the key) starts that tab fresh. */}
@@ -13827,83 +13941,24 @@ function SpaghettiEngineApp() {
                 </div>
 
                   <div className="bg-white rounded-lg border border-slate-200 p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="text-sm font-semibold">Comparison table and bar chart</h4>
-                      <Btn variant="outline" onClick={() => setFigComparisonBarOpen((v) => !v)}><SlidersHorizontal size={13} />{figComparisonBarOpen ? "Hide figure options" : "Customize & export"}</Btn>
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+                      <h4 className="text-sm font-semibold">End state of every concept, baseline and scenarios</h4>
+                      <div className="flex gap-2">
+                        {["png", "svg"].map((fmt) => (
+                          <Btn key={fmt} variant="outline" onClick={() => exportSvgFigure(comparisonBarRef.current, "scenario-end-states", fmt, "Scenario comparison: end states", `Scenarios: ${["baseline", ...comparedIds].map((id) => comparisonNames[id]).join(", ")}`)}><Download size={13} />{fmt.toUpperCase()}</Btn>
+                        ))}
+                      </div>
                     </div>
-                    {(() => {
-                      // Rows keyed by scenario id (never by name, which can be
-                      // edited or shared by two scenarios); names are only for
-                      // display. A scenario that has not been run yet has no
-                      // value (null: no bar), rather than a misleading 0.
-                      const seriesIds = ["baseline", ...comparedIds];
-                      const data = aConcepts.map((c) => {
-                        const row = { concept: c.name };
-                        seriesIds.forEach((id) => { row[id] = results[id] ? round2(results[id].final[c.id] ?? 0) : null; });
-                        return row;
-                      });
-                      const baselineAllZero = !!results.baseline && aConcepts.every((c) => Math.abs(results.baseline.final[c.id] ?? 0) < 1e-9);
-                      const colors = figurePalette(figComparisonBar.palette, Math.max(comparedIds.length, 1));
-                      const short = (t) => (t.length > 18 ? `${t.slice(0, 17)}\u2026` : t);
-                      const ConceptTick = ({ x, y, payload }) => (
-                        <g transform={`translate(${x},${y})`}>
-                          <title>{payload.value}</title>
-                          <text dy={10} textAnchor="end" transform="rotate(-35)" fontSize={figComparisonBar.tickFontSize} fill="#262626">{short(payload.value)}</text>
-                        </g>
-                      );
-                      return (
-                        <>
-                          <div ref={comparisonBarRef} className="w-full mb-2" style={figComparisonBarOpen ? { width: mmToPx(figComparisonBar.widthMm, 96), height: mmToPx(figComparisonBar.heightMm, 96), maxWidth: "100%" } : { height: 300 }}>
-                            <ResponsiveContainer>
-                              <BarChart data={data} margin={{ top: 16, right: 16, left: 0, bottom: 8 }}>
-                                {figComparisonBar.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
-                                <XAxis dataKey="concept" interval={0} height={90} tick={(p) => <ConceptTick {...p} />} label={figComparisonBar.xLabel ? { value: figComparisonBar.xLabel, position: "bottom", offset: 60, fontSize: figComparisonBar.axisFontSize } : undefined} />
-                                <YAxis domain={settings.squashFunction === "linear" ? ["auto", "auto"] : [-1, 1]} tick={{ fontSize: figComparisonBar.tickFontSize }} tickFormatter={(v) => fmtDec(v, figComparisonBar.decimals)} label={{ value: figComparisonBar.yLabel || "Activation", angle: -90, position: "insideLeft", fontSize: figComparisonBar.axisFontSize }} />
-                                <RTooltip formatter={(v, name) => [v === null ? "not run" : v.toFixed(2), name]} />
-                                {figComparisonBar.legendPosition !== "hidden" && (
-                                  <Legend
-                                    wrapperStyle={{ fontSize: figComparisonBar.legendFontSize }}
-                                    layout={figComparisonBar.legendPosition === "left" || figComparisonBar.legendPosition === "right" ? "vertical" : "horizontal"}
-                                    verticalAlign={figComparisonBar.legendPosition === "left" || figComparisonBar.legendPosition === "right" ? "middle" : figComparisonBar.legendPosition}
-                                    align={figComparisonBar.legendPosition === "left" || figComparisonBar.legendPosition === "right" ? figComparisonBar.legendPosition : "center"}
-                                  />
-                                )}
-                                {figComparisonBar.title && <text x="50%" y={14} textAnchor="middle" fontSize={figComparisonBar.titleFontSize} fontWeight={600} fill="#0f172a">{figComparisonBar.title}</text>}
-                                <ReferenceLine y={0} stroke="#94a3b8" />
-                                {/* minPointSize: a value of exactly 0 is drawn as a thin bar on the
-                                    zero line, so "settled at 0" is visibly different from "missing". */}
-                                <Bar dataKey="baseline" name={comparisonNames.baseline} fill="#404040" fillOpacity={figComparisonBar.opacity} radius={[3, 3, 0, 0]} minPointSize={2} />
-                                {comparedIds.map((id, i) => (
-                                  <Bar key={id} dataKey={id} name={comparisonNames[id]} fill={colors[i % colors.length]} fillOpacity={figComparisonBar.opacity} radius={[3, 3, 0, 0]} minPointSize={2} />
-                                ))}
-                              </BarChart>
-                            </ResponsiveContainer>
-                          </div>
-                          {baselineAllZero && (
-                            <p className="text-[12.5px] text-neutral-700 mb-4">
-                              The baseline settles at 0 for every concept, so its bars are the thin grey marks on the zero line. That happens when every concept starts at 0 and nothing is held fixed;
-                              give concepts a starting value (Inspector or Model editor) for a baseline that reflects the current state of the system.
-                            </p>
-                          )}
-                          {figComparisonBarOpen && (
-                            <div className="mb-4">
-                              <FigurePanel
-                                settings={figComparisonBar} onChange={setFigComparisonBar}
-                                exporting={figComparisonBarBusy}
-                                onExport={async () => {
-                                  setFigComparisonBarBusy(true);
-                                  await exportFigure(comparisonBarRef.current, "scenario-comparison.png", figComparisonBar, {
-                                    title: figComparisonBar.title || "Scenario Comparison to Baseline",
-                                    subtitle: `Scenarios: ${["baseline", ...comparedIds].map((id) => comparisonNames[id]).join(", ")}`,
-                                  });
-                                  setFigComparisonBarBusy(false);
-                                }}
-                              />
-                            </div>
-                          )}
-                        </>
-                      );
-                    })()}
+                    <p className="text-[12.5px] text-neutral-600 mb-3">For each concept, one bar per run: the baseline in grey and each scenario in its own colour. The table below gives the same numbers.</p>
+                    <div ref={comparisonBarRef} data-chart="scenario-end-states" className="mb-5">
+                      <ScenarioGroupedBars
+                        concepts={aConcepts} linear={settings.squashFunction === "linear"}
+                        series={[
+                          { id: "baseline", name: comparisonNames.baseline, color: "#6b7280", final: results.baseline?.final || null },
+                          ...comparedIds.map((id, i) => ({ id, name: comparisonNames[id], color: SCENARIO_COLORS[i % SCENARIO_COLORS.length], final: results[id]?.final || null })),
+                        ]}
+                      />
+                    </div>
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="text-left text-neutral-600 border-b border-slate-100">
