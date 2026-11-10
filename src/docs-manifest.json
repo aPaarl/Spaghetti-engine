@@ -1,21 +1,21 @@
 {
-  "version": "0.5.1",
-  "generated": "2026-11-05",
+  "version": "0.5.2",
+  "generated": "2026-11-10",
   "documents": {
     "manual": {
-      "file": "The-Spaghetti-Engine-User-Manual-v0.5.1.pdf",
-      "pages": 54,
-      "sizeKB": 1065
+      "file": "The-Spaghetti-Engine-User-Manual-v0.5.2.pdf",
+      "pages": 56,
+      "sizeKB": 1084
     },
     "annex": {
-      "file": "The-Spaghetti-Engine-Methodological-Annex-v0.5.1.pdf",
-      "pages": 36,
-      "sizeKB": 640
+      "file": "The-Spaghetti-Engine-Methodological-Annex-v0.5.2.pdf",
+      "pages": 37,
+      "sizeKB": 644
     },
     "devlog": {
-      "file": "The-Spaghetti-Engine-Development-Log-v0.5.1.pdf",
-      "pages": 5,
-      "sizeKB": 164
+      "file": "The-Spaghetti-Engine-Development-Log-v0.5.2.pdf",
+      "pages": 6,
+      "sizeKB": 173
     }
   }
 }
