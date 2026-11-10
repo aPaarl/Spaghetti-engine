@@ -27,6 +27,10 @@ import ExcelJS from "exceljs";
 // the approach React Flow's own docs recommend for exporting the canvas.
 import { toBlob as domNodeToPngBlob } from "html-to-image";
 import AboutTab, { APP_VERSION, CONTACT } from "./AboutTab.jsx";
+import PathwayMetroMap from "./PathwayMetroMap.jsx";
+import TransitionSmallMultiples from "./TransitionSmallMultiples.jsx";
+import { ConvergenceChart, SteadyStateBars, ScenarioComparisonFigure, ScenarioGroupedBars, SensitivityCurves, PrioritizationMatrix, RankedBars, QUADRANTS, quadrantOf, SCENARIO_COLORS, FIG } from "./AnalysisFigures.jsx";
+import { metroRows } from "./pathwayMetroLayout.js";
 import { bootLibrary, saveModel, loadModel, setActive, createModel, renameModel, duplicateModel, deleteModel, readIndex, modelKey } from "./modelLibrary.js";
 import { BrandMark } from "./brand.jsx";
 
@@ -1335,11 +1339,30 @@ const SCENARIO_GLOSSARY = {
 // settings, whether anything hit a cap or failed to converge); the
 // collapsible section carries how the numbers are derived and — more
 // importantly for writing any of this up — what they do not mean.
-function MethodPanel({ title = "Method & diagnostics", stats = [], children }) {
+// With `fold`, the whole panel is one fold-out, closed until asked for (used
+// where it sits at the bottom of a tab).
+function MethodPanel({ title = "Method & diagnostics", stats = [], children, fold = false }) {
   const [open, setOpen] = useState(false);
+  const [shown, setShown] = useState(!fold);
+  if (fold && !shown) {
+    return (
+      <div className="bg-white rounded-lg border border-slate-200">
+        <button onClick={() => setShown(true)} aria-expanded={false} className="w-full flex items-center gap-2 px-4 py-3 text-left rounded-lg hover:bg-slate-50">
+          <ChevronRight size={15} className="text-neutral-700 shrink-0" />
+          <span className="text-sm font-semibold text-neutral-900">{title}</span>
+          <span className="text-[12.5px] text-neutral-600">How the results were computed, and how far to trust them</span>
+        </button>
+      </div>
+    );
+  }
   return (
     <div className="bg-white rounded-lg border border-slate-200 p-4">
-      <h4 className="text-sm font-semibold mb-3">{title}</h4>
+      {fold ? (
+        <button onClick={() => setShown(false)} aria-expanded className="w-full flex items-center gap-2 mb-3 text-left">
+          <ChevronDown size={15} className="text-neutral-700 shrink-0" />
+          <span className="text-sm font-semibold text-neutral-900">{title}</span>
+        </button>
+      ) : <h4 className="text-sm font-semibold mb-3">{title}</h4>}
       {stats.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {stats.map((s) => (
@@ -2086,6 +2109,15 @@ function normalizeHandleId(id) {
   if (LEGACY_HANDLE_MAP[id]) return LEGACY_HANDLE_MAP[id];
   return ANCHOR_BY_ID[id] ? id : null;
 }
+// The anchor an end of a relationship is pinned to, or null when that end
+// floats. An end is pinned only when someone dragged it onto a specific
+// anchor (the endpoint drag sets e.pinned[end]); the anchor a relationship
+// happened to be drawn from is not a pin, so as boxes move every other end
+// jumps to the connection point that suits where the two boxes now are.
+function pinnedHandleId(e, end) {
+  if (!e?.pinned?.[end]) return null;
+  return normalizeHandleId(end === "source" ? e.sourceHandle : e.targetHandle);
+}
 
 // Where a given anchor actually sits, in flow space, for a node at this
 // position and (measured) size — the same 12 points ConceptNode lays out
@@ -2506,6 +2538,21 @@ function boundaryPoint(node, otherNode) {
   return { x: cx + dx * t, y: cy + dy * t, side, w, h, cx, cy };
 }
 
+// Moves a boundary point to the nearest of the box's connection points on
+// that side (a quarter, half or three quarters along it, the same points as
+// the anchors), so arrows jump to tidy, fixed connection points that follow
+// where the two boxes sit rather than to an arbitrary point on the border.
+function snapToConnectionPoint(pt) {
+  if (!pt) return pt;
+  const horizontal = pt.side === "t" || pt.side === "b";
+  const len = horizontal ? pt.w : pt.h;
+  const start = (horizontal ? pt.cx : pt.cy) - len / 2;
+  const at = ((horizontal ? pt.x : pt.y) - start) / len;
+  const frac = ANCHOR_FRACS.reduce((best, f) => (Math.abs(f - at) < Math.abs(best - at) ? f : best), 0.5);
+  const v = start + frac * len;
+  return horizontal ? { ...pt, x: v } : { ...pt, y: v };
+}
+
 // Slides an endpoint along the side it landed on, so several relationships
 // meeting the same face of a box fan out across it instead of stacking on
 // one point — and so a reciprocal A->B / B->A pair lands on two clearly
@@ -2748,10 +2795,10 @@ function computeEdgeSlots(concepts, edges) {
   const ends = [];
   edges.forEach((e) => {
     const sc = centerOf(e.source), tc = centerOf(e.target);
-    if (!normalizeHandleId(e.sourceHandle)) {
+    if (!pinnedHandleId(e, "source")) {
       ends.push({ edgeId: e.id, end: "source", key: `${e.source}|${sideFor(tc.x - sc.x, tc.y - sc.y)}` });
     }
-    if (!normalizeHandleId(e.targetHandle)) {
+    if (!pinnedHandleId(e, "target")) {
       ends.push({ edgeId: e.id, end: "target", key: `${e.target}|${sideFor(sc.x - tc.x, sc.y - tc.y)}` });
     }
   });
@@ -2815,10 +2862,10 @@ function InfluenceEdge({
   // the other node actually crosses this box's border, which is what makes
   // arrows meet boxes cleanly instead of leaving from a fixed point on the
   // wrong face and looping around.
-  const pinnedSource = !!normalizeHandleId(data?.edge?.sourceHandle);
-  const pinnedTarget = !!normalizeHandleId(data?.edge?.targetHandle);
-  const srcPt = pinnedSource ? null : spreadAlongSide(boundaryPoint(sourceNode, targetNode), data?.sourceSlot ?? 0, data?.sourceCount ?? 1);
-  const tgtPt = pinnedTarget ? null : spreadAlongSide(boundaryPoint(targetNode, sourceNode), data?.targetSlot ?? 0, data?.targetCount ?? 1);
+  const pinnedSource = !!pinnedHandleId(data?.edge, "source");
+  const pinnedTarget = !!pinnedHandleId(data?.edge, "target");
+  const srcPt = pinnedSource ? null : spreadAlongSide(snapToConnectionPoint(boundaryPoint(sourceNode, targetNode)), data?.sourceSlot ?? 0, data?.sourceCount ?? 1);
+  const tgtPt = pinnedTarget ? null : spreadAlongSide(snapToConnectionPoint(boundaryPoint(targetNode, sourceNode)), data?.targetSlot ?? 0, data?.targetCount ?? 1);
   if (srcPt) { sx = srcPt.x; sy = srcPt.y; sourcePos = SIDE_TO_POSITION[srcPt.side]; }
   if (tgtPt) { tx = tgtPt.x; ty = tgtPt.y; targetPos = SIDE_TO_POSITION[tgtPt.side]; }
 
@@ -3772,7 +3819,7 @@ function NetworkTabInner({
   const pinnedTargetsByNode = useMemo(() => {
     const map = {};
     edges.forEach((e) => {
-      const t = normalizeHandleId(e.targetHandle);
+      const t = pinnedHandleId(e, "target");
       if (!t || t === DEFAULT_TARGET_ANCHOR) return;
       if (!map[e.target]) map[e.target] = [];
       if (!map[e.target].includes(t)) map[e.target].push(t);
@@ -3783,7 +3830,7 @@ function NetworkTabInner({
   const pinnedSourcesByNode = useMemo(() => {
     const map = {};
     edges.forEach((e) => {
-      const h = normalizeHandleId(e.sourceHandle);
+      const h = pinnedHandleId(e, "source");
       if (!h || h === DEFAULT_SOURCE_ANCHOR) return;
       if (!map[e.source]) map[e.source] = [];
       if (!map[e.source].includes(h)) map[e.source].push(h);
@@ -4030,7 +4077,7 @@ function NetworkTabInner({
     [displayConcepts, moduleBlocks]
   );
   const edgeGeometryKey = useMemo(
-    () => displayEdges.map((e) => `${e.id}:${e.source}:${e.target}:${e.weight}:${e.bend || 0}:${e.sourceHandle || ""}:${e.targetHandle || ""}`).join("|"),
+    () => displayEdges.map((e) => `${e.id}:${e.source}:${e.target}:${e.weight}:${e.bend || 0}:${e.sourceHandle || ""}:${e.targetHandle || ""}:${e.pinned?.source ? 1 : 0}${e.pinned?.target ? 1 : 0}`).join("|"),
     [displayEdges]
   );
   const geometryInputs = useRef(null);
@@ -4053,8 +4100,8 @@ function NetworkTabInner({
     const map = {};
     displayEdges.forEach((e) => {
       map[e.id] = {
-        sourceHandle: normalizeHandleId(e.sourceHandle) || DEFAULT_SOURCE_ANCHOR,
-        targetHandle: normalizeHandleId(e.targetHandle) || "l-c",
+        sourceHandle: pinnedHandleId(e, "source") || DEFAULT_SOURCE_ANCHOR,
+        targetHandle: pinnedHandleId(e, "target") || "l-c",
       };
     });
     return map;
@@ -4075,7 +4122,7 @@ function NetworkTabInner({
     const slots = {};
     Object.values(groups).forEach((group) => {
       if (group.length < 2) { slots[group[0].id] = 0; return; }
-      const allPinned = group.every((e) => normalizeHandleId(e.sourceHandle) && normalizeHandleId(e.targetHandle));
+      const allPinned = group.every((e) => pinnedHandleId(e, "source") && pinnedHandleId(e, "target"));
       if (allPinned) { group.forEach((e) => { slots[e.id] = 0; }); return; }
       [...group].sort((a, b) => a.id.localeCompare(b.id))
         .forEach((e, i) => { slots[e.id] = i % 2 === 0 ? Math.ceil((i + 1) / 2) : -Math.ceil(i / 2); });
@@ -4239,9 +4286,9 @@ function NetworkTabInner({
       if (!committed) return; // a plain click, never actually dragged: leave the relationship as it was
       const drop = resolve(ev.clientX, ev.clientY);
       if (!drop.nodeId) return; // dropped on empty canvas: leave the relationship as it was
-      updateEdge(edgeId, end === "source"
-        ? { source: drop.nodeId, sourceHandle: drop.handleId }
-        : { target: drop.nodeId, targetHandle: drop.handleId });
+      updateEdge(edgeId, (e) => (end === "source"
+        ? { source: drop.nodeId, sourceHandle: drop.handleId, pinned: { ...(e?.pinned || {}), source: !!drop.handleId } }
+        : { target: drop.nodeId, targetHandle: drop.handleId, pinned: { ...(e?.pinned || {}), target: !!drop.handleId } }));
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
@@ -4849,7 +4896,7 @@ function NetworkTabInner({
               <div className="flex items-center gap-3 flex-wrap">
                 <button
                   disabled={reverseExists}
-                  onClick={() => { commitHistory(); updateEdge(e.id, { source: e.target, target: e.source, sourceHandle: undefined, targetHandle: undefined }); }}
+                  onClick={() => { commitHistory(); updateEdge(e.id, { source: e.target, target: e.source, sourceHandle: undefined, targetHandle: undefined, pinned: undefined }); }}
                   className="inline-flex items-center gap-1 text-xs text-neutral-900 hover:text-black disabled:opacity-40 disabled:cursor-not-allowed"
                   title={reverseExists ? "A relationship in the other direction already exists" : "Make it point the other way"}
                 >
@@ -5399,29 +5446,6 @@ function InfluenceMetricsTab({ concepts, edges, settings, onHighlight, multiScal
 
   return (
     <div className="space-y-5">
-      <FoldableBox
-        storageKey="se.fold.metricsMethod"
-        title="How these metrics are computed"
-        summary="These metrics describe the structure of your map: which concepts drive the system, which absorb change, and which sit at its centre. Sort the table below by any column to rank the concepts on that measure, and click a row to select that concept."
-      >
-          <div className="space-y-3 text-xs text-neutral-900">
-            <p className="text-neutral-700">Sort the table below by any column to rank the concepts on that measure, and click a row to select that concept (open the Network tab to see it).</p>
-            <div className="space-y-2">
-              <p><strong>Indegree, Outdegree, Centrality, Net Influence, and Role are purely structural</strong>: computed directly from the relationship weights you've drawn, with no simulation involved. Indegree is the sum of the absolute weights of a concept's incoming relationships; outdegree is the same for outgoing relationships; centrality is indegree + outdegree; net influence is outdegree minus indegree. Role is assigned from those numbers: <strong>Isolated</strong> has zero centrality (no relationships at all); <strong>Hub</strong> is in the top quartile of centrality among all concepts and has at least one relationship in each direction; <strong>Driver</strong> (not already a Hub) has outdegree more than 1.2&times; its indegree; <strong>Receiver</strong> (not already a Hub) has indegree more than 1.2&times; its outdegree; everything else is a <strong>Connector</strong>.</p>
-              <p><strong>Driver score and Receiver score</strong> are the shares of a concept's total connection weight that are outgoing and incoming: outdegree / centrality and indegree / centrality. They always add up to 1, so they show a concept's balance between sending and receiving influence independently of how strongly connected it is overall.</p>
-              <p><strong>Betweenness</strong> is the share of shortest directed routes between every other pair of concepts that pass through this one (Brandes' method, normalised to 0 to 1). It ignores weights, because weights express strength of influence rather than distance, so it measures position alone: a high value marks a broker that links otherwise distant parts of the system.</p>
-              <p>Because these come straight from the relationships, they update the instant you edit one and never require running a simulation. That also means they say nothing about how the model actually <em>behaves</em> once causal effects propagate through it, which is what Influence and Sensitivity scores are for.</p>
-            </div>
-            <div className="pt-2 border-t border-slate-100 space-y-2">
-              <p><strong>Influence and Sensitivity scores are perturbation-based</strong>: for each concept in turn, the model is set to all zeros, that one concept is locked at full activation (+1) for the whole run, and the simulation runs to equilibrium under the current squash function, &lambda;, update rule, and convergence settings (Scenarios &amp; Simulation's Advanced options). Every other concept always starts at exactly 0 here, regardless of what's set on the Model editor tab, so these scores measure the network's structure in isolation, not whatever initial values happen to be configured elsewhere.</p>
-              <p><strong>Influence</strong> is the average absolute movement a concept <em>causes</em> in every other concept once its own driven run settles. <strong>Sensitivity</strong> is the average absolute movement a concept <em>undergoes</em>, across all of the other concepts' individual driven runs. A concept with high influence is one whose activation, if it changed, would ripple widely through the rest of the system; a concept with high sensitivity is one that tends to move regardless of which other concept is driving the change.</p>
-              <p className="text-neutral-600">Computing these takes one full simulation run per concept ({concepts.length} run{concepts.length === 1 ? "" : "s"} for the current model). These are the same numbers used to compute the category metrics' "Mean influence"/"Mean sensitivity" below, and are recomputed automatically whenever a concept, relationship, or Advanced option changes.</p>
-            </div>
-            <div className="pt-2 border-t border-slate-100">
-              <p><strong>Ranking.</strong> The # column is each concept's rank on the numeric column the table is sorted by, where #1 is the highest value; reversing the order flips the list but keeps the ranks. Concepts with exactly the same value share a rank, so two concepts tied for first are both #1 and the next one is #3. Sorting by a text column (concept, module, role) only orders the rows.</p>
-            </div>
-          </div>
-      </FoldableBox>
 
       <div className="bg-white rounded-lg border border-slate-200 p-4">
         <div className="flex items-baseline gap-3 flex-wrap mb-3">
@@ -5473,7 +5497,227 @@ function InfluenceMetricsTab({ concepts, edges, settings, onHighlight, multiScal
         </div>
       </div>
 
-      <MethodPanel
+      {/* System overview: the structure of the map in a few tiles, each with
+          its number, a meter where a share makes sense, and a plain reading. */}
+      <div className="bg-white rounded-lg border border-slate-200 p-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+          <h3 className="font-semibold text-sm">System overview</h3>
+          <span className="text-[12.5px] text-neutral-600">Hover a tile for how it is computed.</span>
+        </div>
+        {(() => {
+          const pct = (v) => Math.max(0, Math.min(100, Number(v) || 0));
+          const densityWord = stats.density < 10 ? "sparse: few of the possible links are drawn" : stats.density < 25 ? "moderately connected" : "densely connected";
+          const centralWord = stats.centralization < 20 ? "influence is spread over many concepts" : stats.centralization < 50 ? "a few concepts carry more of the links" : "a handful of hubs hold the map together";
+          const loopTotal = stats.loops.total || 0;
+          const rShare = loopTotal ? (100 * stats.loops.reinforcing) / loopTotal : 0;
+          const top = [...metrics].sort((x, y) => y.betweenness - x.betweenness)[0];
+          const Tile = ({ label, hint, value, unit, meter, meterColor = "#2456d6", children }) => (
+            <div className="rounded-lg border border-slate-200 p-3 flex flex-col gap-1" title={hint}>
+              <div className="text-[11.5px] uppercase tracking-wide text-neutral-600 flex items-center gap-1">{label}{hint && <HelpCircle size={10} className="text-neutral-400" />}</div>
+              <div className="flex items-baseline gap-1"><span className="text-2xl font-semibold text-neutral-900 tabular-nums">{value}</span>{unit && <span className="text-xs text-neutral-600">{unit}</span>}</div>
+              {meter !== undefined && (
+                <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden" aria-hidden><div className="h-full rounded-full" style={{ width: `${pct(meter)}%`, background: meterColor }} /></div>
+              )}
+              <div className="text-[12.5px] text-neutral-700 leading-snug">{children}</div>
+            </div>
+          );
+          return (
+            <div className="space-y-4">
+              <div>
+                <p className="text-xs font-semibold text-neutral-900 mb-1.5">Size</p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <Tile label="Concepts" value={stats.concepts}>in the analysis scope</Tile>
+                  <Tile label="Relationships" value={stats.relationships}>{stats.interfaceEdges} cross a module border ({stats.interfaceShare}%)</Tile>
+                  <Tile label="Density" hint={SYSTEM_STAT_HELP.density} value={stats.density} unit="%" meter={stats.density}>{stats.actualConnections} of {stats.possibleConnections} possible links; {densityWord}</Tile>
+                  <Tile label="Links per concept" hint={SYSTEM_STAT_HELP.avgDegree} value={stats.avgDegree} unit="on average">from {stats.minDegree} to {stats.maxDegree}</Tile>
+                </div>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-neutral-900 mb-1.5">Feedback</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="rounded-lg border border-slate-200 p-3" title={SYSTEM_STAT_HELP.loops}>
+                    <div className="text-[11.5px] uppercase tracking-wide text-neutral-600 flex items-center gap-1">Feedback loops<HelpCircle size={10} className="text-neutral-400" /></div>
+                    <div className="flex items-baseline gap-1"><span className="text-2xl font-semibold text-neutral-900 tabular-nums">{loopTotal}</span><span className="text-xs text-neutral-600">{stats.loops.capped ? "(first 300 found)" : ""}</span></div>
+                    {loopTotal > 0 ? (
+                      <>
+                        <div className="flex h-2.5 rounded-full overflow-hidden mt-1" aria-hidden>
+                          <div style={{ width: `${rShare}%`, background: "#c2410c" }} />
+                          <div style={{ width: `${100 - rShare}%`, background: "#2456d6" }} />
+                        </div>
+                        <div className="flex justify-between text-[12.5px] mt-1">
+                          <span><span className="inline-block w-2 h-2 rounded-full mr-1" style={{ background: "#c2410c" }} />{stats.loops.reinforcing} reinforcing (amplify change)</span>
+                          <span><span className="inline-block w-2 h-2 rounded-full mr-1" style={{ background: "#2456d6" }} />{stats.loops.balancing} balancing (push back)</span>
+                        </div>
+                      </>
+                    ) : <div className="text-[12.5px] text-neutral-700">No feedback loops: every effect runs one way.</div>}
+                  </div>
+                  <Tile label="Key broker" hint={SYSTEM_STAT_HELP.betweenness} value={top && top.betweenness > 0 ? top.name : "none"}>
+                    {top && top.betweenness > 0 ? `lies on the most shortest paths between other concepts (betweenness ${top.betweenness})` : "no concept sits between others"}
+                  </Tile>
+                </div>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-neutral-900 mb-1.5">Shape</p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <Tile label="Centralization" hint={SYSTEM_STAT_HELP.centralization} value={stats.centralization} unit="%" meter={stats.centralization} meterColor="#7c3aed">{centralWord}</Tile>
+                  <Tile label="Clustering" hint={SYSTEM_STAT_HELP.clustering} value={stats.clusteringEligible ? stats.clustering : "n/a"} meter={stats.clusteringEligible ? 100 * stats.clustering : undefined} meterColor="#0f766e">how often a concept's neighbours are linked too</Tile>
+                  <Tile label="Modularity (Q)" hint={SYSTEM_STAT_HELP.modularity} value={stats.modularity === null ? "n/a" : stats.modularity}>{stats.modularity === null ? (stats.moduleCount < 2 ? "needs 2 or more modules in scope" : "no relationships") : `how separate the ${stats.moduleCount} modules are (higher: more separate)`}</Tile>
+                  <Tile label="Complexity" hint={SYSTEM_STAT_HELP.complexity} value={Number.isFinite(stats.complexity) ? stats.complexity : "n/a"}>receivers per driver; connectivity score {stats.connectivity}</Tile>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+
+      <FoldableBox storageKey="se.fold.metricsAdvanced" title="Advanced results" icon={Layers} summary="The multi-scale analysis and the network metrics by category.">
+        <div className="space-y-5">
+          <MultiScaleSection report={multiScale} fresh={multiScaleFresh} scopeMetrics={metrics} viewInfo={viewInfo} onHighlight={onHighlight} />
+
+          <div className="bg-white rounded-lg border border-slate-200 p-4">
+            <h3 className="font-semibold text-sm mb-1">Network metrics by category</h3>
+            <p className="text-xs text-neutral-600 mb-3">Compares how influence patterns differ between the categories defined on the Model editor tab. Uses whatever categories are actually present on this model; nothing is hard-coded.</p>
+
+            {!hasCategories ? (
+              <p className="text-xs text-neutral-600 italic">No categories are set yet. Add a category to a concept on the Model editor tab (e.g. "water", "energy", "food", "governance") to enable this section.</p>
+            ) : (
+              <>
+                <div className="overflow-x-auto">
+                  <p className="text-[12.5px] text-neutral-600 mb-1.5">Click any column heading to sort the categories by it; click again to reverse.</p>
+                  <table className="w-full text-xs min-w-[820px]">
+                    <thead>
+                      <tr className="text-left text-neutral-600 border-b border-slate-100">
+                        {categoryColumns.map((col) => (
+                          <SortHeader key={col.key} col={col} sortKey={categorySort.sortKey} sortDir={categorySort.sortDir} onSort={categorySort.onSort} />
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {categorySort.sorted.map((c) => (
+                        <tr key={c.category} className="border-b border-slate-50">
+                          {categoryColumns.map((col) => (
+                            <td key={col.key} className={`py-1.5 pr-3 ${col.type === "num" ? "font-mono" : ""} ${col.key === categorySort.sortKey ? "bg-cobalt-50/60 font-semibold text-neutral-900" : ""}`}>
+                              {col.key === "category" ? (
+                                <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: categoryColor.get(c.category) }} />
+                                  <span className={c.isUncategorized ? "italic text-neutral-600" : ""}>{c.category}</span>
+                                </span>
+                              ) : (c[col.key] ?? "n/a")}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 mt-4">
+                  {[
+                    { key: "meanInfluence", title: "Mean influence score by category", color: "#1d4ed8" },
+                    { key: "meanSensitivity", title: "Mean sensitivity score by category", color: "#b45309" },
+                    { key: "meanCentrality", title: "Mean centrality by category", color: "#0f766e" },
+                    { key: "density", title: "Connection density by category (%)", color: "#7c3aed" },
+                  ].map(({ key, title }) => {
+                    const data = [...categoryStats].sort((a, b) => (b[key] ?? -Infinity) - (a[key] ?? -Infinity));
+                    return (
+                      <div key={key} className="border border-slate-100 rounded-lg p-3 overflow-x-auto">
+                        <h4 className="text-xs font-semibold mb-2">{title}</h4>
+                        <div style={{ minWidth: categoryYAxisWidth + 180, height: Math.max(140, data.length * 30 + 40) }}>
+                          <ResponsiveContainer>
+                            <BarChart data={data} layout="vertical" margin={{ left: 8, right: 16 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                              <XAxis type="number" tick={{ fontSize: 12 }} />
+                              {/* interval={0}: show every module's name, never thin them out. */}
+                              <YAxis type="category" dataKey="category" width={categoryYAxisWidth} interval={0} tick={(p) => <SingleLineTick {...p} />} />
+                              <RTooltip formatter={(v) => (v === null ? "n/a (fewer than 2 concepts)" : v)} />
+                              <Bar dataKey={key} radius={[0, 3, 3, 0]}>
+                                {/* One Cell per bar IN THE ORDER DRAWN, so each bar keeps its own module's colour. */}
+                                {data.map((c) => <Cell key={c.category} fill={categoryColor.get(c.category)} fillOpacity={0.8} />)}
+                              </Bar>
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <details className="mt-4 pt-4 border-t border-slate-100">
+                  <summary className="text-sm font-semibold cursor-pointer">Category interaction matrix (optional)</summary>
+                  <p className="text-[12.5px] text-neutral-600 mt-2 mb-2">Rows are the source category, columns the target. Darker cells have more connections; hover a cell for the exact count and total weight. The diagonal (A→A) is the same figure as "Internal" above.</p>
+                  <div className="overflow-x-auto">
+                    <table className="text-xs border-collapse">
+                      <thead>
+                        <tr>
+                          <th className="p-1.5 text-left text-neutral-600 font-medium">From \ To</th>
+                          {categoryStats.map((c) => (
+                            <th key={c.category} className="p-1.5 text-left text-neutral-600 font-medium whitespace-nowrap">{c.category}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {categoryStats.map((rowCat) => {
+                          const maxCount = Math.max(1, ...categoryStats.map((c) => categoryMatrix[rowCat.category]?.[c.category]?.count ?? 0));
+                          return (
+                            <tr key={rowCat.category}>
+                              <td className="p-1.5 font-medium whitespace-nowrap">{rowCat.category}</td>
+                              {categoryStats.map((colCat) => {
+                                const cell = categoryMatrix[rowCat.category]?.[colCat.category] ?? { count: 0, totalWeight: 0 };
+                                const alpha = cell.count > 0 ? 0.15 + 0.65 * (cell.count / maxCount) : 0;
+                                // White text on the darker cells, black on the lighter ones: luminance of the
+                                // module colour blended over white at this cell's opacity.
+                                const hex = categoryColor.get(rowCat.category) || "#ffffff";
+                                const shade = [1, 3, 5].map((k) => alpha * parseInt(hex.slice(k, k + 2), 16) + (1 - alpha) * 255);
+                                const lum = (0.2126 * shade[0] + 0.7152 * shade[1] + 0.0722 * shade[2]) / 255;
+                                return (
+                                  <td
+                                    key={colCat.category}
+                                    className="p-1.5 text-center font-mono whitespace-nowrap border border-slate-100"
+                                    style={{ background: cell.count > 0 ? `${categoryColor.get(rowCat.category)}${Math.round(alpha * 255).toString(16).padStart(2, "0")}` : "transparent", color: cell.count > 0 && lum < 0.55 ? "#ffffff" : undefined }}
+                                    title={`${rowCat.category} → ${colCat.category}: ${cell.count} connection${cell.count === 1 ? "" : "s"}, total weight ${cell.totalWeight >= 0 ? "+" : ""}${round2(cell.totalWeight)}`}
+                                  >
+                                    {cell.count > 0 ? `${cell.count} / ${cell.totalWeight >= 0 ? "+" : ""}${round2(cell.totalWeight)}` : "0"}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </details>
+              </>
+            )}
+          </div>
+        </div>
+      </FoldableBox>
+
+      <FoldableBox
+        storageKey="se.fold.metricsMethod"
+        title="How these metrics are computed"
+        summary="These metrics describe the structure of your map: which concepts drive the system, which absorb change, and which sit at its centre. Sort the table below by any column to rank the concepts on that measure, and click a row to select that concept."
+      >
+          <div className="space-y-3 text-xs text-neutral-900">
+            <p className="text-neutral-700">Sort the table below by any column to rank the concepts on that measure, and click a row to select that concept (open the Network tab to see it).</p>
+            <div className="space-y-2">
+              <p><strong>Indegree, Outdegree, Centrality, Net Influence, and Role are purely structural</strong>: computed directly from the relationship weights you've drawn, with no simulation involved. Indegree is the sum of the absolute weights of a concept's incoming relationships; outdegree is the same for outgoing relationships; centrality is indegree + outdegree; net influence is outdegree minus indegree. Role is assigned from those numbers: <strong>Isolated</strong> has zero centrality (no relationships at all); <strong>Hub</strong> is in the top quartile of centrality among all concepts and has at least one relationship in each direction; <strong>Driver</strong> (not already a Hub) has outdegree more than 1.2&times; its indegree; <strong>Receiver</strong> (not already a Hub) has indegree more than 1.2&times; its outdegree; everything else is a <strong>Connector</strong>.</p>
+              <p><strong>Driver score and Receiver score</strong> are the shares of a concept's total connection weight that are outgoing and incoming: outdegree / centrality and indegree / centrality. They always add up to 1, so they show a concept's balance between sending and receiving influence independently of how strongly connected it is overall.</p>
+              <p><strong>Betweenness</strong> is the share of shortest directed routes between every other pair of concepts that pass through this one (Brandes' method, normalised to 0 to 1). It ignores weights, because weights express strength of influence rather than distance, so it measures position alone: a high value marks a broker that links otherwise distant parts of the system.</p>
+              <p>Because these come straight from the relationships, they update the instant you edit one and never require running a simulation. That also means they say nothing about how the model actually <em>behaves</em> once causal effects propagate through it, which is what Influence and Sensitivity scores are for.</p>
+            </div>
+            <div className="pt-2 border-t border-slate-100 space-y-2">
+              <p><strong>Influence and Sensitivity scores are perturbation-based</strong>: for each concept in turn, the model is set to all zeros, that one concept is locked at full activation (+1) for the whole run, and the simulation runs to equilibrium under the current squash function, &lambda;, update rule, and convergence settings (Scenarios &amp; Simulation's Advanced options). Every other concept always starts at exactly 0 here, regardless of what's set on the Model editor tab, so these scores measure the network's structure in isolation, not whatever initial values happen to be configured elsewhere.</p>
+              <p><strong>Influence</strong> is the average absolute movement a concept <em>causes</em> in every other concept once its own driven run settles. <strong>Sensitivity</strong> is the average absolute movement a concept <em>undergoes</em>, across all of the other concepts' individual driven runs. A concept with high influence is one whose activation, if it changed, would ripple widely through the rest of the system; a concept with high sensitivity is one that tends to move regardless of which other concept is driving the change.</p>
+              <p className="text-neutral-600">Computing these takes one full simulation run per concept ({concepts.length} run{concepts.length === 1 ? "" : "s"} for the current model). These are the same numbers used to compute the category metrics' "Mean influence"/"Mean sensitivity" below, and are recomputed automatically whenever a concept, relationship, or Advanced option changes.</p>
+            </div>
+            <div className="pt-2 border-t border-slate-100">
+              <p><strong>Ranking.</strong> The # column is each concept's rank on the numeric column the table is sorted by, where #1 is the highest value; reversing the order flips the list but keeps the ranks. Concepts with exactly the same value share a rank, so two concepts tied for first are both #1 and the next one is #3. Sorting by a text column (concept, module, role) only orders the rows.</p>
+            </div>
+          </div>
+      </FoldableBox>
+
+      <MethodPanel fold
         stats={[
           { label: "Concepts / relationships", value: `${concepts.length} / ${edges.length}` },
           { label: "Simulation runs behind these scores", value: concepts.length, hint: "Influence and Sensitivity need one full driven run per concept. Structural columns (degree, centrality, role) need none." },
@@ -5491,191 +5735,6 @@ function InfluenceMetricsTab({ concepts, edges, settings, onHighlight, multiScal
         <p><strong>Influence and Sensitivity are not properties of the network alone.</strong> They come from simulated runs, so they move with the transfer function, &lambda;, update rule and convergence settings currently selected. The same drawn model scored at a different &lambda; yields different numbers, so if you report these scores, report those settings with them.</p>
         <p><strong>Loop counts are a lower bound.</strong> Enumeration stops at 8 relationships per loop and 300 loops in total, so longer or additional cycles simply are not counted{stats.loops.capped ? ", and this model has hit that limit, so the figure above is definitely an undercount" : ""}. A loop is classed reinforcing when it contains an even number of negative relationships and balancing when odd, which is a sign-parity rule: it says nothing about the strength of the loop or how quickly it acts.</p>
       </MethodPanel>
-
-      <MultiScaleSection report={multiScale} fresh={multiScaleFresh} scopeMetrics={metrics} viewInfo={viewInfo} onHighlight={onHighlight} />
-
-      <div className="bg-white rounded-lg border border-slate-200 p-4">
-        <h3 className="font-semibold text-sm mb-3">System overview</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div>
-            <div className="text-xs text-neutral-600 mb-1">Network size</div>
-            <div className="text-sm">{stats.concepts} concepts</div>
-            <div className="text-sm">{stats.relationships} relationships</div>
-          </div>
-          <div title={SYSTEM_STAT_HELP.density}>
-            <div className="text-xs text-neutral-600 mb-1 flex items-center gap-1">Density <HelpCircle size={10} className="text-neutral-500" /></div>
-            <div className="text-sm font-mono">{stats.density}%</div>
-            <div className="text-[12.5px] text-neutral-600">{stats.actualConnections} of {stats.possibleConnections} possible</div>
-          </div>
-          <div title={SYSTEM_STAT_HELP.avgDegree}>
-            <div className="text-xs text-neutral-600 mb-1 flex items-center gap-1">Connectivity <HelpCircle size={10} className="text-neutral-500" /></div>
-            <div className="text-sm font-mono">avg {stats.avgDegree}</div>
-            <div className="text-[12.5px] text-neutral-600">max {stats.maxDegree}, min {stats.minDegree}</div>
-          </div>
-          <div title={SYSTEM_STAT_HELP.loops}>
-            <div className="text-xs text-neutral-600 mb-1 flex items-center gap-1">Feedback structure <HelpCircle size={10} className="text-neutral-500" /></div>
-            <div className="text-sm font-mono">{stats.loops.total} loop{stats.loops.total === 1 ? "" : "s"}</div>
-            <div className="text-[12.5px] text-neutral-600">{stats.loops.reinforcing} reinforcing, {stats.loops.balancing} balancing{stats.loops.capped ? " (showing first 300 found)" : ""}</div>
-          </div>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4 pt-4 border-t border-slate-100">
-          <div title={SYSTEM_STAT_HELP.complexity}>
-            <div className="text-xs text-neutral-600 mb-1 flex items-center gap-1">Complexity score <HelpCircle size={10} className="text-neutral-500" /></div>
-            <div className="text-sm font-mono">{Number.isFinite(stats.complexity) ? stats.complexity : "N/A"}</div>
-          </div>
-          <div title={SYSTEM_STAT_HELP.connectivity}>
-            <div className="text-xs text-neutral-600 mb-1 flex items-center gap-1">Connectivity score <HelpCircle size={10} className="text-neutral-500" /></div>
-            <div className="text-sm font-mono">{stats.connectivity}</div>
-          </div>
-          <div title={SYSTEM_STAT_HELP.centralization}>
-            <div className="text-xs text-neutral-600 mb-1 flex items-center gap-1">Centralization score <HelpCircle size={10} className="text-neutral-500" /></div>
-            <div className="text-sm font-mono">{stats.centralization}%</div>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 pt-4 border-t border-slate-100">
-          <div title={SYSTEM_STAT_HELP.clustering}>
-            <div className="text-xs text-neutral-600 mb-1 flex items-center gap-1">Clustering coefficient <HelpCircle size={10} className="text-neutral-500" /></div>
-            <div className="text-sm font-mono">{stats.clusteringEligible ? stats.clustering : "n/a"}</div>
-            <div className="text-[12.5px] text-neutral-600">mean over {stats.clusteringEligible} concept{stats.clusteringEligible === 1 ? "" : "s"} with 2+ neighbours</div>
-          </div>
-          <div title={SYSTEM_STAT_HELP.modularity}>
-            <div className="text-xs text-neutral-600 mb-1 flex items-center gap-1">Modularity (Q) <HelpCircle size={10} className="text-neutral-500" /></div>
-            <div className="text-sm font-mono">{stats.modularity === null ? "n/a" : stats.modularity}</div>
-            <div className="text-[12.5px] text-neutral-600">{stats.modularity === null ? (stats.moduleCount < 2 ? "needs 2+ modules in scope" : "no relationships") : `of the ${stats.moduleCount}-module partition`}</div>
-          </div>
-          <div title={SYSTEM_STAT_HELP.interfaceEdges}>
-            <div className="text-xs text-neutral-600 mb-1 flex items-center gap-1">Interface relationships <HelpCircle size={10} className="text-neutral-500" /></div>
-            <div className="text-sm font-mono">{stats.interfaceEdges}</div>
-            <div className="text-[12.5px] text-neutral-600">{stats.interfaceShare}% of relationships cross modules</div>
-          </div>
-          <div title={SYSTEM_STAT_HELP.betweenness}>
-            <div className="text-xs text-neutral-600 mb-1 flex items-center gap-1">Top broker (betweenness) <HelpCircle size={10} className="text-neutral-500" /></div>
-            {(() => {
-              const top = [...metrics].sort((a, b) => b.betweenness - a.betweenness)[0];
-              return top && top.betweenness > 0
-                ? <><div className="text-sm truncate" title={top.name}>{top.name}</div><div className="text-[12.5px] text-neutral-600 font-mono">{top.betweenness}</div></>
-                : <div className="text-sm text-neutral-600">none</div>;
-            })()}
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-lg border border-slate-200 p-4">
-        <h3 className="font-semibold text-sm mb-1">Network metrics by category</h3>
-        <p className="text-xs text-neutral-600 mb-3">Compares how influence patterns differ between the categories defined on the Model editor tab. Uses whatever categories are actually present on this model; nothing is hard-coded.</p>
-
-        {!hasCategories ? (
-          <p className="text-xs text-neutral-600 italic">No categories are set yet. Add a category to a concept on the Model editor tab (e.g. "water", "energy", "food", "governance") to enable this section.</p>
-        ) : (
-          <>
-            <div className="overflow-x-auto">
-              <p className="text-[12.5px] text-neutral-600 mb-1.5">Click any column heading to sort the categories by it; click again to reverse.</p>
-              <table className="w-full text-xs min-w-[820px]">
-                <thead>
-                  <tr className="text-left text-neutral-600 border-b border-slate-100">
-                    {categoryColumns.map((col) => (
-                      <SortHeader key={col.key} col={col} sortKey={categorySort.sortKey} sortDir={categorySort.sortDir} onSort={categorySort.onSort} />
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {categorySort.sorted.map((c) => (
-                    <tr key={c.category} className="border-b border-slate-50">
-                      {categoryColumns.map((col) => (
-                        <td key={col.key} className={`py-1.5 pr-3 ${col.type === "num" ? "font-mono" : ""} ${col.key === categorySort.sortKey ? "bg-cobalt-50/60 font-semibold text-neutral-900" : ""}`}>
-                          {col.key === "category" ? (
-                            <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: categoryColor.get(c.category) }} />
-                              <span className={c.isUncategorized ? "italic text-neutral-600" : ""}>{c.category}</span>
-                            </span>
-                          ) : (c[col.key] ?? "n/a")}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4 mt-4">
-              {[
-                { key: "meanInfluence", title: "Mean influence score by category", color: "#1d4ed8" },
-                { key: "meanSensitivity", title: "Mean sensitivity score by category", color: "#b45309" },
-                { key: "meanCentrality", title: "Mean centrality by category", color: "#0f766e" },
-                { key: "density", title: "Connection density by category (%)", color: "#7c3aed" },
-              ].map(({ key, title }) => {
-                const data = [...categoryStats].sort((a, b) => (b[key] ?? -Infinity) - (a[key] ?? -Infinity));
-                return (
-                  <div key={key} className="border border-slate-100 rounded-lg p-3 overflow-x-auto">
-                    <h4 className="text-xs font-semibold mb-2">{title}</h4>
-                    <div style={{ minWidth: categoryYAxisWidth + 180, height: Math.max(140, data.length * 30 + 40) }}>
-                      <ResponsiveContainer>
-                        <BarChart data={data} layout="vertical" margin={{ left: 8, right: 16 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                          <XAxis type="number" tick={{ fontSize: 12 }} />
-                          {/* interval={0}: show every module's name, never thin them out. */}
-                          <YAxis type="category" dataKey="category" width={categoryYAxisWidth} interval={0} tick={(p) => <SingleLineTick {...p} />} />
-                          <RTooltip formatter={(v) => (v === null ? "n/a (fewer than 2 concepts)" : v)} />
-                          <Bar dataKey={key} radius={[0, 3, 3, 0]}>
-                            {/* One Cell per bar IN THE ORDER DRAWN, so each bar keeps its own module's colour. */}
-                            {data.map((c) => <Cell key={c.category} fill={categoryColor.get(c.category)} fillOpacity={0.8} />)}
-                          </Bar>
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <details className="mt-4 pt-4 border-t border-slate-100">
-              <summary className="text-sm font-semibold cursor-pointer">Category interaction matrix (optional)</summary>
-              <p className="text-[12.5px] text-neutral-600 mt-2 mb-2">Rows are the source category, columns the target. Darker cells have more connections; hover a cell for the exact count and total weight. The diagonal (A→A) is the same figure as "Internal" above.</p>
-              <div className="overflow-x-auto">
-                <table className="text-xs border-collapse">
-                  <thead>
-                    <tr>
-                      <th className="p-1.5 text-left text-neutral-600 font-medium">From \ To</th>
-                      {categoryStats.map((c) => (
-                        <th key={c.category} className="p-1.5 text-left text-neutral-600 font-medium whitespace-nowrap">{c.category}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {categoryStats.map((rowCat) => {
-                      const maxCount = Math.max(1, ...categoryStats.map((c) => categoryMatrix[rowCat.category]?.[c.category]?.count ?? 0));
-                      return (
-                        <tr key={rowCat.category}>
-                          <td className="p-1.5 font-medium whitespace-nowrap">{rowCat.category}</td>
-                          {categoryStats.map((colCat) => {
-                            const cell = categoryMatrix[rowCat.category]?.[colCat.category] ?? { count: 0, totalWeight: 0 };
-                            const alpha = cell.count > 0 ? 0.15 + 0.65 * (cell.count / maxCount) : 0;
-                            // White text on the darker cells, black on the lighter ones: luminance of the
-                            // module colour blended over white at this cell's opacity.
-                            const hex = categoryColor.get(rowCat.category) || "#ffffff";
-                            const shade = [1, 3, 5].map((k) => alpha * parseInt(hex.slice(k, k + 2), 16) + (1 - alpha) * 255);
-                            const lum = (0.2126 * shade[0] + 0.7152 * shade[1] + 0.0722 * shade[2]) / 255;
-                            return (
-                              <td
-                                key={colCat.category}
-                                className="p-1.5 text-center font-mono whitespace-nowrap border border-slate-100"
-                                style={{ background: cell.count > 0 ? `${categoryColor.get(rowCat.category)}${Math.round(alpha * 255).toString(16).padStart(2, "0")}` : "transparent", color: cell.count > 0 && lum < 0.55 ? "#ffffff" : undefined }}
-                                title={`${rowCat.category} → ${colCat.category}: ${cell.count} connection${cell.count === 1 ? "" : "s"}, total weight ${cell.totalWeight >= 0 ? "+" : ""}${round2(cell.totalWeight)}`}
-                              >
-                                {cell.count > 0 ? `${cell.count} / ${cell.totalWeight >= 0 ? "+" : ""}${round2(cell.totalWeight)}` : "0"}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </details>
-          </>
-        )}
-      </div>
     </div>
   );
 }
@@ -6402,8 +6461,13 @@ function InfluenceRoutesTab({ concepts, edges, config, setConfig, onHighlight })
     <div className="space-y-5">
       <InfluenceRoutesGuide />
 
-      <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-3">
+      <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-3" data-routes-setup>
+        <div>
+          <h3 className="font-semibold text-sm">Which routes do you want to see?</h3>
+          <p className="text-[12.5px] text-neutral-600">Pick a kind of route, then narrow it down if you like. The results update straight away.</p>
+        </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-medium text-neutral-700 w-28 shrink-0">Kind of route</span>
           {ROUTE_KINDS.map((k) => (
             <button key={k.key} onClick={() => set({ kind: k.key })} title={k.help}
               className={`px-2.5 py-1 rounded-md border text-xs ${effective.kind === k.key ? "bg-slate-900 border-slate-900 text-white" : "bg-white border-slate-300 text-neutral-900 hover:bg-slate-50"}`}>
@@ -6412,6 +6476,7 @@ function InfluenceRoutesTab({ concepts, edges, config, setConfig, onHighlight })
           ))}
         </div>
         <div className="flex items-center gap-3 flex-wrap text-xs text-neutral-900">
+          <span className="text-xs font-medium text-neutral-700 w-28 shrink-0">Narrow down</span>
           {(effective.kind === "within" || effective.kind === "between") && (
             <label className="flex items-center gap-1.5">{effective.kind === "within" ? "Module" : "Module A"}
               <select value={moduleA} onChange={(e) => set({ moduleA: e.target.value })} className="border border-slate-300 rounded px-1.5 py-0.5 bg-white">
@@ -6462,23 +6527,26 @@ function InfluenceRoutesTab({ concepts, edges, config, setConfig, onHighlight })
       </div>
 
       {unavailable ? (
-        <div className="rounded-md border border-slate-200 bg-white p-4 text-xs text-neutral-700">{unavailable}</div>
+        <>
+          <div className="rounded-md border border-slate-200 bg-white p-4 text-xs text-neutral-700">{unavailable}</div>
+          <FeedbackLoopsSection concepts={concepts} edges={edges} onHighlight={onHighlight} />
+        </>
       ) : result && (
         <>
-          <MethodPanel
-            title="Method & diagnostics for these routes"
-            stats={[
-              { label: "Routes found", value: result.truncated ? `${result.paths.length}+ (capped)` : result.paths.length, tone: result.truncated ? "warn" : undefined, hint: "Simple directed routes (no concept visited twice) matching the selection above." },
-              { label: "Same-direction (+) / opposite (−)", value: `${result.positive} / ${result.negative}` },
-              { label: "Combined strength", value: result.totalStrength, hint: "Sum of the strengths of every route found." },
-              { label: "Bottleneck", value: bottleneck ? bottleneck.name : "none", tone: bottleneck ? "warn" : undefined, hint: "A concept carrying at least half of the combined route strength." },
-            ]}
-          >
-            <p><strong>Strength</strong> is the product of the absolute weights along a route, the usual FCM indirect-effect measure: a route is never stronger than its weakest relationship, and longer chains fade. <strong>Sign</strong> is the product of the signs: + means the first concept pushes the last one in the same direction, &minus; in the opposite direction.</p>
-            <p><strong>This is structure, not simulation.</strong> Routes show the routes along which influence <em>can</em> travel. How much actually arrives depends on the transfer function, feedback and everything else acting on the same concepts, which the simulation tabs capture and this tab does not.</p>
-            <p><strong>Bridge concepts</strong> are ranked by the share of combined route strength that passes <em>through</em> them (as an intermediate step, not a start or end). "Boundary crossings" counts how often a route changes module at that concept, which marks it as a coupling point. A concept carrying half or more of the strength is flagged as a bottleneck: the selected routes largely depend on it, which makes it a place where coordination between subsystems is needed. The 50% threshold is a convention of this tool.</p>
-            <p><strong>Enumeration is capped</strong> at 6 relationships per route, {ROUTE_KEEP_LIMIT.toLocaleString()} routes and {ROUTE_EXPANSION_LIMIT.toLocaleString()} search steps, so a dense network cannot freeze the page{result.truncated ? ". This selection hit the cap, so counts and shares are based on the routes found before it; narrow the selection (shorter length, a From/To concept) for complete figures" : ""}.</p>
-          </MethodPanel>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3" data-routes-summary>
+            {[
+              { label: "Routes found", value: result.truncated ? `${result.paths.length}+` : result.paths.length, note: result.truncated ? "capped: narrow the selection for complete figures" : "matching the selection above" },
+              { label: "Same direction / opposite", value: <><span className="text-green-700">{result.positive}</span> <span className="text-neutral-400">/</span> <span className="text-orange-700">{result.negative}</span></>, note: "routes that push the end concept up / down" },
+              { label: "Combined strength", value: result.totalStrength, note: "sum over every route found" },
+              { label: "Bottleneck", value: bottleneck ? bottleneck.name : "None", note: bottleneck ? `carries ${Math.round(bottleneck.share * 100)}% of the strength` : "no concept carries half of the strength", warn: !!bottleneck },
+            ].map((t) => (
+              <div key={t.label} className={`bg-white rounded-lg border p-3 ${t.warn ? "border-orange-200" : "border-slate-200"}`}>
+                <div className="text-[12px] text-neutral-600">{t.label}</div>
+                <div className={`text-lg font-semibold leading-tight mt-0.5 ${t.warn ? "text-orange-800" : "text-neutral-900"}`}>{t.value}</div>
+                <div className="text-[12px] text-neutral-500 mt-0.5">{t.note}</div>
+              </div>
+            ))}
+          </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
             <div className="bg-white rounded-lg border border-slate-200 p-4">
@@ -6550,6 +6618,8 @@ function InfluenceRoutesTab({ concepts, edges, config, setConfig, onHighlight })
             </div>
           </div>
 
+          <FeedbackLoopsSection concepts={concepts} edges={edges} onHighlight={onHighlight} />
+
           <div className="bg-white rounded-lg border border-slate-200 p-4">
             <div className="flex items-center gap-3 mb-2">
               <h3 className="font-semibold text-sm">Strongest routes</h3>
@@ -6603,10 +6673,25 @@ function InfluenceRoutesTab({ concepts, edges, config, setConfig, onHighlight })
               </div>
             )}
           </div>
+
+          <MethodPanel
+            fold
+            title="Method & diagnostics for these routes"
+            stats={[
+              { label: "Routes found", value: result.truncated ? `${result.paths.length}+ (capped)` : result.paths.length, tone: result.truncated ? "warn" : undefined, hint: "Simple directed routes (no concept visited twice) matching the selection above." },
+              { label: "Same-direction (+) / opposite (−)", value: `${result.positive} / ${result.negative}` },
+              { label: "Combined strength", value: result.totalStrength, hint: "Sum of the strengths of every route found." },
+              { label: "Bottleneck", value: bottleneck ? bottleneck.name : "none", tone: bottleneck ? "warn" : undefined, hint: "A concept carrying at least half of the combined route strength." },
+            ]}
+          >
+            <p><strong>Strength</strong> is the product of the absolute weights along a route, the usual FCM indirect-effect measure: a route is never stronger than its weakest relationship, and longer chains fade. <strong>Sign</strong> is the product of the signs: + means the first concept pushes the last one in the same direction, &minus; in the opposite direction.</p>
+            <p><strong>This is structure, not simulation.</strong> Routes show the routes along which influence <em>can</em> travel. How much actually arrives depends on the transfer function, feedback and everything else acting on the same concepts, which the simulation tabs capture and this tab does not.</p>
+            <p><strong>Bridge concepts</strong> are ranked by the share of combined route strength that passes <em>through</em> them (as an intermediate step, not a start or end). "Boundary crossings" counts how often a route changes module at that concept, which marks it as a coupling point. A concept carrying half or more of the strength is flagged as a bottleneck: the selected routes largely depend on it, which makes it a place where coordination between subsystems is needed. The 50% threshold is a convention of this tool.</p>
+            <p><strong>Enumeration is capped</strong> at 6 relationships per route, {ROUTE_KEEP_LIMIT.toLocaleString()} routes and {ROUTE_EXPANSION_LIMIT.toLocaleString()} search steps, so a dense network cannot freeze the page{result.truncated ? ". This selection hit the cap, so counts and shares are based on the routes found before it; narrow the selection (shorter length, a From/To concept) for complete figures" : ""}.</p>
+          </MethodPanel>
         </>
       )}
 
-      <FeedbackLoopsSection concepts={concepts} edges={edges} onHighlight={onHighlight} />
     </div>
   );
 }
@@ -6622,6 +6707,9 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
   const [sensMax, setSensMax] = useState(1);
   const [sensSteps, setSensSteps] = useState(20);
   const [sensCompareIds, setSensCompareIds] = useState([]);
+  const [sensFilter, setSensFilter] = useState("");
+  const sensCurvesRef = useRef(null);
+  const tornadoRef = useRef(null);
 
   // Excludes the current input concept, the same way Transition Point
   // Analysis's availableOutcomeConcepts excludes its intervention concept:
@@ -6690,16 +6778,17 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
       return { name: c.name, low: round2(lo), high: round2(hi), impact: round2(hi - lo) };
     }).sort((a, b) => Math.abs(b.impact) - Math.abs(a.impact)).slice(0, 12);
 
-    setResult({ curveData, elasticity, tornado, scenarioIds, multi, primaryOutput, __modelVersion: modelVersion });
+    setResult({ curveData, elasticity, tornado, scenarioIds, multi, primaryOutput, outputs: [...sensOutputs], inputId: sensInput, __modelVersion: modelVersion });
   };
   const isStale = !!result && result.__modelVersion !== modelVersion;
 
   const lineColors = ["#2456d6", "#c2410c", "#7c3aed", "#0f766e", "#be123c", "#4d7c0f"];
   const lineKeys = useMemo(() => {
     if (!result) return [];
-    if (!result.multi) return sensOutputs.map((id) => ({ key: id, label: concepts.find((c) => c.id === id)?.name }));
+    const outs = result.outputs || sensOutputs;
+    if (!result.multi) return outs.map((id) => ({ key: id, label: concepts.find((c) => c.id === id)?.name }));
     const keys = [];
-    sensOutputs.forEach((id) => result.scenarioIds.forEach((scId) => keys.push({
+    outs.forEach((id) => result.scenarioIds.forEach((scId) => keys.push({
       key: `${id}__${scId}`,
       label: `${concepts.find((c) => c.id === id)?.name} (${scenarios.find((s) => s.id === scId)?.name})`,
     })));
@@ -6724,79 +6813,90 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
           <div className="pt-2 border-t border-slate-100">
             <p className="font-medium text-neutral-900 mb-1.5">Steps</p>
             <ol className="list-decimal list-inside space-y-1">
-              <li>Choose the input concept to sweep (Step 1).</li>
-              <li>Choose one or more output concepts to observe as the input changes (Step 2).</li>
-              <li>Set the range the input sweeps across, from Range min to Range max (Step 3).</li>
-              <li>Choose how many increments to sample across that range (Step 4).</li>
-              <li>Optionally, tick one or more scenarios under "Compare across scenarios" to run the sweep against those instead of just the active scenario.</li>
-              <li>Click Run analysis (Step 5) to generate the sensitivity curves, tornado chart, and elasticity table.</li>
+              <li>Choose the concept to change (step 1).</li>
+              <li>Choose one or more concepts to watch (step 2).</li>
+              <li>Choose the range and how finely to sample it (step 3). Optionally, compare the sweep across scenarios.</li>
+              <li>Click Run analysis. The reading, the sensitivity curves and the tornado chart appear below; the elasticity metrics, impact ranking and response table are under Advanced results.</li>
             </ol>
           </div>
         </div>
       </FoldableBox>
 
-      <div className="bg-white rounded-lg border border-slate-200 p-4">
-        <h3 className="font-semibold text-sm mb-3">Run an analysis</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div>
-            <label className="text-xs text-neutral-700 font-medium">Step 1: Input concept</label>
+      <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-4" data-sensitivity-setup>
+        <div>
+          <h3 className="font-semibold text-sm">Run a sensitivity analysis</h3>
+          <p className="text-[12.5px] text-neutral-600">Hold one concept at a range of values and see where the concepts you care about settle each time.</p>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="rounded-md border border-slate-200 p-3">
+            <div className="flex items-center gap-2 mb-1.5"><span className="w-5 h-5 rounded-full bg-cobalt-700 text-white text-[11.5px] font-semibold flex items-center justify-center">1</span><span className="text-xs font-semibold text-neutral-900">What do you want to change?</span></div>
             <select
-              value={sensInput || ""}
+              value={sensInput || ""} aria-label="Concept to change"
               onChange={(e) => { setSensInput(e.target.value); setSensOutputs((os) => os.filter((o) => o !== e.target.value)); }}
-              className="w-full mt-1 text-xs border border-slate-200 rounded px-2 py-1.5"
+              className="w-full text-xs border border-slate-300 rounded px-2 py-1.5 bg-white"
             >
-              <option value="" disabled>Select…</option>
+              <option value="" disabled>Choose a concept…</option>
               {concepts.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
+            <p className="text-[12px] text-neutral-500 mt-1.5">This concept is held fixed at each value of the range in turn.</p>
           </div>
-          <div className="col-span-2">
-            <label className="text-xs text-neutral-700 font-medium">Step 2: Output concept(s)</label>
-            <div className="mt-1 flex flex-wrap gap-1 max-h-[70px] overflow-auto border border-slate-200 rounded p-1.5">
-              {availableOutputConcepts.map((c) => (
+          <div className="rounded-md border border-slate-200 p-3 lg:col-span-2">
+            <div className="flex items-center gap-2 mb-1.5"><span className="w-5 h-5 rounded-full bg-cobalt-700 text-white text-[11.5px] font-semibold flex items-center justify-center">2</span><span className="text-xs font-semibold text-neutral-900">What do you want to watch?</span>
+              <span className="text-[12px] text-neutral-500">{sensOutputs.length ? `${sensOutputs.length} chosen` : "choose one or more"}</span>
+              {sensOutputs.length > 0 && <button onClick={() => setSensOutputs([])} className="ml-auto text-[12px] text-cobalt-700 hover:underline">Clear</button>}
+            </div>
+            <input value={sensFilter} onChange={(e) => setSensFilter(e.target.value)} placeholder="Find a concept…" className="w-full text-xs border border-slate-300 rounded px-2 py-1 mb-1.5" />
+            <div className="flex flex-wrap gap-1 max-h-28 overflow-auto">
+              {availableOutputConcepts.filter((c) => !sensFilter || c.name.toLowerCase().includes(sensFilter.toLowerCase())).map((c) => (
                 <button
-                  key={c.id} onClick={() => toggleOutput(c.id)}
-                  className={`text-[11.5px] px-1.5 py-0.5 rounded border ${sensOutputs.includes(c.id) ? "border-cobalt-700 bg-cobalt-50 text-cobalt-800" : "border-slate-200 text-neutral-700 hover:border-slate-400"}`}
+                  key={c.id} onClick={() => toggleOutput(c.id)} aria-pressed={sensOutputs.includes(c.id)}
+                  className={`text-[12px] px-2 py-0.5 rounded-full border ${sensOutputs.includes(c.id) ? "border-cobalt-700 bg-cobalt-700 text-white" : "border-slate-300 text-neutral-800 hover:border-slate-500"}`}
                 >
-                  {c.name}
+                  {sensOutputs.includes(c.id) ? "✓ " : ""}{c.name}
                 </button>
               ))}
             </div>
           </div>
-          <div>
-            <label className="text-xs text-neutral-700 font-medium">Step 4: Increments</label>
-            <select value={sensSteps} onChange={(e) => setSensSteps(parseInt(e.target.value))} className="w-full mt-1 text-xs border border-slate-200 rounded px-2 py-1.5">
-              <option value={10}>10</option>
-              <option value={20}>20</option>
-              <option value={50}>50</option>
-            </select>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-3">
-          <div>
-            <label className="text-xs text-neutral-700 font-medium">Step 3: Range min</label>
-            <input type="number" step={0.1} min={-1} max={1} value={sensMin} onChange={(e) => setSensMin(clamp(parseFloat(e.target.value) || 0))} className="w-full mt-1 text-xs border border-slate-200 rounded px-2 py-1.5" />
-          </div>
-          <div>
-            <label className="text-xs text-neutral-700 font-medium">Range max</label>
-            <input type="number" step={0.1} min={-1} max={1} value={sensMax} onChange={(e) => setSensMax(clamp(parseFloat(e.target.value) || 0))} className="w-full mt-1 text-xs border border-slate-200 rounded px-2 py-1.5" />
-          </div>
-          <div className="col-span-2">
-            <label className="text-xs text-neutral-700 font-medium">Compare across scenarios (optional)</label>
-            <div className="mt-1 flex flex-wrap gap-1 max-h-[38px] overflow-auto">
-              {scenarios.map((s) => (
-                <button
-                  key={s.id} onClick={() => toggleCompareScenario(s.id)}
-                  className={`text-[11.5px] px-1.5 py-0.5 rounded border ${sensCompareIds.includes(s.id) ? "border-purple-600 bg-purple-50 text-purple-800" : "border-slate-200 text-neutral-700 hover:border-slate-400"}`}
-                >
-                  {s.name}
-                </button>
-              ))}
+          <div className="rounded-md border border-slate-200 p-3 lg:col-span-3">
+            <div className="flex items-center gap-2 mb-2"><span className="w-5 h-5 rounded-full bg-cobalt-700 text-white text-[11.5px] font-semibold flex items-center justify-center">3</span><span className="text-xs font-semibold text-neutral-900">Over which range, and how finely?</span></div>
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs">
+              <div className="inline-flex border border-slate-300 rounded overflow-hidden" role="group" aria-label="Range">
+                {[[-1, 1, "Whole scale (-1 to +1)"], [0, 1, "Up only (0 to +1)"], [-1, 0, "Down only (-1 to 0)"]].map(([lo, hi, label], k) => (
+                  <button key={label} onClick={() => { setSensMin(lo); setSensMax(hi); }} className={`px-2.5 py-1 ${k ? "border-l border-slate-300" : ""} ${sensMin === lo && sensMax === hi ? "bg-slate-900 text-white" : "bg-white hover:bg-slate-50"}`}>{label}</button>
+                ))}
+              </div>
+              <label className="flex items-center gap-1.5 text-neutral-700">or from
+                <input type="number" step={0.1} min={-1} max={1} value={sensMin} onChange={(e) => setSensMin(clamp(parseFloat(e.target.value) || 0))} className="w-16 border border-slate-300 rounded px-1.5 py-0.5" aria-label="Range from" />
+                to
+                <input type="number" step={0.1} min={-1} max={1} value={sensMax} onChange={(e) => setSensMax(clamp(parseFloat(e.target.value) || 0))} className="w-16 border border-slate-300 rounded px-1.5 py-0.5" aria-label="Range to" />
+              </label>
+              <div className="inline-flex border border-slate-300 rounded overflow-hidden" role="group" aria-label="Detail">
+                {[[10, "Coarse (11 points)"], [20, "Normal (21 points)"], [50, "Fine (51 points)"]].map(([n, label], k) => (
+                  <button key={n} onClick={() => setSensSteps(n)} className={`px-2.5 py-1 ${k ? "border-l border-slate-300" : ""} ${sensSteps === n ? "bg-slate-900 text-white" : "bg-white hover:bg-slate-50"}`}>{label}</button>
+                ))}
+              </div>
             </div>
+            {scenarios.length > 1 && (
+              <details className="mt-3 text-xs">
+                <summary className="cursor-pointer text-neutral-700">Compare across scenarios (optional){sensCompareIds.length ? `: ${sensCompareIds.length} chosen` : ""}</summary>
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  {scenarios.map((sc) => (
+                    <button key={sc.id} onClick={() => toggleCompareScenario(sc.id)} aria-pressed={sensCompareIds.includes(sc.id)}
+                      className={`text-[12px] px-2 py-0.5 rounded-full border ${sensCompareIds.includes(sc.id) ? "border-purple-600 bg-purple-50 text-purple-800" : "border-slate-300 text-neutral-800 hover:border-slate-500"}`}>
+                      {sc.name}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[12px] text-neutral-500 mt-1">Without a choice the sweep runs on the active scenario.</p>
+              </details>
+            )}
           </div>
         </div>
-        <div className="mt-4">
-          <Btn variant="accent" onClick={runAnalysis} disabled={!sensInput || sensOutputs.length === 0 || sensMin >= sensMax}><Play size={14} />Step 5: Run analysis</Btn>
-          {sensMin >= sensMax && <span className="text-xs text-rose-600 ml-2">Range min must be less than max.</span>}
+        <div className="flex flex-wrap items-center gap-3">
+          <Btn variant="accent" onClick={runAnalysis} disabled={!sensInput || sensOutputs.length === 0 || sensMin >= sensMax}><Play size={14} />Run analysis</Btn>
+          <span className="text-[12.5px] text-neutral-600">
+            {!sensInput ? "Choose a concept to change (step 1)." : sensOutputs.length === 0 ? "Choose at least one concept to watch (step 2)." : sensMin >= sensMax ? <span className="text-rose-600">The start of the range must be below its end.</span> : `Holds ${concepts.find((c) => c.id === sensInput)?.name} at ${Math.max(2, sensSteps) + 1} values from ${sensMin} to ${sensMax}.`}
+          </span>
         </div>
       </div>
 
@@ -6804,71 +6904,67 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
         <>
           {isStale && <StaleResultBanner label="this sensitivity analysis" />}
 
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
-            <h4 className="text-sm font-semibold mb-2">Sensitivity curves</h4>
-            <div className="w-full h-72">
-              <ResponsiveContainer>
-                <LineChart data={result.curveData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="input" tick={{ fontSize: 12 }} label={{ value: concepts.find((c) => c.id === sensInput)?.name, position: "insideBottom", offset: -5, fontSize: 11 }} />
-                  <YAxis domain={[(dMin) => Math.min(-0.1, dMin - 0.05), (dMax) => Math.max(0.1, dMax + 0.05)]} tick={{ fontSize: 12 }} />
-                  <RTooltip />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <ReferenceLine y={0} stroke="#cbd5e1" />
-                  <ReferenceLine x={0} stroke="#cbd5e1" />
-                  {lineKeys.map((lk, i) => (
-                    <Line key={lk.key} type="monotone" dataKey={lk.key} name={lk.label} stroke={lineColors[i % lineColors.length]} strokeWidth={2} dot={{ r: 2 }} />
-                  ))}
-                </LineChart>
-              </ResponsiveContainer>
+          {(() => {
+            const inName = concepts.find((c) => c.id === sensInput)?.name || "the input";
+            const ranked = [...result.elasticity].map((e) => {
+              const key = result.multi ? `${e.id}__${result.scenarioIds[0]}` : e.id;
+              const d = (result.curveData[result.curveData.length - 1][key] ?? 0) - (result.curveData[0][key] ?? 0);
+              return { ...e, d, span: e.max - e.min };
+            }).sort((a, b) => b.span - a.span);
+            const strong = ranked.filter((r) => r.span >= 0.2), weak = ranked.filter((r) => r.span < 0.05);
+            const lead = ranked[0];
+            return (
+              <div className="rounded-lg border border-cobalt-200 bg-cobalt-50 p-4" data-sensitivity-reading>
+                <h4 className="text-sm font-semibold text-neutral-900 mb-1">What this shows</h4>
+                <p className="text-xs text-neutral-900 leading-relaxed">
+                  {lead && lead.span >= 0.05
+                    ? <>Of the concepts you watched, <strong>{lead.name}</strong> responds most to {inName}: it settles between {lead.min.toFixed(2)} and {lead.max.toFixed(2)} across the range{Math.abs(lead.d) >= 0.05 ? <>, and ends {lead.d > 0 ? "higher" : "lower"} when {inName} is high</> : <>, but ends at about the same level at both ends of the range</>}.</>
+                    : <>None of the concepts you watched respond much to {inName}: each settles within 0.05 of the same value across the whole range.</>}
+                  {strong.length > 1 && <> {strong.length} of {ranked.length} respond strongly (they move by 0.2 or more).</>}
+                  {weak.length > 0 && weak.length < ranked.length && <> {weak.map((w) => w.name).join(", ")} {weak.length === 1 ? "hardly responds" : "hardly respond"}.</>}
+                </p>
+              </div>
+            );
+          })()}
+
+          <div className="bg-white rounded-lg border border-slate-200 p-4" data-chart="sensitivity-curves">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+              <h4 className="text-sm font-semibold">Sensitivity curves</h4>
+              <div className="flex gap-2">
+                {["png", "svg"].map((fmt) => (
+                  <Btn key={fmt} variant="outline" onClick={() => exportSvgFigure(sensCurvesRef.current, "sensitivity-curves", fmt, "Sensitivity curves", `${concepts.find((c) => c.id === sensInput)?.name} held from ${sensMin} to ${sensMax}`)}><Download size={13} />{fmt.toUpperCase()}</Btn>
+                ))}
+              </div>
+            </div>
+            <p className="text-[12.5px] text-neutral-600 mb-3">One panel per concept you watch. Left to right, {concepts.find((c) => c.id === sensInput)?.name} is held at a higher value; the line shows where the watched concept settles each time. A flat line means it does not respond; a steep part is where it responds most.</p>
+            <div ref={sensCurvesRef}>
+              <SensitivityCurves
+                data={result.curveData} inputName={concepts.find((c) => c.id === (result.inputId || sensInput))?.name || "Input"}
+                outputs={(result.outputs || sensOutputs).map((id) => ({ id, name: concepts.find((c) => c.id === id)?.name || id }))}
+                lines={result.multi
+                  ? (result.outputs || sensOutputs).flatMap((id) => result.scenarioIds.map((scId, k) => ({ key: `${id}__${scId}`, outputId: id, scenarioName: scenarios.find((x) => x.id === scId)?.name || scId, color: SCENARIO_COLORS[k % SCENARIO_COLORS.length] })))
+                  : (result.outputs || sensOutputs).map((id) => ({ key: id, outputId: id, scenarioName: "", color: SCENARIO_COLORS[0] }))}
+              />
             </div>
           </div>
 
-          <MethodPanel
-            stats={[
-              { label: "Sweep", value: `${sensMin} → ${sensMax}, ${Math.max(2, sensSteps) + 1} points` },
-              {
-                label: "Simulation runs",
-                value: (Math.max(2, sensSteps) + 1) * (result.scenarioIds?.length || 1) + 2 * Math.max(0, concepts.length - 1),
-                hint: "One full run per sweep point per scenario for the response curves, plus two runs per concept (low end and high end) for the tornado chart.",
-              },
-              { label: "Transfer function / λ", value: transferFunctionLabel(settings) },
-              {
-                label: "Tornado entries shown",
-                value: `${result.tornado.length} of ${Math.max(0, concepts.length - 1)}`,
-                tone: result.tornado.length < concepts.length - 1 ? "warn" : undefined,
-                hint: "The chart is capped at the 12 concepts with the largest absolute impact.",
-              },
-            ]}
-          >
-            <p><strong>Elasticity here is a secant, not a derivative.</strong> It is computed as (value at the top of the sweep &minus; value at the bottom) &divide; the width of the sweep, so only the two endpoints are used. A response that rises then falls, or that is flat at both ends but steep in the middle, can therefore report an elasticity near zero while actually moving a great deal. Always read it against the Min/Max columns and the shape of the curve above; if those disagree with the elasticity figure, the curve is the honest account.</p>
-            <p><strong>The tornado chart varies one concept at a time.</strong> Each bar is the difference between two runs with that single concept locked low and locked high, everything else left as it is. This is a one-at-a-time design, so it captures no interactions: two concepts that matter enormously together but little apart will both show short bars. It also applies the same {sensMin}&nbsp;to&nbsp;{sensMax} range to every concept regardless of whether that span is plausible for each one.</p>
-            <p><strong>The swept concept is held fixed, not merely started there.</strong> Each point locks the input at that value for the entire run, so the curve answers "where does the system settle while this is held here", not "what happens if this is nudged and then released".</p>
-            <p><strong>Every point is an equilibrium, not a moment in time.</strong> The x-axis is an input level and the y-axis is a settled state; nothing here describes how long a transition would take or what the system does on the way.</p>
-          </MethodPanel>
-
-          {/* Stacked, not side by side: the tornado needs the full width so
-              long concept names stay on one line without crushing the bars. */}
-          <div className="grid grid-cols-1 gap-5">
             <div className="bg-white rounded-lg border border-slate-200 p-4" data-chart="sensitivity-scores">
-              <h4 className="text-sm font-semibold mb-1">Tornado chart: impact on {concepts.find((c) => c.id === result.primaryOutput)?.name}</h4>
-              <p className="text-[12.5px] text-neutral-600 mb-2">Every other concept swept from {sensMin} to {sensMax} one at a time; ranked by how much it moves the primary output.</p>
-              <div className="w-full" style={{ height: Math.max(200, result.tornado.length * 24 + 40) }}>
-                <ResponsiveContainer>
-                  <BarChart data={result.tornado} layout="vertical" margin={{ left: 8, right: 16 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <XAxis type="number" tick={{ fontSize: 12 }} />
-                    <YAxis type="category" dataKey="name" width={labelAxisWidth(result.tornado.map((d) => d.name))} interval={0} tick={(p) => <SingleLineTick {...p} />} />
-                    <RTooltip />
-                    <ReferenceLine x={0} stroke="#94a3b8" />
-                    <Bar dataKey="impact" radius={[0, 3, 3, 0]}>
-                      {result.tornado.map((d, i) => <Cell key={i} fill={d.impact >= 0 ? "#16a34a" : "#dc2626"} />)}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+                <h4 className="text-sm font-semibold">Tornado chart: what moves {concepts.find((c) => c.id === result.primaryOutput)?.name} most</h4>
+                <div className="flex gap-2">
+                  {["png", "svg"].map((fmt) => (
+                    <Btn key={fmt} variant="outline" onClick={() => exportSvgFigure(tornadoRef.current, "sensitivity-tornado", fmt, `Tornado chart: impact on ${concepts.find((c) => c.id === result.primaryOutput)?.name}`)}><Download size={13} />{fmt.toUpperCase()}</Btn>
+                  ))}
+                </div>
+              </div>
+              <p className="text-[12.5px] text-neutral-600 mb-3">Every other concept is held at {sensMin} and then at {sensMax}, one at a time. The bar is how much that changes {concepts.find((c) => c.id === result.primaryOutput)?.name} (the first concept you watch). Green raises it, orange lowers it; the 12 strongest are shown.</p>
+              <div ref={tornadoRef}>
+                <RankedBars rows={result.tornado.map((d) => ({ name: d.name, value: d.impact }))} axisLabel={`Change in ${concepts.find((c) => c.id === result.primaryOutput)?.name} between the low and the high end`} />
               </div>
             </div>
 
+          <FoldableBox storageKey="se.fold.sensitivityAdvanced" title="Advanced results" icon={FlaskConical} summary="The elasticity metrics, the impact ranking and the full response table.">
+            <div className="space-y-5">
             <div className="bg-white rounded-lg border border-slate-200 p-4">
               <div className="flex items-center justify-between mb-2">
                 <h4 className="text-sm font-semibold">Elasticity metrics</h4>
@@ -6922,7 +7018,6 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
                 </table>
               </div>
             </div>
-          </div>
 
           <div className="bg-white rounded-lg border border-slate-200 p-4">
             <h4 className="text-sm font-semibold mb-2">Response table</h4>
@@ -6945,6 +7040,32 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
               </table>
             </div>
           </div>
+            </div>
+          </FoldableBox>
+
+          <MethodPanel
+            fold
+            stats={[
+              { label: "Sweep", value: `${sensMin} → ${sensMax}, ${Math.max(2, sensSteps) + 1} points` },
+              {
+                label: "Simulation runs",
+                value: (Math.max(2, sensSteps) + 1) * (result.scenarioIds?.length || 1) + 2 * Math.max(0, concepts.length - 1),
+                hint: "One full run per sweep point per scenario for the response curves, plus two runs per concept (low end and high end) for the tornado chart.",
+              },
+              { label: "Transfer function / λ", value: transferFunctionLabel(settings) },
+              {
+                label: "Tornado entries shown",
+                value: `${result.tornado.length} of ${Math.max(0, concepts.length - 1)}`,
+                tone: result.tornado.length < concepts.length - 1 ? "warn" : undefined,
+                hint: "The chart is capped at the 12 concepts with the largest absolute impact.",
+              },
+            ]}
+          >
+            <p><strong>Elasticity here is a secant, not a derivative.</strong> It is computed as (value at the top of the sweep &minus; value at the bottom) &divide; the width of the sweep, so only the two endpoints are used. A response that rises then falls, or that is flat at both ends but steep in the middle, can therefore report an elasticity near zero while actually moving a great deal. Always read it against the Min/Max columns and the shape of the curve above; if those disagree with the elasticity figure, the curve is the honest account.</p>
+            <p><strong>The tornado chart varies one concept at a time.</strong> Each bar is the difference between two runs with that single concept locked low and locked high, everything else left as it is. This is a one-at-a-time design, so it captures no interactions: two concepts that matter enormously together but little apart will both show short bars. It also applies the same {sensMin}&nbsp;to&nbsp;{sensMax} range to every concept regardless of whether that span is plausible for each one.</p>
+            <p><strong>The swept concept is held fixed, not merely started there.</strong> Each point locks the input at that value for the entire run, so the curve answers "where does the system settle while this is held here", not "what happens if this is nudged and then released".</p>
+            <p><strong>Every point is an equilibrium, not a moment in time.</strong> The x-axis is an input level and the y-axis is a settled state; nothing here describes how long a transition would take or what the system does on the way.</p>
+          </MethodPanel>
         </>
       )}
     </div>
@@ -7125,6 +7246,37 @@ function MonteCarloTab({ concepts, edges, scenarios, activeScenarioId, settings,
       {result && (
         <>
           {isStale && <StaleResultBanner label="Monte Carlo result" />}
+          {(() => {
+            // A plain-language reading of the runs for a non-expert: how
+            // robust the picture is, which concepts are firm and which are
+            // uncertain, and which could end on either side of 0.
+            const pc = result.perConcept;
+            const band = (p) => p.p95 - p.p5;
+            const firm = pc.filter((p) => band(p) < 0.1);
+            const loose = [...pc].filter((p) => band(p) >= 0.3).sort((a, b) => band(b) - band(a));
+            const flips = pc.filter((p) => p.p5 < -0.05 && p.p95 > 0.05);
+            const rate = result.convergenceRate;
+            const names = (arr, n = 3) => arr.slice(0, n).map((p) => p.name).join(", ") + (arr.length > n ? ` and ${arr.length - n} more` : "");
+            const share = pc.length ? firm.length / pc.length : 0;
+            const verdict = rate < 0.9 ? "fragile" : share >= 0.7 && flips.length === 0 ? "robust" : share >= 0.4 && flips.length <= 2 ? "mostly robust" : "uncertain";
+            const tone = verdict === "robust" ? "border-emerald-200 bg-emerald-50" : verdict === "mostly robust" ? "border-cobalt-200 bg-cobalt-50" : "border-amber-200 bg-amber-50";
+            return (
+              <div className={`rounded-lg border p-4 ${tone}`} data-mc-interpretation>
+                <h3 className="font-semibold text-sm text-neutral-900 mb-1">What these results mean</h3>
+                <p className="text-xs text-neutral-900 leading-relaxed mb-2">
+                  The model was run {result.runs} times, each time with every relationship weight changed at random by up to ±{result.config?.weightSpread ?? weightSpread}{(result.config?.initialSpread ?? 0) > 0 ? ` and every starting value by up to ±${result.config.initialSpread}` : ""}. This mimics how unsure the participants could be about the exact strengths. Overall the picture is <strong>{verdict}</strong>.
+                </p>
+                <ul className="text-xs text-neutral-900 leading-relaxed space-y-1 list-disc pl-5">
+                  <li>{rate >= 0.99 ? "Every run settled, so the end states below are real resting points." : `${Math.round(rate * 100)}% of the runs settled. The others kept moving, so read their values with care.`}</li>
+                  <li>{firm.length ? <><strong>{firm.length} of {pc.length} concepts</strong> end up in almost the same place in nearly every run (within 0.1){firm.length < pc.length ? <>, for example {names(firm)}</> : ""}. You can rely on these.</> : "No concept ends in the same place in nearly every run: the outcome depends strongly on the exact weights."}</li>
+                  {loose.length > 0 && <li><strong>Most uncertain:</strong> {names(loose)}. In 9 out of 10 runs {loose.length === 1 ? "it ends" : "they end"} somewhere in a band of 0.3 or wider, so the exact level is not settled by the model.</li>}
+                  {flips.length > 0 ? <li><strong>Could go either way:</strong> {names(flips)} {flips.length === 1 ? "ends" : "end"} above 0 in some runs and below 0 in others. Whether {flips.length === 1 ? "it rises or falls" : "these rise or fall"} depends on weights the group is unsure about, which makes {flips.length === 1 ? "it" : "them"} a good topic for discussion.</li>
+                    : <li>No concept switches between ending above and below 0, so the direction of every result holds up.</li>}
+                </ul>
+                <p className="text-[12px] text-neutral-600 mt-2">"In 9 out of 10 runs" refers to the 5% to 95% range in the table below.</p>
+              </div>
+            );
+          })()}
           <div className="bg-white rounded-lg border border-slate-200 p-4">
             <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
               <h3 className="font-semibold text-sm">
@@ -7437,6 +7589,17 @@ function BaselineEquilibriumTab({
   const lineColors = ["#2456d6", "#c2410c", "#7c3aed", "#0f766e", "#be123c", "#4d7c0f", "#a16207", "#0e7490"];
   const stabilityColor = stability?.status === "Stable Equilibrium" ? "text-cobalt-700" : stability?.status === "Oscillation" ? "text-amber-700" : "text-rose-700";
 
+  // The simple view first: the starting values and the curve settings stay
+  // folded away until asked for.
+  const [showStart, setShowStart] = useState(false);
+  const [showRunSettings, setShowRunSettings] = useState(false);
+  const convergencePanelsRef = useRef(null);
+  const steadyRef = useRef(null);
+  const startCount = concepts.filter((c) => Math.abs(usedInit[c.id] ?? 0) >= 1e-9).length;
+  const startSummary = concepts.length === 0 ? "" : startCount === 0
+    ? "Every concept starts at 0, so nothing can move: give today's situation a starting value first."
+    : `${startCount} of ${concepts.length} concepts start away from 0.`;
+
   // Publication-figure controls for the convergence plot.
   const convergenceRef = useRef(null);
   const [figConvergence, setFigConvergence] = useState(TRAJECTORY_FIGURE_DEFAULTS);
@@ -7490,9 +7653,17 @@ function BaselineEquilibriumTab({
         </div>
       )}
 
-      <div className="bg-white rounded-lg border border-slate-200 p-4">
-        <div className="flex items-center gap-3 flex-wrap mb-2">
-          <h4 className="text-sm font-semibold">Initial state vector: A(0)</h4>
+      {/* One card: where the run starts, how it runs, and the Run button. */}
+      <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-3">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h3 className="font-semibold text-sm">Run the baseline</h3>
+            <p className="text-xs text-neutral-700">Where does the system settle on its own, with no scenario? {startSummary}</p>
+          </div>
+          <Btn variant="accent" onClick={run}><Play size={14} />Run</Btn>
+        </div>
+        <div className="flex flex-wrap items-center gap-3 text-xs">
+          <span className="text-neutral-700 font-medium">Start from</span>
           <div className="flex items-center border border-slate-300 rounded-md overflow-hidden text-xs" role="group" aria-label="Initial state source">
             <button
               onClick={() => setInitState((st) => ({ ...st, mode: "model" }))}
@@ -7505,116 +7676,117 @@ function BaselineEquilibriumTab({
               title="Set a starting value for each concept here, for this tab's run only"
             >Custom for this run</button>
           </div>
+          <button onClick={() => setShowStart((v) => !v)} aria-expanded={showStart} className="inline-flex items-center gap-1 text-cobalt-800 hover:underline">
+            {showStart ? <ChevronDown size={13} /> : <ChevronRight size={13} />}{showStart ? "Hide the starting values" : customInit ? "Edit the starting values" : "Show the starting values"}
+          </button>
         </div>
-        <p className="text-xs text-neutral-700 mb-3">
-          {customInit
-            ? "These starting values are used by this tab only; Scenarios & Simulation and the other tabs keep using the model's initial values. Running the baseline from several different starting vectors is the standard check of whether the model has one equilibrium (the same end state from every start) or several (the end state depends on where it starts)."
-            : "The run starts from each concept's initial value as set on the Model editor tab or in the Inspector. Switch to \"Custom for this run\" to try other starting values here without changing the model."}
-        </p>
-        {customInit && (
-          <div className="flex items-center gap-2 flex-wrap mb-3 text-xs">
-            <span className="text-neutral-700">Set all:</span>
-            {[
-              ["Model values", (c) => c.initialValue ?? 0],
-              ["0", () => 0],
-              ["+0.5", () => 0.5],
-              ["\u22120.5", () => -0.5],
-              ["+1", () => 1],
-              ["Random", () => Math.random() * 2 - 1],
-            ].map(([label, fn]) => (
-              <button key={label} onClick={() => setAllCustom(fn)} className="px-2 py-0.5 rounded border border-slate-300 bg-white text-neutral-900 hover:bg-slate-50" title={label === "Random" ? "A random value between \u22121 and +1 for every concept" : undefined}>
-                {label}
-              </button>
-            ))}
-            {updateConcept && (
-              <button onClick={saveInitToModel} className="ml-auto px-2 py-0.5 rounded border border-cobalt-300 bg-cobalt-50 text-cobalt-800 hover:bg-cobalt-100" title="Copy these values into the model's own initial values. Scenarios & Simulation and the other tabs will then start from them too.">
-                Save as the model's initial values
-              </button>
+        {showStart && (
+          <div className="rounded-md border border-slate-200 p-3">
+            <p className="text-[12.5px] text-neutral-700 mb-2">{customInit ? "Used by this tab only; the other tabs keep the model's values. Trying several starts shows whether the model always ends in the same place." : "Each concept's starting value from the Model editor or the Inspector."}</p>
+            {customInit && (
+              <div className="flex items-center gap-2 flex-wrap mb-3 text-xs">
+                <span className="text-neutral-700">Set all:</span>
+                {[
+                  ["Model values", (c) => c.initialValue ?? 0],
+                  ["0", () => 0],
+                  ["+0.5", () => 0.5],
+                  ["\u22120.5", () => -0.5],
+                  ["+1", () => 1],
+                  ["Random", () => Math.random() * 2 - 1],
+                ].map(([label, fn]) => (
+                  <button key={label} onClick={() => setAllCustom(fn)} className="px-2 py-0.5 rounded border border-slate-300 bg-white text-neutral-900 hover:bg-slate-50" title={label === "Random" ? "A random value between \u22121 and +1 for every concept" : undefined}>
+                    {label}
+                  </button>
+                ))}
+                {updateConcept && (
+                  <button onClick={saveInitToModel} className="ml-auto px-2 py-0.5 rounded border border-cobalt-300 bg-cobalt-50 text-cobalt-800 hover:bg-cobalt-100" title="Copy these values into the model's own initial values. Scenarios & Simulation and the other tabs will then start from them too.">
+                    Save as the model's initial values
+                  </button>
+                )}
+              </div>
             )}
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-neutral-600 border-b border-slate-100">
+                    <th className="py-1 font-medium pr-3">Concept</th>
+                    <th className="py-1 font-medium pr-3" title="The concept's initial value on the Model editor tab">Model's initial value</th>
+                    <th className="py-1 font-medium">Used for this run</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {concepts.map((c) => (
+                    <tr key={c.id} className="border-b border-slate-50">
+                      <td className="py-1 pr-3">{c.name}</td>
+                      <td className="py-1 pr-3 font-mono text-neutral-600">{round2(c.initialValue ?? 0)}</td>
+                      <td className="py-1">
+                        {customInit ? (
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range" min={-1} max={1} step={0.05} value={initVector[c.id]}
+                              onChange={(e) => setCustomValue(c.id, parseFloat(e.target.value))}
+                              className="w-32 accent-cobalt-700" aria-label={`Initial value for ${c.name}`}
+                            />
+                            <input
+                              type="number" min={-1} max={1} step={0.05} value={initVector[c.id]}
+                              onChange={(e) => setCustomValue(c.id, parseFloat(e.target.value) || 0)}
+                              className="w-16 text-xs font-mono text-right border border-slate-200 rounded px-1 py-0.5"
+                            />
+                            {Math.abs(initVector[c.id] - (c.initialValue ?? 0)) > 1e-9 && <span className="text-[11.5px] text-amber-700">changed</span>}
+                          </div>
+                        ) : (
+                          <span className="font-mono">{round2(initVector[c.id])}</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {concepts.length === 0 && <tr><td colSpan={3} className="py-2 text-neutral-600 italic">No concepts yet.</td></tr>}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="text-left text-neutral-600 border-b border-slate-100">
-                <th className="py-1 font-medium pr-3">Concept</th>
-                <th className="py-1 font-medium pr-3" title="The concept's initial value on the Model editor tab">Model's initial value</th>
-                <th className="py-1 font-medium">Used for this run</th>
-              </tr>
-            </thead>
-            <tbody>
-              {concepts.map((c) => (
-                <tr key={c.id} className="border-b border-slate-50">
-                  <td className="py-1 pr-3">{c.name}</td>
-                  <td className="py-1 pr-3 font-mono text-neutral-600">{round2(c.initialValue ?? 0)}</td>
-                  <td className="py-1">
-                    {customInit ? (
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="range" min={-1} max={1} step={0.05} value={initVector[c.id]}
-                          onChange={(e) => setCustomValue(c.id, parseFloat(e.target.value))}
-                          className="w-32 accent-cobalt-700" aria-label={`Initial value for ${c.name}`}
-                        />
-                        <input
-                          type="number" min={-1} max={1} step={0.05} value={initVector[c.id]}
-                          onChange={(e) => setCustomValue(c.id, parseFloat(e.target.value) || 0)}
-                          className="w-16 text-xs font-mono text-right border border-slate-200 rounded px-1 py-0.5"
-                        />
-                        {Math.abs(initVector[c.id] - (c.initialValue ?? 0)) > 1e-9 && <span className="text-[11.5px] text-amber-700">changed</span>}
-                      </div>
-                    ) : (
-                      <span className="font-mono">{round2(initVector[c.id])}</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {concepts.length === 0 && <tr><td colSpan={3} className="py-2 text-neutral-600 italic">No concepts yet.</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-lg border border-slate-200 p-4 flex items-center justify-between flex-wrap gap-3">
-        <h3 className="font-semibold text-sm">Run baseline equilibrium</h3>
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center border border-slate-300 rounded-md overflow-hidden text-xs" title="Overrides the shared squash function for this tab only; Scenarios & Simulation, Sensitivity Analysis, and Transition Point Analysis keep using whatever's set in Scenarios & Simulation's Advanced options.">
-            <button onClick={() => setSquashOverride("tanh")} className={`px-2.5 py-1.5 ${effectiveSquash === "tanh" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}>Hyperbolic tangent</button>
-            <button onClick={() => setSquashOverride("sigmoid")} className={`px-2.5 py-1.5 border-l border-slate-300 ${effectiveSquash === "sigmoid" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}>Sigmoid</button>
-            <button
-              onClick={() => setSquashOverride("linear")}
-              title="No squashing function: the model runs on its raw linear dynamics, A(t+1) = A(t) + W·A(t), with nothing keeping activation inside -1 to +1. A model whose feedback amplifies itself will run away, and the run is stopped and marked as diverged when it does."
-              className={`px-2.5 py-1.5 border-l border-slate-300 ${effectiveSquash === "linear" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}
-            >No squashing (linear)</button>
-          </div>
-          {effectiveSquash !== "linear" && (
-          <div
-            className="flex items-center gap-2"
-            title="Steepness (lambda) of the squash function for this tab only. It is the slope of the curve at 0, so it sets the loop gain of the whole model: too low and every run decays back to 0 whatever the weights say, high enough and activation sustains itself and the run settles elsewhere."
-          >
-            <label className="text-xs text-neutral-700 whitespace-nowrap">Steepness &lambda;</label>
-            <input
-              type="range" min={0.1} max={5} step={0.1} value={effectiveLambda}
-              onChange={(e) => setLambdaOverride(parseFloat(e.target.value))}
-              className="w-28 accent-cobalt-700"
-            />
-            <input
-              type="number" min={0.1} max={10} step={0.1} value={effectiveLambda}
-              onChange={(e) => setLambdaOverride(clamp(parseFloat(e.target.value) || 1, 0.1, 10))}
-              className="w-16 text-xs font-mono text-right border border-slate-200 rounded px-1 py-0.5"
-            />
-            {lambdaOverride !== null && (
+        <div className={`flex flex-wrap items-center gap-3 pt-2 border-t border-slate-100 ${showRunSettings ? "" : "hidden"}`}>
+            <div className="flex items-center border border-slate-300 rounded-md overflow-hidden text-xs" title="Overrides the shared squash function for this tab only; Scenarios & Simulation, Sensitivity Analysis, and Transition Point Analysis keep using whatever's set in Scenarios & Simulation's Advanced options.">
+              <button onClick={() => setSquashOverride("tanh")} className={`px-2.5 py-1.5 ${effectiveSquash === "tanh" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}>Hyperbolic tangent</button>
+              <button onClick={() => setSquashOverride("sigmoid")} className={`px-2.5 py-1.5 border-l border-slate-300 ${effectiveSquash === "sigmoid" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}>Sigmoid</button>
               <button
-                onClick={() => setLambdaOverride(null)}
-                className="text-[12.5px] text-neutral-600 underline hover:text-neutral-900 whitespace-nowrap"
-                title={`Go back to the shared setting (${settings.lambda ?? 1}) from Scenarios & Simulation's Advanced options`}
-              >
-                reset
-              </button>
+                onClick={() => setSquashOverride("linear")}
+                title="No squashing function: the model runs on its raw linear dynamics, A(t+1) = A(t) + W·A(t), with nothing keeping activation inside -1 to +1. A model whose feedback amplifies itself will run away, and the run is stopped and marked as diverged when it does."
+                className={`px-2.5 py-1.5 border-l border-slate-300 ${effectiveSquash === "linear" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}
+              >No squashing (linear)</button>
+            </div>
+            {effectiveSquash !== "linear" && (
+            <div
+              className="flex items-center gap-2"
+              title="Steepness (lambda) of the squash function for this tab only. It is the slope of the curve at 0, so it sets the loop gain of the whole model: too low and every run decays back to 0 whatever the weights say, high enough and activation sustains itself and the run settles elsewhere."
+            >
+              <label className="text-xs text-neutral-700 whitespace-nowrap">Steepness &lambda;</label>
+              <input
+                type="range" min={0.1} max={5} step={0.1} value={effectiveLambda}
+                onChange={(e) => setLambdaOverride(parseFloat(e.target.value))}
+                className="w-28 accent-cobalt-700"
+              />
+              <input
+                type="number" min={0.1} max={10} step={0.1} value={effectiveLambda}
+                onChange={(e) => setLambdaOverride(clamp(parseFloat(e.target.value) || 1, 0.1, 10))}
+                className="w-16 text-xs font-mono text-right border border-slate-200 rounded px-1 py-0.5"
+              />
+              {lambdaOverride !== null && (
+                <button
+                  onClick={() => setLambdaOverride(null)}
+                  className="text-[12.5px] text-neutral-600 underline hover:text-neutral-900 whitespace-nowrap"
+                  title={`Go back to the shared setting (${settings.lambda ?? 1}) from Scenarios & Simulation's Advanced options`}
+                >
+                  reset
+                </button>
+              )}
+            </div>
             )}
-          </div>
-          )}
-          <Btn variant="accent" onClick={run}><Play size={14} />Run</Btn>
         </div>
+        <button onClick={() => setShowRunSettings((v) => !v)} aria-expanded={showRunSettings} className="text-[12.5px] text-neutral-600 hover:text-neutral-900 inline-flex items-center gap-1">
+          {showRunSettings ? <ChevronDown size={12} /> : <ChevronRight size={12} />}Curve and steepness for this tab ({effectiveSquash === "linear" ? "no squashing" : `${effectiveSquash}, \u03bb ${effectiveLambda}`})
+        </button>
         {effectiveSquash === "linear" && (
           <p className="basis-full text-[12.5px] text-neutral-700 bg-slate-50 border border-slate-100 rounded px-2.5 py-1.5">
             No squashing function: this run shows the raw linear dynamics of the weights, <span className="font-mono">A(t+1) = {settings.updateRule === "absolute" ? "W·A(t)" : "A(t) + W·A(t)"}</span>, with nothing holding activation inside -1 to +1 (the chart axis rescales to fit). A model whose feedback amplifies itself will grow without limit; the run is then stopped once a concept passes &plusmn;{LINEAR_DIVERGENCE_LIMIT} and marked as diverged. Steepness (&lambda;) does not apply.
@@ -7624,7 +7796,7 @@ function BaselineEquilibriumTab({
 
       {!result ? (
         <div className="bg-white rounded-lg border border-slate-200 p-8 text-center text-sm text-neutral-600 italic">
-          Click "Run" above to compute the baseline equilibrium.
+          Click Run above to see where the system settles.
         </div>
       ) : (
         <>
@@ -7645,198 +7817,233 @@ function BaselineEquilibriumTab({
             </div>
           ))}
 
+          {/* The result in one sentence, with its status in colour. */}
+          <div className={`rounded-lg border p-4 ${result.converged ? "bg-cobalt-50 border-cobalt-200" : stability?.status === "Oscillation" ? "bg-amber-50 border-amber-200" : "bg-rose-50 border-rose-200"}`}>
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span className={`text-base font-semibold ${stabilityColor}`}>{result.converged ? "The system settles" : result.diverged ? "The system runs away" : stability?.status === "Oscillation" ? "The system keeps oscillating" : "The system does not settle"}</span>
+              <span className="text-xs text-neutral-700">{result.converged ? `after ${result.iterationsRun} iteration${result.iterationsRun === 1 ? "" : "s"}` : `stopped after ${result.iterationsRun} iterations`} &middot; {stability.status}</span>
+            </div>
+            <p className="text-xs text-neutral-900 mt-1.5">{equilibriumExplanation}</p>
+            {(() => {
+              const moves = concepts.map((c) => ({ c, v: result.final[c.id] ?? 0, d: (result.final[c.id] ?? 0) - (usedInit?.[c.id] ?? 0) }));
+              const up = moves.filter((m) => m.v > 0.05).length, down = moves.filter((m) => m.v < -0.05).length;
+              const top = [...moves].sort((a, b) => Math.abs(b.d) - Math.abs(a.d)).slice(0, 3);
+              const sgn = (x) => `${x >= 0 ? "+" : "-"}${Math.abs(x).toFixed(2)}`;
+              return (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3" data-baseline-tiles>
+                  <div className="bg-white/80 rounded-md border border-white px-3 py-2"><div className="text-[12px] text-neutral-600">Iterations run</div><div className="text-lg font-semibold text-neutral-900">{result.iterationsRun}</div></div>
+                  <div className="bg-white/80 rounded-md border border-white px-3 py-2"><div className="text-[12px] text-neutral-600">Concepts ending above 0</div><div className="text-lg font-semibold text-emerald-700">{up}</div></div>
+                  <div className="bg-white/80 rounded-md border border-white px-3 py-2"><div className="text-[12px] text-neutral-600">Concepts ending below 0</div><div className="text-lg font-semibold text-orange-700">{down}</div></div>
+                  <div className="bg-white/80 rounded-md border border-white px-3 py-2"><div className="text-[12px] text-neutral-600">Moved most from the start</div>
+                    <div className="text-[12.5px] text-neutral-900 leading-snug">{top.map((m) => <div key={m.c.id} className="flex justify-between gap-2"><span>{m.c.name}</span><span className="font-mono font-semibold">{sgn(m.d)}</span></div>)}</div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+
           <div className="bg-white rounded-lg border border-slate-200 p-4">
-            <h4 className="text-sm font-semibold mb-3">Equilibrium diagnostics</h4>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div>
-                <div className="text-xs text-neutral-600 mb-1">Initial state type</div>
-                <div className="text-sm font-mono">{initialStateType}</div>
-              </div>
-              <div>
-                <div className="text-xs text-neutral-600 mb-1">Converged</div>
-                <div className={`text-sm font-mono ${result.converged ? "text-cobalt-700" : "text-amber-700"}`}>{result.converged ? "Yes" : "No"}</div>
-              </div>
-              <div>
-                <div className="text-xs text-neutral-600 mb-1">Iterations to convergence</div>
-                <div className="text-sm font-mono">{result.converged ? result.iterationsRun : result.diverged ? `stopped at ${result.iterationsRun} (runaway)` : `capped at ${result.iterationsRun}`}</div>
-              </div>
-              <div>
-                <div className="text-xs text-neutral-600 mb-1">Maximum residual change</div>
-                <div className="text-sm font-mono">{finalMaxDelta}</div>
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+              <h4 className="text-sm font-semibold">How the system settles</h4>
+              <div className="flex gap-2">
+                {["png", "svg"].map((fmt) => (
+                  <Btn key={fmt} variant="outline" onClick={() => exportSvgFigure(convergencePanelsRef.current, "baseline-convergence", fmt, "Baseline Equilibrium: how the system settles")}><Download size={13} />{fmt.toUpperCase()}</Btn>
+                ))}
               </div>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 pt-4 border-t border-slate-100">
-              <div title="A converged run is, by this engine's definition, a detected fixed point; the two are the same condition here.">
-                <div className="text-xs text-neutral-600 mb-1 flex items-center gap-1">Fixed point detected <HelpCircle size={10} className="text-neutral-500" /></div>
-                <div className={`text-sm font-mono ${fixedPointDetected ? "text-cobalt-700" : "text-amber-700"}`}>{fixedPointDetected ? "Yes" : "No"}</div>
-              </div>
-              <div className="col-span-3">
-                <div className="text-xs text-neutral-600 mb-1">Stability</div>
-                <div className={`text-sm font-semibold ${stabilityColor}`}>{stability.status}</div>
-              </div>
+            <p className="text-[12.5px] text-neutral-600 mb-3">One panel per module. Each line is a concept, from its starting value at iteration 0 to where it ends on the right, with its final value. A line that runs flat has settled.</p>
+            <div ref={convergencePanelsRef} data-chart="baseline-convergence" className="overflow-x-auto">
+              <ConvergenceChart series={result.series} concepts={concepts} converged={result.converged} diverged={result.diverged} iterationsRun={result.iterationsRun} linear={effectiveSquash === "linear"} />
             </div>
-            <p className="text-xs text-neutral-700 mt-3">{stability.detail}</p>
-            <p className="text-xs text-neutral-900 mt-2 bg-slate-50 border border-slate-100 rounded p-2">{equilibriumExplanation}</p>
           </div>
 
-          <div className="bg-white rounded-lg border border-slate-200 p-4" data-chart="baseline-convergence">
-            <div className="flex items-center justify-between mb-1">
-              <h4 className="text-sm font-semibold">Convergence plot</h4>
-              <Btn variant="outline" onClick={() => setFigConvergenceOpen((v) => !v)}><SlidersHorizontal size={13} />{figConvergenceOpen ? "Hide figure options" : "Customize & export"}</Btn>
+          <div className="bg-white rounded-lg border border-slate-200 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+              <h4 className="text-sm font-semibold">Where each concept settles</h4>
+              <div className="flex gap-2">
+                {["png", "svg"].map((fmt) => (
+                  <Btn key={fmt} variant="outline" onClick={() => exportSvgFigure(steadyRef.current, "baseline-steady-state", fmt, "Baseline Equilibrium: steady state")}><Download size={13} />{fmt.toUpperCase()}</Btn>
+                ))}
+              </div>
             </div>
-            <p className="text-xs text-neutral-600 mb-2">Every concept's activation at each iteration, from its initial value through to convergence (or the iteration cap). Use this to check whether the model settles into a stable equilibrium, oscillates, or diverges.</p>
-            <div ref={convergenceRef} className="w-full h-72" style={figConvergenceOpen ? { width: mmToPx(figConvergence.widthMm, 96), height: mmToPx(figConvergence.heightMm, 96), maxWidth: "100%" } : undefined}>
-              <ResponsiveContainer>
-                <LineChart data={result.series.map((pt) => ({ iteration: pt.iteration, ...pt.values }))}>
-                  {figConvergence.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
-                  <XAxis dataKey="iteration" tick={{ fontSize: figConvergence.tickFontSize }} label={{ value: figConvergence.xLabel || "Iteration", position: "insideBottom", offset: -5, fontSize: figConvergence.axisFontSize }} />
-                  <YAxis domain={effectiveSquash === "linear" || result.diverged ? ["auto", "auto"] : [-1, 1]} tick={{ fontSize: figConvergence.tickFontSize }} tickFormatter={(v) => fmtDec(v, figConvergence.decimals)} label={{ value: figConvergence.yLabel || "Activation", angle: -90, position: "insideLeft", fontSize: figConvergence.axisFontSize }} />
-                  <RTooltip />
-                  {figConvergence.legendPosition !== "hidden" && (
-                    <Legend
-                      wrapperStyle={{ fontSize: figConvergence.legendFontSize }}
-                      layout={figConvergence.legendPosition === "left" || figConvergence.legendPosition === "right" ? "vertical" : "horizontal"}
-                      verticalAlign={figConvergence.legendPosition === "left" || figConvergence.legendPosition === "right" ? "middle" : figConvergence.legendPosition}
-                      align={figConvergence.legendPosition === "left" || figConvergence.legendPosition === "right" ? figConvergence.legendPosition : "center"}
-                    />
-                  )}
-                  {figConvergence.title && <text x="50%" y={14} textAnchor="middle" fontSize={figConvergence.titleFontSize} fontWeight={600} fill="#0f172a">{figConvergence.title}</text>}
-                  <ReferenceLine y={0} stroke="#cbd5e1" />
-                  {convergenceRows.map((c, i) => (
-                    <Line key={c.id} type="monotone" dataKey={c.id} name={c.name} stroke={figurePalette(figConvergence.palette, convergenceRows.length)[i]} strokeWidth={figConvergence.lineWidth} strokeOpacity={figConvergence.opacity} dot={figConvergence.markerSize > 0 ? { r: figConvergence.markerSize } : false} />
-                  ))}
-                </LineChart>
-              </ResponsiveContainer>
+            <p className="text-[12.5px] text-neutral-600 mb-3">The bar shows where each concept settles, and the open circle where it started. Bars to the right end above 0, bars to the left below 0.</p>
+            <div ref={steadyRef} className="overflow-x-auto">
+              <SteadyStateBars concepts={concepts} final={result.final} initial={usedInit} />
             </div>
-            {figConvergenceOpen && (
-              <FigurePanel
-                settings={figConvergence} onChange={setFigConvergence} defaults={TRAJECTORY_FIGURE_DEFAULTS}
-                seriesOptions={convergenceSeriesOptions} hiddenKeys={hiddenConvergenceIds} onToggleSeries={toggleHiddenConvergence}
-                sortOptions={CONVERGENCE_ORDER_OPTIONS} sortValue={convergenceOrder} onSortChange={setConvergenceOrder}
-                exporting={figConvergenceBusy}
-                onExport={async () => {
-                  setFigConvergenceBusy(true);
-                  await exportFigure(convergenceRef.current, "baseline-convergence.png", figConvergence, {
-                    title: figConvergence.title || "Baseline Equilibrium: Convergence Plot",
-                    subtitle: `${result.converged ? "Converged" : result.diverged ? "Diverged (unbounded growth)" : "Did not converge"} in ${result.iterationsRun} iterations${effectiveSquash === "linear" ? ", no squashing function" : ""}`,
-                  });
-                  setFigConvergenceBusy(false);
-                }}
-              />
-            )}
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            <div className="bg-white rounded-lg border border-slate-200 p-4">
-              <h4 className="text-sm font-semibold mb-2">Final steady state</h4>
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-left text-neutral-600 border-b border-slate-100">
-                    <th className="py-1 font-medium">Concept</th>
-                    <th className="py-1 font-medium">Steady state</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {concepts.map((c) => (
-                    <tr key={c.id} className="border-b border-slate-50">
-                      <td className="py-1">{c.name}</td>
-                      <td className="py-1 font-mono">{round2(result.final[c.id] ?? 0)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="bg-white rounded-lg border border-slate-200 p-4">
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="text-sm font-semibold">Convergence table</h4>
-                <Btn variant="outline" onClick={exportConvergenceCSV}><Download size={13} />Export CSV</Btn>
+          <FoldableBox storageKey="se.fold.baselineAdvanced" title="Advanced diagnostics" icon={FlaskConical} summary="Equilibrium diagnostics, the convergence table, a customizable convergence plot, and the raw vectors and weight matrix.">
+            <div className="space-y-5">
+              <div className="bg-white rounded-lg border border-slate-200 p-4">
+                <h4 className="text-sm font-semibold mb-3">Equilibrium diagnostics</h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                    <div className="text-xs text-neutral-600 mb-1">Initial state type</div>
+                    <div className="text-sm font-mono">{initialStateType}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-neutral-600 mb-1">Converged</div>
+                    <div className={`text-sm font-mono ${result.converged ? "text-cobalt-700" : "text-amber-700"}`}>{result.converged ? "Yes" : "No"}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-neutral-600 mb-1">Iterations to convergence</div>
+                    <div className="text-sm font-mono">{result.converged ? result.iterationsRun : result.diverged ? `stopped at ${result.iterationsRun} (runaway)` : `capped at ${result.iterationsRun}`}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-neutral-600 mb-1">Maximum residual change</div>
+                    <div className="text-sm font-mono">{finalMaxDelta}</div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 pt-4 border-t border-slate-100">
+                  <div title="A converged run is, by this engine's definition, a detected fixed point; the two are the same condition here.">
+                    <div className="text-xs text-neutral-600 mb-1 flex items-center gap-1">Fixed point detected <HelpCircle size={10} className="text-neutral-500" /></div>
+                    <div className={`text-sm font-mono ${fixedPointDetected ? "text-cobalt-700" : "text-amber-700"}`}>{fixedPointDetected ? "Yes" : "No"}</div>
+                  </div>
+                  <div className="col-span-3">
+                    <div className="text-xs text-neutral-600 mb-1">Stability</div>
+                    <div className={`text-sm font-semibold ${stabilityColor}`}>{stability.status}</div>
+                  </div>
+                </div>
+                <p className="text-xs text-neutral-700 mt-3">{stability.detail}</p>
+                <p className="text-xs text-neutral-900 mt-2 bg-slate-50 border border-slate-100 rounded p-2">{equilibriumExplanation}</p>
               </div>
-              <div className="overflow-auto max-h-64">
-                <table className="w-full text-xs">
-                  <thead className="sticky top-0 bg-white">
-                    <tr className="text-left text-neutral-600 border-b border-slate-100">
-                      <th className="py-1 pr-2 font-medium">Iteration</th>
-                      {concepts.map((c) => <th key={c.id} className="py-1 pr-2 font-medium">{c.name}</th>)}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {result.series.map((pt) => (
-                      <tr key={pt.iteration} className="border-b border-slate-50">
-                        <td className="py-1 pr-2 font-mono">{pt.iteration}</td>
-                        {concepts.map((c) => <td key={c.id} className="py-1 pr-2 font-mono">{round2(pt.values[c.id] ?? 0)}</td>)}
+
+              <div className="bg-white rounded-lg border border-slate-200 p-4">
+                <div className="flex items-center justify-between mb-1">
+                  <h4 className="text-sm font-semibold">Convergence plot (all concepts, for export)</h4>
+                  <Btn variant="outline" onClick={() => setFigConvergenceOpen((v) => !v)}><SlidersHorizontal size={13} />{figConvergenceOpen ? "Hide figure options" : "Customize & export"}</Btn>
+                </div>
+                <p className="text-xs text-neutral-600 mb-2">Every concept's activation at each iteration, from its initial value through to convergence (or the iteration cap). Use this to check whether the model settles into a stable equilibrium, oscillates, or diverges.</p>
+                <div ref={convergenceRef} className="w-full h-72" style={figConvergenceOpen ? { width: mmToPx(figConvergence.widthMm, 96), height: mmToPx(figConvergence.heightMm, 96), maxWidth: "100%" } : undefined}>
+                  <ResponsiveContainer>
+                    <LineChart data={result.series.map((pt) => ({ iteration: pt.iteration, ...pt.values }))}>
+                      {figConvergence.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
+                      <XAxis dataKey="iteration" tick={{ fontSize: figConvergence.tickFontSize }} label={{ value: figConvergence.xLabel || "Iteration", position: "insideBottom", offset: -5, fontSize: figConvergence.axisFontSize }} />
+                      <YAxis domain={effectiveSquash === "linear" || result.diverged ? ["auto", "auto"] : [-1, 1]} tick={{ fontSize: figConvergence.tickFontSize }} tickFormatter={(v) => fmtDec(v, figConvergence.decimals)} label={{ value: figConvergence.yLabel || "Activation", angle: -90, position: "insideLeft", fontSize: figConvergence.axisFontSize }} />
+                      <RTooltip />
+                      {figConvergence.legendPosition !== "hidden" && (
+                        <Legend
+                          wrapperStyle={{ fontSize: figConvergence.legendFontSize }}
+                          layout={figConvergence.legendPosition === "left" || figConvergence.legendPosition === "right" ? "vertical" : "horizontal"}
+                          verticalAlign={figConvergence.legendPosition === "left" || figConvergence.legendPosition === "right" ? "middle" : figConvergence.legendPosition}
+                          align={figConvergence.legendPosition === "left" || figConvergence.legendPosition === "right" ? figConvergence.legendPosition : "center"}
+                        />
+                      )}
+                      {figConvergence.title && <text x="50%" y={14} textAnchor="middle" fontSize={figConvergence.titleFontSize} fontWeight={600} fill="#0f172a">{figConvergence.title}</text>}
+                      <ReferenceLine y={0} stroke="#cbd5e1" />
+                      {convergenceRows.map((c, i) => (
+                        <Line key={c.id} type="monotone" dataKey={c.id} name={c.name} stroke={figurePalette(figConvergence.palette, convergenceRows.length)[i]} strokeWidth={figConvergence.lineWidth} strokeOpacity={figConvergence.opacity} dot={figConvergence.markerSize > 0 ? { r: figConvergence.markerSize } : false} />
+                      ))}
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+                {figConvergenceOpen && (
+                  <FigurePanel
+                    settings={figConvergence} onChange={setFigConvergence} defaults={TRAJECTORY_FIGURE_DEFAULTS}
+                    seriesOptions={convergenceSeriesOptions} hiddenKeys={hiddenConvergenceIds} onToggleSeries={toggleHiddenConvergence}
+                    sortOptions={CONVERGENCE_ORDER_OPTIONS} sortValue={convergenceOrder} onSortChange={setConvergenceOrder}
+                    exporting={figConvergenceBusy}
+                    onExport={async () => {
+                      setFigConvergenceBusy(true);
+                      await exportFigure(convergenceRef.current, "baseline-convergence.png", figConvergence, {
+                        title: figConvergence.title || "Baseline Equilibrium: Convergence Plot",
+                        subtitle: `${result.converged ? "Converged" : result.diverged ? "Diverged (unbounded growth)" : "Did not converge"} in ${result.iterationsRun} iterations${effectiveSquash === "linear" ? ", no squashing function" : ""}`,
+                      });
+                      setFigConvergenceBusy(false);
+                    }}
+                  />
+                )}
+              </div>
+
+              <div className="bg-white rounded-lg border border-slate-200 p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-sm font-semibold">Convergence table</h4>
+                  <Btn variant="outline" onClick={exportConvergenceCSV}><Download size={13} />Export CSV</Btn>
+                </div>
+                <div className="overflow-auto max-h-64">
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 bg-white">
+                      <tr className="text-left text-neutral-600 border-b border-slate-100">
+                        <th className="py-1 pr-2 font-medium">Iteration</th>
+                        {concepts.map((c) => <th key={c.id} className="py-1 pr-2 font-medium">{c.name}</th>)}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {result.series.map((pt) => (
+                        <tr key={pt.iteration} className="border-b border-slate-50">
+                          <td className="py-1 pr-2 font-mono">{pt.iteration}</td>
+                          {concepts.map((c) => <td key={c.id} className="py-1 pr-2 font-mono">{round2(pt.values[c.id] ?? 0)}</td>)}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg border border-slate-200 p-4">
+                <h4 className="text-sm font-semibold flex items-center gap-1.5"><FlaskConical size={14} className="text-cobalt-700" />Raw vectors and weight matrix</h4>
+                  <div className="mt-3 space-y-4">
+                    <p className="text-xs text-neutral-700">Raw mathematical objects behind this run, for verifying the engine matches FCM theory directly: the initial vector A(0), the weight matrix W (row = target, column = source, so W[row][col] is the weight of the relationship column to row), the first few iteration vectors, the final equilibrium A*, and the convergence delta.</p>
+
+                    <div>
+                      <div className="text-xs font-semibold text-neutral-900 mb-1">A(0) (initial activation vector)</div>
+                      <div className="text-xs font-mono bg-slate-50 border border-slate-200 rounded p-2 overflow-x-auto whitespace-nowrap">
+                        [{concepts.map((c) => round2(c.initialValue)).join(", ")}]
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-xs font-semibold text-neutral-900 mb-1">W (weight matrix)</div>
+                      <div className="overflow-auto max-h-64 border border-slate-200 rounded">
+                        <table className="text-[12.5px] font-mono">
+                          <thead className="sticky top-0 bg-slate-50">
+                            <tr>
+                              <th className="px-2 py-1 border-b border-r border-slate-200 text-neutral-600">to \ from</th>
+                              {concepts.map((c) => <th key={c.id} className="px-2 py-1 border-b border-slate-200 text-neutral-600 font-medium">{c.id}</th>)}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {concepts.map((rowC) => (
+                              <tr key={rowC.id}>
+                                <td className="px-2 py-1 border-r border-b border-slate-100 text-neutral-600 font-medium bg-slate-50">{rowC.id}</td>
+                                {concepts.map((colC) => {
+                                  const e = edges.find((e) => e.source === colC.id && e.target === rowC.id);
+                                  return <td key={colC.id} className="px-2 py-1 border-b border-slate-50 text-right">{e ? round2(e.weight) : 0}</td>;
+                                })}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-xs font-semibold text-neutral-900 mb-1">First iteration vectors</div>
+                      <div className="text-xs font-mono bg-slate-50 border border-slate-200 rounded p-2 space-y-1 overflow-x-auto">
+                        {result.series.slice(0, 6).map((pt) => (
+                          <div key={pt.iteration} className="whitespace-nowrap">
+                            A({pt.iteration}) = [{concepts.map((c) => round2(pt.values[c.id] ?? 0)).join(", ")}]
+                          </div>
+                        ))}
+                        {result.series.length > 6 && <div className="text-neutral-600">... {result.series.length - 6} more (see the convergence table)</div>}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-xs font-semibold text-neutral-900 mb-1">A* (final equilibrium)</div>
+                      <div className="text-xs font-mono bg-slate-50 border border-slate-200 rounded p-2 overflow-x-auto whitespace-nowrap">
+                        [{concepts.map((c) => round2(result.final[c.id] ?? 0)).join(", ")}]
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-xs font-semibold text-neutral-900 mb-1">Convergence delta: max(|A(t+1) - A(t)|)</div>
+                      <div className="text-xs font-mono bg-slate-50 border border-slate-200 rounded p-2">{finalMaxDelta}</div>
+                    </div>
+                  </div>
               </div>
             </div>
-          </div>
-
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
-            <details>
-              <summary className="text-sm font-semibold cursor-pointer flex items-center gap-1.5"><FlaskConical size={14} className="text-cobalt-700" />Advanced Diagnostics</summary>
-              <div className="mt-3 space-y-4">
-                <p className="text-xs text-neutral-700">Raw mathematical objects behind this run, for verifying the engine matches FCM theory directly: the initial vector A(0), the weight matrix W (row = target, column = source, so W[row][col] is the weight of the relationship column to row), the first few iteration vectors, the final equilibrium A*, and the convergence delta.</p>
-
-                <div>
-                  <div className="text-xs font-semibold text-neutral-900 mb-1">A(0) (initial activation vector)</div>
-                  <div className="text-xs font-mono bg-slate-50 border border-slate-200 rounded p-2 overflow-x-auto whitespace-nowrap">
-                    [{concepts.map((c) => round2(c.initialValue)).join(", ")}]
-                  </div>
-                </div>
-
-                <div>
-                  <div className="text-xs font-semibold text-neutral-900 mb-1">W (weight matrix)</div>
-                  <div className="overflow-auto max-h-64 border border-slate-200 rounded">
-                    <table className="text-[12.5px] font-mono">
-                      <thead className="sticky top-0 bg-slate-50">
-                        <tr>
-                          <th className="px-2 py-1 border-b border-r border-slate-200 text-neutral-600">to \ from</th>
-                          {concepts.map((c) => <th key={c.id} className="px-2 py-1 border-b border-slate-200 text-neutral-600 font-medium">{c.id}</th>)}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {concepts.map((rowC) => (
-                          <tr key={rowC.id}>
-                            <td className="px-2 py-1 border-r border-b border-slate-100 text-neutral-600 font-medium bg-slate-50">{rowC.id}</td>
-                            {concepts.map((colC) => {
-                              const e = edges.find((e) => e.source === colC.id && e.target === rowC.id);
-                              return <td key={colC.id} className="px-2 py-1 border-b border-slate-50 text-right">{e ? round2(e.weight) : 0}</td>;
-                            })}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="text-xs font-semibold text-neutral-900 mb-1">First iteration vectors</div>
-                  <div className="text-xs font-mono bg-slate-50 border border-slate-200 rounded p-2 space-y-1 overflow-x-auto">
-                    {result.series.slice(0, 6).map((pt) => (
-                      <div key={pt.iteration} className="whitespace-nowrap">
-                        A({pt.iteration}) = [{concepts.map((c) => round2(pt.values[c.id] ?? 0)).join(", ")}]
-                      </div>
-                    ))}
-                    {result.series.length > 6 && <div className="text-neutral-600">... {result.series.length - 6} more (see Convergence table above)</div>}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="text-xs font-semibold text-neutral-900 mb-1">A* (final equilibrium)</div>
-                  <div className="text-xs font-mono bg-slate-50 border border-slate-200 rounded p-2 overflow-x-auto whitespace-nowrap">
-                    [{concepts.map((c) => round2(result.final[c.id] ?? 0)).join(", ")}]
-                  </div>
-                </div>
-
-                <div>
-                  <div className="text-xs font-semibold text-neutral-900 mb-1">Convergence delta: max(|A(t+1) - A(t)|)</div>
-                  <div className="text-xs font-mono bg-slate-50 border border-slate-200 rounded p-2">{finalMaxDelta}</div>
-                </div>
-              </div>
-            </details>
-          </div>
+          </FoldableBox>
         </>
       )}
     </div>
@@ -8863,8 +9070,13 @@ function buildAnnotatedSvgClone(svg, { title, subtitle, padding = 16 } = {}) {
   // rect) into a translated group, so it lands below the title and inset
   // by the padding, instead of pinned to the top-left corner of the
   // now-larger canvas.
+  // A chart drawn in its own units (a viewBox scaled to fit, as the pathways
+  // metro map is) is scaled to its on-screen size; for Recharts, whose
+  // viewBox equals its size, the scale is 1.
+  const vb = svg.viewBox?.baseVal;
+  const k = vb && vb.width > 0 ? rect.width / vb.width : 1;
   const group = document.createElementNS(NS, "g");
-  group.setAttribute("transform", `translate(${padding}, ${padding + headerH})`);
+  group.setAttribute("transform", `translate(${padding}, ${padding + headerH})${Math.abs(k - 1) > 1e-3 ? ` scale(${k})` : ""}`);
   while (clone.firstChild) group.appendChild(clone.firstChild);
   clone.appendChild(bg);
   clone.appendChild(group);
@@ -9109,6 +9321,17 @@ async function pngWithDpi(blob, dpi) {
 // chunk, and the PDF's own page box respectively), so pasting the result
 // into a document reproduces the millimetre size directly, with no manual
 // resizing.
+// Saves a chart drawn as one SVG with its own viewBox (the metro map, the
+// outcome panels, the baseline and scenario figures) at its natural size:
+// one unit is one CSS pixel, at 300 dpi.
+async function exportSvgFigure(containerEl, baseName, format = "png", title = "", subtitle = "") {
+  const svg = containerEl?.querySelector("svg");
+  if (!svg) return;
+  const vb = svg.viewBox.baseVal;
+  const mm = (px) => Math.ceil((px * 25.4) / 96);
+  await exportFigure(containerEl, `${baseName}.png`, { ...DEFAULT_FIGURE_SETTINGS, widthMm: mm(vb.width + 32), heightMm: mm(vb.height + 32 + (title ? 50 : 0)), format }, { title, subtitle });
+}
+
 async function exportFigure(containerEl, filename, settings, { title, subtitle } = {}) {
   if (!containerEl) return;
   const padding = 16;
@@ -9976,10 +10199,13 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
   const [tpDirection, setTpDirection] = useState("increase");
   const [tpOutcomes, setTpOutcomes] = useState([]);
   const [tpResolution, setTpResolution] = useState(100);
+  const [tpFilter, setTpFilter] = useState("");
+  const matrixRef = useRef(null);
   const [tpFlatThreshold, setTpFlatThreshold] = useState(0.015);
   const [running, setRunning] = useState(false);
 
   const responseChartRef = useRef(null);
+  const multiplesRef = useRef(null);
   const slopeChartRef = useRef(null);
 
   // Publication-figure settings for the two curve charts, each independently
@@ -10076,7 +10302,7 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
 
   const matrixData = useMemo(() => {
     if (!result) return [];
-    return result.rows.map((r) => ({ x: round2(r.tp), y: round2(Math.abs(r.effect)), name: r.outcomeName, effect: r.effect }));
+    return result.rows.filter((r) => r.responseType !== "Flat").map((r) => ({ x: round2(r.tp), y: round2(Math.abs(r.effect)), name: r.outcomeName, effect: r.effect }));
   }, [result]);
   const matrixYSplit = useMemo(() => {
     if (!matrixData.length) return 0;
@@ -10159,72 +10385,78 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
 
         <p className="font-medium text-neutral-900 mt-2 mb-1">Steps</p>
         <ol className="list-decimal pl-5 space-y-0.5">
-          <li>Choose the intervention variable to sweep (Step 1).</li>
-          <li>Choose its direction: increase from 0 to +1, or decrease from 0 to -1 (Step 2). These are the two ways a scenario can drive a concept (▲ at +1, ▼ at -1).</li>
-          <li>Choose one or more outcome variables to observe (Step 3), or use "All variables" to select every other concept at once.</li>
-          <li>Choose the intensity resolution, i.e. how many steps to sample across the sweep (Step 4), and, optionally, adjust the flat-response threshold used to classify an outcome with little to no response.</li>
-          <li>Click Run analysis (Step 5) to generate the response curves, marginal-benefit curves, transition point table, and rankings.</li>
+          <li>Choose the intervention and whether to raise or lower it (step 1).</li>
+          <li>Choose the outcomes you care about, or All (step 2).</li>
+          <li>Choose how finely to step the intervention, and optionally the threshold below which a response counts as flat (step 3).</li>
+          <li>Click Run analysis. The prioritization matrix comes first, then the transition point table; the per-outcome curves are under Advanced results.</li>
         </ol>
         </div>
       </FoldableBox>
 
-      <div className="bg-white rounded-lg border border-slate-200 p-4">
-        <h3 className="font-semibold text-sm mb-3">Run an analysis</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div>
-            <label className="text-xs text-neutral-700 font-medium">Step 1: Intervention variable</label>
+      <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-4" data-tp-setup>
+        <div>
+          <h3 className="font-semibold text-sm">Run a transition point analysis</h3>
+          <p className="text-[12.5px] text-neutral-600">Raise (or lower) one intervention step by step, and find for each outcome the intensity from which extra effort pays off less.</p>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="rounded-md border border-slate-200 p-3">
+            <div className="flex items-center gap-2 mb-1.5"><span className="w-5 h-5 rounded-full bg-cobalt-700 text-white text-[11.5px] font-semibold flex items-center justify-center">1</span><span className="text-xs font-semibold text-neutral-900">Which intervention, in which direction?</span></div>
             <select
-              value={tpIntervention}
+              value={tpIntervention} aria-label="Intervention"
               onChange={(e) => { setTpIntervention(e.target.value); setTpOutcomes((os) => os.filter((o) => o !== e.target.value)); }}
-              className="w-full mt-1 text-xs border border-slate-200 rounded px-2 py-1.5"
+              className="w-full text-xs border border-slate-300 rounded px-2 py-1.5 bg-white"
             >
-              <option value="" disabled>Select…</option>
+              <option value="" disabled>Choose a concept…</option>
               {concepts.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
-          </div>
-          <div>
-            <label className="text-xs text-neutral-700 font-medium">Step 2: Direction</label>
-            <div className="flex mt-1 border border-slate-200 rounded overflow-hidden">
-              <button onClick={() => setTpDirection("increase")} className={`flex-1 text-xs py-1.5 ${tpDirection === "increase" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}>Increase (0→1)</button>
-              <button onClick={() => setTpDirection("decrease")} className={`flex-1 text-xs py-1.5 ${tpDirection === "decrease" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}>Decrease (0→-1)</button>
+            <div className="flex mt-2 border border-slate-300 rounded overflow-hidden" role="group" aria-label="Direction">
+              <button onClick={() => setTpDirection("increase")} className={`flex-1 text-xs py-1.5 ${tpDirection === "increase" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}>▲ Increase (0 to +1)</button>
+              <button onClick={() => setTpDirection("decrease")} className={`flex-1 text-xs py-1.5 border-l border-slate-300 ${tpDirection === "decrease" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}>▼ Decrease (0 to -1)</button>
             </div>
           </div>
-          <div>
-            <label className="text-xs text-neutral-700 font-medium">Step 4: Intensity resolution</label>
-            <select value={tpResolution} onChange={(e) => setTpResolution(parseInt(e.target.value))} className="w-full mt-1 text-xs border border-slate-200 rounded px-2 py-1.5">
-              <option value={50}>50 increments</option>
-              <option value={100}>100 increments</option>
-              <option value={200}>200 increments</option>
-              <option value={500}>500 increments</option>
-            </select>
+          <div className="rounded-md border border-slate-200 p-3 lg:col-span-2">
+            <div className="flex items-center gap-2 mb-1.5"><span className="w-5 h-5 rounded-full bg-cobalt-700 text-white text-[11.5px] font-semibold flex items-center justify-center">2</span><span className="text-xs font-semibold text-neutral-900">Which outcomes do you care about?</span>
+              <span className="text-[12px] text-neutral-500">{tpOutcomes.length ? `${tpOutcomes.length} chosen` : "choose one or more"}</span>
+              <span className="ml-auto flex gap-1.5">
+                <button onClick={selectAllOutcomes} className="text-[12px] px-2 py-0.5 rounded border border-slate-300 text-neutral-800 hover:border-slate-500">All</button>
+                <button onClick={clearOutcomes} className="text-[12px] px-2 py-0.5 rounded border border-slate-300 text-neutral-800 hover:border-slate-500">Clear</button>
+              </span>
+            </div>
+            <input value={tpFilter} onChange={(e) => setTpFilter(e.target.value)} placeholder="Find a concept…" className="w-full text-xs border border-slate-300 rounded px-2 py-1 mb-1.5" />
+            <div className="flex flex-wrap gap-1 max-h-28 overflow-auto">
+              {availableOutcomeConcepts.filter((c) => !tpFilter || c.name.toLowerCase().includes(tpFilter.toLowerCase())).map((c) => (
+                <button
+                  key={c.id} onClick={() => toggleOutcome(c.id)} aria-pressed={tpOutcomes.includes(c.id)}
+                  className={`text-[12px] px-2 py-0.5 rounded-full border ${tpOutcomes.includes(c.id) ? "border-cobalt-700 bg-cobalt-700 text-white" : "border-slate-300 text-neutral-800 hover:border-slate-500"}`}
+                >
+                  {tpOutcomes.includes(c.id) ? "✓ " : ""}{c.name}
+                </button>
+              ))}
+            </div>
           </div>
-          <div>
-            <label className="text-xs text-neutral-700 font-medium" title="Below this, an outcome's total range across the whole sweep is classified as a 'Flat' (no meaningful) response.">Flat-response threshold <HelpCircle size={10} className="inline text-neutral-500" /></label>
-            <input type="number" step={0.005} min={0} max={1} value={tpFlatThreshold} onChange={(e) => setTpFlatThreshold(Math.max(0, parseFloat(e.target.value) || 0))} className="w-full mt-1 text-xs border border-slate-200 rounded px-2 py-1.5" />
+          <div className="rounded-md border border-slate-200 p-3 lg:col-span-3">
+            <div className="flex items-center gap-2 mb-1.5"><span className="w-5 h-5 rounded-full bg-cobalt-700 text-white text-[11.5px] font-semibold flex items-center justify-center">3</span><span className="text-xs font-semibold text-neutral-900">How finely should the intervention be stepped?</span></div>
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs">
+              <div className="inline-flex border border-slate-300 rounded overflow-hidden" role="group" aria-label="Resolution">
+                {[[50, "Quick (50 steps)"], [100, "Normal (100)"], [200, "Fine (200)"], [500, "Very fine (500)"]].map(([n, label], k) => (
+                  <button key={n} onClick={() => setTpResolution(n)} className={`px-2.5 py-1 ${k ? "border-l border-slate-300" : ""} ${tpResolution === n ? "bg-slate-900 text-white" : "bg-white hover:bg-slate-50"}`}>{label}</button>
+                ))}
+              </div>
+              <label className="flex items-center gap-1.5 text-neutral-700" title="Below this, an outcome's total range across the whole sweep is classified as a 'Flat' (no meaningful) response.">
+                Count a response as flat below
+                <input type="number" step={0.005} min={0} max={1} value={tpFlatThreshold} onChange={(e) => setTpFlatThreshold(Math.max(0, parseFloat(e.target.value) || 0))} className="w-20 border border-slate-300 rounded px-1.5 py-0.5" />
+                <HelpCircle size={11} className="text-neutral-500" />
+              </label>
+            </div>
           </div>
         </div>
-        <div className="mt-3">
-          <label className="text-xs text-neutral-700 font-medium">Step 3: Outcome variable(s)</label>
-          <div className="mt-1 flex items-center gap-2 mb-1.5">
-            <button onClick={selectAllOutcomes} className="text-[11.5px] px-1.5 py-0.5 rounded border border-slate-200 text-neutral-700 hover:border-slate-400">All variables</button>
-            <button onClick={clearOutcomes} className="text-[11.5px] px-1.5 py-0.5 rounded border border-slate-200 text-neutral-700 hover:border-slate-400">Clear</button>
-          </div>
-          <div className="flex flex-wrap gap-1 max-h-[70px] overflow-auto border border-slate-200 rounded p-1.5">
-            {availableOutcomeConcepts.map((c) => (
-              <button
-                key={c.id} onClick={() => toggleOutcome(c.id)}
-                className={`text-[11.5px] px-1.5 py-0.5 rounded border ${tpOutcomes.includes(c.id) ? "border-cobalt-700 bg-cobalt-50 text-cobalt-800" : "border-slate-200 text-neutral-700 hover:border-slate-400"}`}
-              >
-                {c.name}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="mt-4">
+        <div className="flex flex-wrap items-center gap-3">
           <Btn variant="accent" onClick={runAnalysis} disabled={!tpIntervention || tpOutcomes.filter((o) => o !== tpIntervention).length === 0 || running}>
-            <Play size={14} />{running ? "Running…" : "Step 5: Run analysis"}
+            <Play size={14} />{running ? "Running…" : "Run analysis"}
           </Btn>
-          {!tpIntervention && <span className="text-xs text-neutral-600 ml-2">Select an intervention variable to begin.</span>}
+          <span className="text-[12.5px] text-neutral-600">
+            {!tpIntervention ? "Choose an intervention (step 1)." : tpOutcomes.filter((o) => o !== tpIntervention).length === 0 ? "Choose at least one outcome (step 2)." : `${tpDirection === "increase" ? "Raises" : "Lowers"} ${concepts.find((c) => c.id === tpIntervention)?.name} in ${tpResolution} steps and follows ${tpOutcomes.filter((o) => o !== tpIntervention).length} outcome${tpOutcomes.filter((o) => o !== tpIntervention).length === 1 ? "" : "s"}.`}
+          </span>
         </div>
       </div>
 
@@ -10232,7 +10464,252 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
         <>
           {isStale && <StaleResultBanner label="this transition point analysis" />}
 
-          <MethodPanel
+          <div className="bg-white rounded-lg border border-slate-200 p-4" data-tp-matrix>
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+              <h4 className="text-sm font-semibold">Intervention prioritization matrix</h4>
+              <div className="flex gap-2">
+                {["png", "svg"].map((fmt) => (
+                  <Btn key={fmt} variant="outline" onClick={() => exportSvgFigure(matrixRef.current, "transition-prioritization-matrix", fmt, "Intervention prioritization matrix", `${result.interventionName} (${transitionRangeLabel(result.direction)})`)}><Download size={13} />{fmt.toUpperCase()}</Btn>
+                ))}
+              </div>
+            </div>
+            <p className="text-[12.5px] text-neutral-600 mb-3">Each numbered dot is an outcome that responds. Further left, the outcome already gains most of its effect at a low intensity; higher up, the effect is larger. Green dots rise, orange dots fall; the numbers match the lists below. The lines split the plot at the middle intensity (0.5) and at the average effect.</p>
+            <div ref={matrixRef}>
+              <PrioritizationMatrix points={matrixData} xSplit={0.5} ySplit={matrixYSplit} />
+            </div>
+            {result.rows.length > matrixData.length && <p className="text-[12.5px] text-neutral-600 mt-2">Left out: {result.rows.length - matrixData.length} outcome{result.rows.length - matrixData.length === 1 ? "" : "s"} that hardly respond (flat response), listed in the table below.</p>}
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2 mt-3">
+              {QUADRANTS.map((q) => {
+                const items = matrixData.filter((d) => quadrantOf(d, 0.5, matrixYSplit) === q.key).sort((a, b) => b.y - a.y);
+                return (
+                  <div key={q.key} className="rounded-md border px-3 py-2" style={{ background: q.fill, borderColor: q.fill === "#f8fafc" ? "#e2e8f0" : q.fill }}>
+                    <div className="text-xs font-semibold" style={{ color: q.ink }}>{q.label} <span className="font-normal text-neutral-600">({items.length})</span></div>
+                    <div className="text-[12px] text-neutral-600 mb-1">{q.text}</div>
+                    {items.length ? <ul className="text-[12.5px] text-neutral-900 space-y-0.5">{items.map((d) => <li key={d.name} className="flex justify-between gap-2"><span><span className="inline-flex w-5 h-5 mr-1 rounded-full text-white text-[10.5px] font-semibold items-center justify-center align-middle" style={{ background: d.effect >= 0 ? "#15803d" : "#c2410c" }}>{matrixData.indexOf(d) + 1}</span>{d.effect >= 0 ? "▲" : "▼"} {d.name}</span><span className="font-mono text-neutral-600">{d.effect >= 0 ? "+" : ""}{d.effect.toFixed(2)}</span></li>)}</ul> : <p className="text-[12px] italic text-neutral-500">none</p>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg border border-slate-200 p-4">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="text-sm font-semibold">Transition point results</h4>
+              <Btn variant="outline" onClick={exportTableCSV}><Download size={13} />Export CSV</Btn>
+            </div>
+            <p className="text-[11.5px] text-neutral-600 mb-1.5">Click a column header to sort by it; click again to reverse the direction.</p>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-neutral-600 border-b border-slate-100">
+                  {TRANSITION_TABLE_COLUMNS.map((col) => <SortHeader key={col.key} col={col} sortKey={tpSortKey} sortDir={tpSortDir} onSort={tpOnSort} />)}
+                </tr>
+              </thead>
+              <tbody>
+                {tpSortedRows.map((r) => (
+                  <tr key={r.outcomeId} className="border-b border-slate-50">
+                    <td className="py-1 pr-3">{r.interventionName}</td>
+                    <td className="py-1 pr-3">{r.outcomeName}</td>
+                    <td className="py-1 pr-3 font-mono">{round2(r.tp)}</td>
+                    <td className="py-1 pr-3 font-mono">{r.effectAtTp >= 0 ? "+" : ""}{round2(r.effectAtTp)}</td>
+                    <td className="py-1 pr-3 font-mono">{r.shareAtTp === null ? "n/a" : `${Math.round(100 * r.shareAtTp)}%`}</td>
+                    <td className="py-1 pr-3 font-mono">{r.effect >= 0 ? "+" : ""}{round2(r.effect)}</td>
+                    <td className="py-1 pr-3 font-mono">{round2(r.range)}</td>
+                    <td className="py-1 pr-3 font-mono">{r.efficiency >= 0 ? "+" : ""}{round2(r.efficiency)}</td>
+                    <td className="py-1 pr-3">
+                      <span title={RESPONSE_TYPE_HELP[r.responseType]} className={`text-[11.5px] px-1.5 py-0.5 rounded-full border ${RESPONSE_TYPE_STYLE[r.responseType]}`}>{r.responseType}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {synergy && (
+            <div className="bg-white rounded-lg border border-slate-200 p-4">
+              <h4 className="text-sm font-semibold mb-1">Synergy classification</h4>
+              <p className="text-[12.5px] text-neutral-600 mb-2">Across the {synergy.total} selected outcomes, evaluated at full intervention intensity (x = 1).</p>
+              <div className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full border ${SYNERGY_STYLE[synergy.type]}`}>
+                {synergy.type}
+              </div>
+              <p className="text-xs text-neutral-700 mt-2">{synergy.improve} improved, {synergy.worsen} worsened, {synergy.total - synergy.improve - synergy.worsen} unchanged (within the flat-response threshold).</p>
+            </div>
+          )}
+
+          <FoldableBox storageKey="se.fold.tpAdvanced" title="Advanced results" icon={Activity} summary="Every outcome in its own panel (response curve, marginal benefit and transition point), the dashboard, and the overlay charts for export.">
+            <div className="space-y-5">
+              <div>
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+                  <h4 className="text-sm font-semibold">How each outcome responds</h4>
+                  <div className="flex gap-2">
+                    {["png", "svg"].map((fmt) => (
+                      <Btn key={fmt} variant="outline" onClick={async () => {
+                        const svg = multiplesRef.current?.querySelector("svg");
+                        if (!svg) return;
+                        const vb = svg.viewBox.baseVal;
+                        const mm = (px) => Math.ceil((px * 25.4) / 96);
+                        await exportFigure(multiplesRef.current, "transition-point-panels.png", { ...DEFAULT_FIGURE_SETTINGS, widthMm: mm(vb.width + 32), heightMm: mm(vb.height + 32 + 50), format: fmt }, {
+                          title: `How each outcome responds to ${result.interventionName} (${transitionRangeLabel(result.direction)})`, subtitle: "Response curve, marginal benefit and transition point per outcome",
+                        });
+                      }}><Download size={13} />{fmt.toUpperCase()}</Btn>
+                    ))}
+                  </div>
+                </div>
+                <p className="text-[12.5px] text-neutral-600 mb-2">One panel per outcome. The line is where the outcome settles at each intensity of {result.interventionName}; the bars below are the marginal benefit of each step. The dashed line is the transition point: from there on, the bars shrink and each extra unit of effort adds less. The label gives the share of the total effect already reached at that point.</p>
+                <div ref={multiplesRef} className="overflow-x-auto"><TransitionSmallMultiples result={result} rows={chartRows} /></div>
+              </div>
+
+              {kpis && (
+                <div className="bg-white rounded-lg border border-slate-200 p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-sm font-semibold">Transition point dashboard</h4>
+                    <Btn variant="outline" onClick={exportRankingsCSV}><Download size={13} />Export CSV</Btn>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="border border-slate-200 rounded-lg p-3">
+                      <div className="text-[11.5px] text-neutral-600 font-medium uppercase tracking-wide">Earliest transition point</div>
+                      <div className="text-sm font-semibold mt-0.5">{kpis.earliest.outcomeName}</div>
+                      <div className="text-xs font-mono text-neutral-700">TP = {round2(kpis.earliest.tp)}</div>
+                      <div className="text-[11.5px] text-neutral-600 mt-1">Returns diminish soonest.</div>
+                    </div>
+                    <div className="border border-slate-200 rounded-lg p-3">
+                      <div className="text-[11.5px] text-neutral-600 font-medium uppercase tracking-wide">Latest transition point</div>
+                      <div className="text-sm font-semibold mt-0.5">{kpis.latest.outcomeName}</div>
+                      <div className="text-xs font-mono text-neutral-700">TP = {round2(kpis.latest.tp)}</div>
+                      <div className="text-[11.5px] text-neutral-600 mt-1">Benefit keeps building longest.</div>
+                    </div>
+                    <div className="border border-slate-200 rounded-lg p-3">
+                      <div className="text-[11.5px] text-neutral-600 font-medium uppercase tracking-wide">Highest total effect</div>
+                      <div className="text-sm font-semibold mt-0.5">{kpis.highestEffect.outcomeName}</div>
+                      <div className="text-xs font-mono text-neutral-700">{kpis.highestEffect.effect >= 0 ? "+" : ""}{round2(kpis.highestEffect.effect)}</div>
+                      <div className="text-[11.5px] text-neutral-600 mt-1">Largest equilibrium change.</div>
+                    </div>
+                    <div className="border border-slate-200 rounded-lg p-3">
+                      <div className="text-[11.5px] text-neutral-600 font-medium uppercase tracking-wide" title="Efficiency = Total Effect / Transition Point (TP). How much this outcome changed overall, relative to the intensity from which further effort pays off markedly less. A high efficiency means a small nudge produces a big change; a low one means most of the intervention's range is spent for comparatively little. Sign matches the effect: a negative efficiency means the outcome got worse, not better.">Most efficient lever <HelpCircle size={10} className="inline text-neutral-500" /></div>
+                      <div className="text-sm font-semibold mt-0.5">{kpis.mostEfficient.outcomeName}</div>
+                      <div className="text-xs font-mono text-neutral-700">Efficiency = {round2(kpis.mostEfficient.efficiency)}</div>
+                      <div className="text-[11.5px] text-neutral-600 mt-1">Effect size / required intensity.</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="bg-white rounded-lg border border-slate-200 p-4">
+                <div className="flex items-center justify-between mb-1">
+                  <h4 className="text-sm font-semibold">Response curves: {result.interventionName} ({transitionRangeLabel(result.direction)})</h4>
+                  <Btn variant="outline" onClick={() => setFigResponseOpen((v) => !v)}><SlidersHorizontal size={13} />{figResponseOpen ? "Hide figure options" : "Customize & export"}</Btn>
+                </div>
+                <p className="text-[12.5px] text-neutral-600 mb-2">Dashed vertical lines mark each outcome's transition point (where its marginal benefit declines most steeply). Drag the strip below the chart to zoom into an intensity range.</p>
+                <div ref={responseChartRef} data-chart="transition-curves" className="w-full h-80" style={figResponseOpen ? { width: mmToPx(figResponse.widthMm, 96), height: mmToPx(figResponse.heightMm, 96), maxWidth: "100%" } : undefined}>
+                  <ResponsiveContainer>
+                    <LineChart data={curveData} margin={{ bottom: 20 }}>
+                      {figResponse.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
+                      <XAxis dataKey="x" type="number" domain={[0, 1]} tick={{ fontSize: figResponse.tickFontSize }} tickFormatter={(v) => fmtDec(v, figResponse.decimals)} label={{ value: figResponse.xLabel || "Intervention Intensity", position: "insideBottom", offset: -12, fontSize: figResponse.axisFontSize }} />
+                      <YAxis tick={{ fontSize: figResponse.tickFontSize }} tickFormatter={(v) => fmtDec(v, figResponse.decimals)} label={{ value: figResponse.yLabel || "Equilibrium Outcome", angle: -90, position: "insideLeft", fontSize: figResponse.axisFontSize }} />
+                      <RTooltip />
+                      {figResponse.legendPosition !== "hidden" && (
+                        <Legend
+                          wrapperStyle={{ fontSize: figResponse.legendFontSize }}
+                          layout={figResponse.legendPosition === "left" || figResponse.legendPosition === "right" ? "vertical" : "horizontal"}
+                          verticalAlign={figResponse.legendPosition === "left" || figResponse.legendPosition === "right" ? "middle" : figResponse.legendPosition}
+                          align={figResponse.legendPosition === "left" || figResponse.legendPosition === "right" ? figResponse.legendPosition : "center"}
+                        />
+                      )}
+                      {figResponse.title && <text x="50%" y={14} textAnchor="middle" fontSize={figResponse.titleFontSize} fontWeight={600} fill="#0f172a">{figResponse.title}</text>}
+                      {chartRows.map((r, i) => (
+                        <ReferenceLine key={`tp-${r.outcomeId}`} x={round2(r.tp)} stroke={figurePalette(figResponse.palette, chartRows.length)[i]} strokeDasharray="4 4"
+                          label={i === 0 ? { value: `TP = ${round2(r.tp)}`, position: "top", fontSize: figResponse.tickFontSize, fill: figurePalette(figResponse.palette, chartRows.length)[i] } : undefined} />
+                      ))}
+                      {chartRows.map((r, i) => (
+                        <Line key={r.outcomeId} type="monotone" dataKey={r.outcomeId} name={r.outcomeName} stroke={figurePalette(figResponse.palette, chartRows.length)[i]} strokeWidth={figResponse.lineWidth} strokeOpacity={figResponse.opacity} dot={figResponse.markerSize > 0 ? { r: figResponse.markerSize } : false} />
+                      ))}
+                      <Brush dataKey="x" height={20} stroke="#2456d6" travellerWidth={8} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+                {figResponseOpen && (
+                  <FigurePanel
+                    settings={figResponse} onChange={setFigResponse}
+                    seriesOptions={outcomeSeriesOptions} hiddenKeys={hiddenOutcomeKeys} onToggleSeries={toggleHiddenOutcome}
+                    sortOptions={SERIES_ORDER_OPTIONS} sortValue={seriesOrder} onSortChange={setSeriesOrder}
+                    exporting={figResponseBusy}
+                    onExport={async () => {
+                      setFigResponseBusy(true);
+                      await exportFigure(responseChartRef.current, "transition-response-curves.png", figResponse, {
+                        title: figResponse.title || `Response curves: ${result.interventionName} (${transitionRangeLabel(result.direction)})`,
+                        subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}`,
+                      });
+                      setFigResponseBusy(false);
+                    }}
+                  />
+                )}
+              </div>
+
+              <div className="bg-white rounded-lg border border-slate-200 p-4">
+                <div className="flex items-center justify-between mb-1">
+                  <h4 className="text-sm font-semibold">Marginal benefit: the transition point is where it declines most steeply</h4>
+                  <Btn variant="outline" onClick={() => setFigSlopeOpen((v) => !v)}><SlidersHorizontal size={13} />{figSlopeOpen ? "Hide figure options" : "Customize & export"}</Btn>
+                </div>
+                <p className="text-[12.5px] text-neutral-600 mb-2">MB(i) = s (Y(i+1) - Y(i)) / Δx at every intensity step, with s = +1 for an outcome that rises over the sweep and -1 for one that falls. Dashed vertical lines mark each outcome's transition point, where its curve falls most steeply.</p>
+                <div ref={slopeChartRef} className="w-full h-72" style={figSlopeOpen ? { width: mmToPx(figSlope.widthMm, 96), height: mmToPx(figSlope.heightMm, 96), maxWidth: "100%" } : undefined}>
+                  <ResponsiveContainer>
+                    <LineChart data={slopeData}>
+                      {figSlope.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
+                      <XAxis dataKey="x" type="number" domain={[0, 1]} tick={{ fontSize: figSlope.tickFontSize }} tickFormatter={(v) => fmtDec(v, figSlope.decimals)} label={{ value: figSlope.xLabel || "Intervention Intensity", position: "insideBottom", offset: -5, fontSize: figSlope.axisFontSize }} />
+                      <YAxis tick={{ fontSize: figSlope.tickFontSize }} tickFormatter={(v) => fmtDec(v, figSlope.decimals)} label={{ value: figSlope.yLabel || "Marginal Benefit", angle: -90, position: "insideLeft", fontSize: figSlope.axisFontSize }} />
+                      <RTooltip />
+                      {figSlope.legendPosition !== "hidden" && (
+                        <Legend
+                          wrapperStyle={{ fontSize: figSlope.legendFontSize }}
+                          layout={figSlope.legendPosition === "left" || figSlope.legendPosition === "right" ? "vertical" : "horizontal"}
+                          verticalAlign={figSlope.legendPosition === "left" || figSlope.legendPosition === "right" ? "middle" : figSlope.legendPosition}
+                          align={figSlope.legendPosition === "left" || figSlope.legendPosition === "right" ? figSlope.legendPosition : "center"}
+                        />
+                      )}
+                      {figSlope.title && <text x="50%" y={14} textAnchor="middle" fontSize={figSlope.titleFontSize} fontWeight={600} fill="#0f172a">{figSlope.title}</text>}
+                      <ReferenceLine y={0} stroke="#cbd5e1" />
+                      {chartRows.map((r, i) => (
+                        <ReferenceLine key={`tp-${r.outcomeId}`} x={round2(r.tp)} stroke={figurePalette(figSlope.palette, chartRows.length)[i]} strokeDasharray="4 4" />
+                      ))}
+                      {chartRows.map((r, i) => (
+                        <Line key={r.outcomeId} type="monotone" dataKey={r.outcomeId} name={r.outcomeName} stroke={figurePalette(figSlope.palette, chartRows.length)[i]} strokeWidth={figSlope.lineWidth} strokeOpacity={figSlope.opacity} dot={figSlope.markerSize > 0 ? { r: figSlope.markerSize } : false} />
+                      ))}
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+                {figSlopeOpen && (
+                  <FigurePanel
+                    settings={figSlope} onChange={setFigSlope}
+                    seriesOptions={outcomeSeriesOptions} hiddenKeys={hiddenOutcomeKeys} onToggleSeries={toggleHiddenOutcome}
+                    sortOptions={SERIES_ORDER_OPTIONS} sortValue={seriesOrder} onSortChange={setSeriesOrder}
+                    exporting={figSlopeBusy}
+                    onExport={async () => {
+                      setFigSlopeBusy(true);
+                      await exportFigure(slopeChartRef.current, "transition-marginal-benefit.png", figSlope, {
+                        title: figSlope.title || `Marginal benefit: ${result.interventionName}`,
+                        subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}`,
+                      });
+                      setFigSlopeBusy(false);
+                    }}
+                  />
+                )}
+              </div>
+            </div>
+          </FoldableBox>
+
+          <div className="bg-white rounded-lg border border-slate-200 p-4">
+            <h4 className="text-sm font-semibold mb-2">Export</h4>
+            <div className="flex flex-wrap gap-2">
+              <Btn variant="outline" onClick={exportResponseCSV}><Download size={13} />Response curves (CSV)</Btn>
+              <Btn variant="outline" onClick={exportSlopeCSV}><Download size={13} />Marginal benefit curves (CSV)</Btn>
+              <Btn variant="outline" onClick={exportTableCSV}><Download size={13} />TP table (CSV)</Btn>
+              <Btn variant="outline" onClick={exportRankingsCSV} disabled={!kpis}><Download size={13} />Rankings (CSV)</Btn>
+              <Btn variant="outline" onClick={() => exportFigure(responseChartRef.current, "transition-response-curves.png", figResponse, { title: figResponse.title || `Response curves: ${result.interventionName} (${transitionRangeLabel(result.direction)})`, subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}` })}><Download size={13} />Response chart ({figResponse.format.toUpperCase()})</Btn>
+              <Btn variant="outline" onClick={() => exportFigure(slopeChartRef.current, "transition-marginal-benefit.png", figSlope, { title: figSlope.title || `Marginal benefit: ${result.interventionName}`, subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}` })}><Download size={13} />Marginal chart ({figSlope.format.toUpperCase()})</Btn>
+            </div>
+            <p className="text-[11.5px] text-neutral-600 mt-2 italic">PDF export is not yet implemented (see the roadmap note at the bottom of the page). Use PNG for images and CSV for data in the meantime.</p>
+          </div>
+
+          <MethodPanel fold
             stats={[
               { label: "Simulation runs", value: result.resolution + 1, hint: "One full run to equilibrium per sampled intervention level." },
               {
@@ -10270,231 +10747,6 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
             <p><strong>Benefit is counted in the direction the outcome moves.</strong> The tool has no notion of which direction is desirable for any concept, so s is +1 for an outcome that rises over the sweep and -1 for one that falls: for a falling outcome, a further fall is its marginal benefit. Check the sign of the effect before describing a transition point as a leverage point.</p>
             <p><strong>One intervention, held fixed, at equilibrium.</strong> The intervention concept is locked at each level for the whole run and every other concept evolves freely; nothing here sweeps two interventions together, and the x-axis is intensity rather than time, so the curves say nothing about how long a transition takes or what happens en route. Effects are measured from the intervention held at 0, not from the baseline in which it is free to move, and for a decrease a positive slope means the outcome rises as the intervention is pushed further down.</p>
           </MethodPanel>
-
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
-            <div className="flex items-center justify-between mb-1">
-              <h4 className="text-sm font-semibold">Response curves: {result.interventionName} ({transitionRangeLabel(result.direction)})</h4>
-              <Btn variant="outline" onClick={() => setFigResponseOpen((v) => !v)}><SlidersHorizontal size={13} />{figResponseOpen ? "Hide figure options" : "Customize & export"}</Btn>
-            </div>
-            <p className="text-[12.5px] text-neutral-600 mb-2">Dashed vertical lines mark each outcome's transition point (where its marginal benefit declines most steeply). Drag the strip below the chart to zoom into an intensity range.</p>
-            <div ref={responseChartRef} data-chart="transition-curves" className="w-full h-80" style={figResponseOpen ? { width: mmToPx(figResponse.widthMm, 96), height: mmToPx(figResponse.heightMm, 96), maxWidth: "100%" } : undefined}>
-              <ResponsiveContainer>
-                <LineChart data={curveData} margin={{ bottom: 20 }}>
-                  {figResponse.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
-                  <XAxis dataKey="x" type="number" domain={[0, 1]} tick={{ fontSize: figResponse.tickFontSize }} tickFormatter={(v) => fmtDec(v, figResponse.decimals)} label={{ value: figResponse.xLabel || "Intervention Intensity", position: "insideBottom", offset: -12, fontSize: figResponse.axisFontSize }} />
-                  <YAxis tick={{ fontSize: figResponse.tickFontSize }} tickFormatter={(v) => fmtDec(v, figResponse.decimals)} label={{ value: figResponse.yLabel || "Equilibrium Outcome", angle: -90, position: "insideLeft", fontSize: figResponse.axisFontSize }} />
-                  <RTooltip />
-                  {figResponse.legendPosition !== "hidden" && (
-                    <Legend
-                      wrapperStyle={{ fontSize: figResponse.legendFontSize }}
-                      layout={figResponse.legendPosition === "left" || figResponse.legendPosition === "right" ? "vertical" : "horizontal"}
-                      verticalAlign={figResponse.legendPosition === "left" || figResponse.legendPosition === "right" ? "middle" : figResponse.legendPosition}
-                      align={figResponse.legendPosition === "left" || figResponse.legendPosition === "right" ? figResponse.legendPosition : "center"}
-                    />
-                  )}
-                  {figResponse.title && <text x="50%" y={14} textAnchor="middle" fontSize={figResponse.titleFontSize} fontWeight={600} fill="#0f172a">{figResponse.title}</text>}
-                  {chartRows.map((r, i) => (
-                    <ReferenceLine key={`tp-${r.outcomeId}`} x={round2(r.tp)} stroke={figurePalette(figResponse.palette, chartRows.length)[i]} strokeDasharray="4 4"
-                      label={i === 0 ? { value: `TP = ${round2(r.tp)}`, position: "top", fontSize: figResponse.tickFontSize, fill: figurePalette(figResponse.palette, chartRows.length)[i] } : undefined} />
-                  ))}
-                  {chartRows.map((r, i) => (
-                    <Line key={r.outcomeId} type="monotone" dataKey={r.outcomeId} name={r.outcomeName} stroke={figurePalette(figResponse.palette, chartRows.length)[i]} strokeWidth={figResponse.lineWidth} strokeOpacity={figResponse.opacity} dot={figResponse.markerSize > 0 ? { r: figResponse.markerSize } : false} />
-                  ))}
-                  <Brush dataKey="x" height={20} stroke="#2456d6" travellerWidth={8} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-            {figResponseOpen && (
-              <FigurePanel
-                settings={figResponse} onChange={setFigResponse}
-                seriesOptions={outcomeSeriesOptions} hiddenKeys={hiddenOutcomeKeys} onToggleSeries={toggleHiddenOutcome}
-                sortOptions={SERIES_ORDER_OPTIONS} sortValue={seriesOrder} onSortChange={setSeriesOrder}
-                exporting={figResponseBusy}
-                onExport={async () => {
-                  setFigResponseBusy(true);
-                  await exportFigure(responseChartRef.current, "transition-response-curves.png", figResponse, {
-                    title: figResponse.title || `Response curves: ${result.interventionName} (${transitionRangeLabel(result.direction)})`,
-                    subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}`,
-                  });
-                  setFigResponseBusy(false);
-                }}
-              />
-            )}
-          </div>
-
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
-            <div className="flex items-center justify-between mb-1">
-              <h4 className="text-sm font-semibold">Marginal benefit: the transition point is where it declines most steeply</h4>
-              <Btn variant="outline" onClick={() => setFigSlopeOpen((v) => !v)}><SlidersHorizontal size={13} />{figSlopeOpen ? "Hide figure options" : "Customize & export"}</Btn>
-            </div>
-            <p className="text-[12.5px] text-neutral-600 mb-2">MB(i) = s (Y(i+1) - Y(i)) / Δx at every intensity step, with s = +1 for an outcome that rises over the sweep and -1 for one that falls. Dashed vertical lines mark each outcome's transition point, where its curve falls most steeply.</p>
-            <div ref={slopeChartRef} className="w-full h-72" style={figSlopeOpen ? { width: mmToPx(figSlope.widthMm, 96), height: mmToPx(figSlope.heightMm, 96), maxWidth: "100%" } : undefined}>
-              <ResponsiveContainer>
-                <LineChart data={slopeData}>
-                  {figSlope.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
-                  <XAxis dataKey="x" type="number" domain={[0, 1]} tick={{ fontSize: figSlope.tickFontSize }} tickFormatter={(v) => fmtDec(v, figSlope.decimals)} label={{ value: figSlope.xLabel || "Intervention Intensity", position: "insideBottom", offset: -5, fontSize: figSlope.axisFontSize }} />
-                  <YAxis tick={{ fontSize: figSlope.tickFontSize }} tickFormatter={(v) => fmtDec(v, figSlope.decimals)} label={{ value: figSlope.yLabel || "Marginal Benefit", angle: -90, position: "insideLeft", fontSize: figSlope.axisFontSize }} />
-                  <RTooltip />
-                  {figSlope.legendPosition !== "hidden" && (
-                    <Legend
-                      wrapperStyle={{ fontSize: figSlope.legendFontSize }}
-                      layout={figSlope.legendPosition === "left" || figSlope.legendPosition === "right" ? "vertical" : "horizontal"}
-                      verticalAlign={figSlope.legendPosition === "left" || figSlope.legendPosition === "right" ? "middle" : figSlope.legendPosition}
-                      align={figSlope.legendPosition === "left" || figSlope.legendPosition === "right" ? figSlope.legendPosition : "center"}
-                    />
-                  )}
-                  {figSlope.title && <text x="50%" y={14} textAnchor="middle" fontSize={figSlope.titleFontSize} fontWeight={600} fill="#0f172a">{figSlope.title}</text>}
-                  <ReferenceLine y={0} stroke="#cbd5e1" />
-                  {chartRows.map((r, i) => (
-                    <ReferenceLine key={`tp-${r.outcomeId}`} x={round2(r.tp)} stroke={figurePalette(figSlope.palette, chartRows.length)[i]} strokeDasharray="4 4" />
-                  ))}
-                  {chartRows.map((r, i) => (
-                    <Line key={r.outcomeId} type="monotone" dataKey={r.outcomeId} name={r.outcomeName} stroke={figurePalette(figSlope.palette, chartRows.length)[i]} strokeWidth={figSlope.lineWidth} strokeOpacity={figSlope.opacity} dot={figSlope.markerSize > 0 ? { r: figSlope.markerSize } : false} />
-                  ))}
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-            {figSlopeOpen && (
-              <FigurePanel
-                settings={figSlope} onChange={setFigSlope}
-                seriesOptions={outcomeSeriesOptions} hiddenKeys={hiddenOutcomeKeys} onToggleSeries={toggleHiddenOutcome}
-                sortOptions={SERIES_ORDER_OPTIONS} sortValue={seriesOrder} onSortChange={setSeriesOrder}
-                exporting={figSlopeBusy}
-                onExport={async () => {
-                  setFigSlopeBusy(true);
-                  await exportFigure(slopeChartRef.current, "transition-marginal-benefit.png", figSlope, {
-                    title: figSlope.title || `Marginal benefit: ${result.interventionName}`,
-                    subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}`,
-                  });
-                  setFigSlopeBusy(false);
-                }}
-              />
-            )}
-          </div>
-
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
-            <div className="flex items-center justify-between mb-2">
-              <h4 className="text-sm font-semibold">Transition point results</h4>
-              <Btn variant="outline" onClick={exportTableCSV}><Download size={13} />Export CSV</Btn>
-            </div>
-            <p className="text-[11.5px] text-neutral-600 mb-1.5">Click a column header to sort by it; click again to reverse the direction.</p>
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-left text-neutral-600 border-b border-slate-100">
-                  {TRANSITION_TABLE_COLUMNS.map((col) => <SortHeader key={col.key} col={col} sortKey={tpSortKey} sortDir={tpSortDir} onSort={tpOnSort} />)}
-                </tr>
-              </thead>
-              <tbody>
-                {tpSortedRows.map((r) => (
-                  <tr key={r.outcomeId} className="border-b border-slate-50">
-                    <td className="py-1 pr-3">{r.interventionName}</td>
-                    <td className="py-1 pr-3">{r.outcomeName}</td>
-                    <td className="py-1 pr-3 font-mono">{round2(r.tp)}</td>
-                    <td className="py-1 pr-3 font-mono">{r.effectAtTp >= 0 ? "+" : ""}{round2(r.effectAtTp)}</td>
-                    <td className="py-1 pr-3 font-mono">{r.shareAtTp === null ? "n/a" : `${Math.round(100 * r.shareAtTp)}%`}</td>
-                    <td className="py-1 pr-3 font-mono">{r.effect >= 0 ? "+" : ""}{round2(r.effect)}</td>
-                    <td className="py-1 pr-3 font-mono">{round2(r.range)}</td>
-                    <td className="py-1 pr-3 font-mono">{r.efficiency >= 0 ? "+" : ""}{round2(r.efficiency)}</td>
-                    <td className="py-1 pr-3">
-                      <span title={RESPONSE_TYPE_HELP[r.responseType]} className={`text-[11.5px] px-1.5 py-0.5 rounded-full border ${RESPONSE_TYPE_STYLE[r.responseType]}`}>{r.responseType}</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {kpis && (
-            <div className="bg-white rounded-lg border border-slate-200 p-4">
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="text-sm font-semibold">Transition point dashboard</h4>
-                <Btn variant="outline" onClick={exportRankingsCSV}><Download size={13} />Export CSV</Btn>
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="border border-slate-200 rounded-lg p-3">
-                  <div className="text-[11.5px] text-neutral-600 font-medium uppercase tracking-wide">Earliest transition point</div>
-                  <div className="text-sm font-semibold mt-0.5">{kpis.earliest.outcomeName}</div>
-                  <div className="text-xs font-mono text-neutral-700">TP = {round2(kpis.earliest.tp)}</div>
-                  <div className="text-[11.5px] text-neutral-600 mt-1">Returns diminish soonest.</div>
-                </div>
-                <div className="border border-slate-200 rounded-lg p-3">
-                  <div className="text-[11.5px] text-neutral-600 font-medium uppercase tracking-wide">Latest transition point</div>
-                  <div className="text-sm font-semibold mt-0.5">{kpis.latest.outcomeName}</div>
-                  <div className="text-xs font-mono text-neutral-700">TP = {round2(kpis.latest.tp)}</div>
-                  <div className="text-[11.5px] text-neutral-600 mt-1">Benefit keeps building longest.</div>
-                </div>
-                <div className="border border-slate-200 rounded-lg p-3">
-                  <div className="text-[11.5px] text-neutral-600 font-medium uppercase tracking-wide">Highest total effect</div>
-                  <div className="text-sm font-semibold mt-0.5">{kpis.highestEffect.outcomeName}</div>
-                  <div className="text-xs font-mono text-neutral-700">{kpis.highestEffect.effect >= 0 ? "+" : ""}{round2(kpis.highestEffect.effect)}</div>
-                  <div className="text-[11.5px] text-neutral-600 mt-1">Largest equilibrium change.</div>
-                </div>
-                <div className="border border-slate-200 rounded-lg p-3">
-                  <div className="text-[11.5px] text-neutral-600 font-medium uppercase tracking-wide" title="Efficiency = Total Effect / Transition Point (TP). How much this outcome changed overall, relative to the intensity from which further effort pays off markedly less. A high efficiency means a small nudge produces a big change; a low one means most of the intervention's range is spent for comparatively little. Sign matches the effect: a negative efficiency means the outcome got worse, not better.">Most efficient lever <HelpCircle size={10} className="inline text-neutral-500" /></div>
-                  <div className="text-sm font-semibold mt-0.5">{kpis.mostEfficient.outcomeName}</div>
-                  <div className="text-xs font-mono text-neutral-700">Efficiency = {round2(kpis.mostEfficient.efficiency)}</div>
-                  <div className="text-[11.5px] text-neutral-600 mt-1">Effect size / required intensity.</div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
-            <h4 className="text-sm font-semibold mb-1">Intervention prioritization matrix</h4>
-            <p className="text-[12.5px] text-neutral-600 mb-2">X: transition point (the intensity from which returns diminish). Y: |effect size|. Point color: green = outcome improves, red = outcome declines.</p>
-            <div className="w-full h-80">
-              <ResponsiveContainer>
-                <ScatterChart margin={{ top: 10, right: 20, bottom: 20, left: 10 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis type="number" dataKey="x" domain={[0, 1]} tick={{ fontSize: 12 }} label={{ value: "Transition Point", position: "insideBottom", offset: -12, fontSize: 11 }} />
-                  <YAxis type="number" dataKey="y" tick={{ fontSize: 12 }} label={{ value: "Effect Size", angle: -90, position: "insideLeft", fontSize: 11 }} />
-                  <ZAxis range={[80, 80]} />
-                  <RTooltip cursor={{ strokeDasharray: "3 3" }} content={({ active, payload }) => active && payload?.[0] ? (
-                    <div className="bg-white border border-slate-200 rounded shadow-sm p-2 text-[12.5px]">
-                      <div className="font-semibold">{payload[0].payload.name}</div>
-                      <div>TP = {payload[0].payload.x}</div>
-                      <div>Effect = {payload[0].payload.effect >= 0 ? "+" : ""}{payload[0].payload.effect}</div>
-                    </div>
-                  ) : null} />
-                  <ReferenceLine x={0.5} stroke="#94a3b8" />
-                  <ReferenceLine y={matrixYSplit} stroke="#94a3b8" />
-                  <Scatter data={matrixData}>
-                    {matrixData.map((d, i) => <Cell key={i} fill={d.effect >= 0 ? "#16a34a" : "#dc2626"} />)}
-                  </Scatter>
-                </ScatterChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="grid grid-cols-2 gap-2 mt-2 text-[11.5px] text-neutral-600">
-              <div><strong className="text-neutral-900">Quick Wins</strong>: low TP, high effect</div>
-              <div><strong className="text-neutral-900">Strategic Investments</strong>: high TP, high effect</div>
-              <div><strong className="text-neutral-900">Small Improvements</strong>: low TP, low effect</div>
-              <div><strong className="text-neutral-900">Poor Leverage Points</strong>: high TP, low effect</div>
-            </div>
-          </div>
-
-          {synergy && (
-            <div className="bg-white rounded-lg border border-slate-200 p-4">
-              <h4 className="text-sm font-semibold mb-1">Synergy classification</h4>
-              <p className="text-[12.5px] text-neutral-600 mb-2">Across the {synergy.total} selected outcomes, evaluated at full intervention intensity (x = 1).</p>
-              <div className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full border ${SYNERGY_STYLE[synergy.type]}`}>
-                {synergy.type}
-              </div>
-              <p className="text-xs text-neutral-700 mt-2">{synergy.improve} improved, {synergy.worsen} worsened, {synergy.total - synergy.improve - synergy.worsen} unchanged (within the flat-response threshold).</p>
-            </div>
-          )}
-
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
-            <h4 className="text-sm font-semibold mb-2">Export</h4>
-            <div className="flex flex-wrap gap-2">
-              <Btn variant="outline" onClick={exportResponseCSV}><Download size={13} />Response curves (CSV)</Btn>
-              <Btn variant="outline" onClick={exportSlopeCSV}><Download size={13} />Marginal benefit curves (CSV)</Btn>
-              <Btn variant="outline" onClick={exportTableCSV}><Download size={13} />TP table (CSV)</Btn>
-              <Btn variant="outline" onClick={exportRankingsCSV} disabled={!kpis}><Download size={13} />Rankings (CSV)</Btn>
-              <Btn variant="outline" onClick={() => exportFigure(responseChartRef.current, "transition-response-curves.png", figResponse, { title: figResponse.title || `Response curves: ${result.interventionName} (${transitionRangeLabel(result.direction)})`, subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}` })}><Download size={13} />Response chart ({figResponse.format.toUpperCase()})</Btn>
-              <Btn variant="outline" onClick={() => exportFigure(slopeChartRef.current, "transition-marginal-benefit.png", figSlope, { title: figSlope.title || `Marginal benefit: ${result.interventionName}`, subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}` })}><Download size={13} />Marginal chart ({figSlope.format.toUpperCase()})</Btn>
-            </div>
-            <p className="text-[11.5px] text-neutral-600 mt-2 italic">PDF export is not yet implemented (see the roadmap note at the bottom of the page). Use PNG for images and CSV for data in the meantime.</p>
-          </div>
         </>
       )}
     </div>
@@ -10650,6 +10902,10 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
+  // More options in the setup: open from the start when a saved setup uses any of them.
+  const [setupMore, setSetupMore] = useState(() => !!(config.precedence?.length || config.expertSequences?.length));
+  // The detailed result boxes sit in one fold-out, closed until asked for.
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [filter, setFilter] = useState("all");
   const [showCount, setShowCount] = useState(50);
   const runnerRef = useRef(null);
@@ -10669,6 +10925,13 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
   const [figTrajectory, setFigTrajectory] = useState(DEFAULT_FIGURE_SETTINGS);
   const [figTrajectoryOpen, setFigTrajectoryOpen] = useState(false);
   const [figTrajectoryBusy, setFigTrajectoryBusy] = useState(false);
+  // Metro map: how many routes, how they are coloured, and its export size.
+  const [metroTop, setMetroTop] = useState(8);
+  const [metroSort, setMetroSort] = useState("network");
+  const [metroReverse, setMetroReverse] = useState(false);
+  const [metroFont, setMetroFont] = useState(13);
+  const [metroBusy, setMetroBusy] = useState(false);
+  const metroRef = useRef(null);
   const [figAccrual, setFigAccrual] = useState(DEFAULT_FIGURE_SETTINGS);
   const [figAccrualOpen, setFigAccrualOpen] = useState(false);
   const [figAccrualBusy, setFigAccrualBusy] = useState(false);
@@ -10829,6 +11092,14 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
   }, [result, planeMaxPoints]);
 
   const selected = selectedId !== null ? candById.get(selectedId) : null;
+  const metro = useMemo(() => {
+    if (!result) return null;
+    const dirs = Object.fromEntries(result.outcomes.map((o) => [o.id, o.d]));
+    const sort = metroSort.startsWith("outcome:") && !result.outcomes.some((o) => `outcome:${o.id}` === metroSort) ? "network" : metroSort;
+    const rows = metroRows(result.candidates, { top: metroTop, extraIds: selectedId !== null ? [selectedId] : [], sort, dirs, reverse: metroReverse });
+    const best = [...result.candidates].filter((c) => c.converged && c.stages.length).sort((a, b) => b.tog - a.tog)[0] || null;
+    return { rows, bestId: best?.id ?? null, sort };
+  }, [result, metroTop, selectedId, metroSort, metroReverse]);
   const trajectory = useMemo(() => {
     if (!selected || !result) return null;
     const rows = [{ stage: "BAU", total: 0, ...Object.fromEntries(result.outcomes.map((o) => [o.id, 0])) }];
@@ -10859,6 +11130,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
   const lineColors = ["#2456d6", "#c2410c", "#7c3aed", "#0f766e", "#be123c", "#4d7c0f", "#a16207", "#0e7490"];
   const selectPathway = (id) => {
     setSelectedId(id);
+    setAdvancedOpen(true);
     setTimeout(() => document.querySelector('[data-pathway-detail]')?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
   };
 
@@ -10913,6 +11185,21 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
   // A one-line reminder of what was actually analysed, baked into exported
   // chart images so a figure saved for a report still says which outcomes
   // and levers it describes once it's outside the app.
+  // What under More options differs from the defaults, named in its header.
+  const setupChanges = [
+    config.rule !== DEFAULT_PATHWAY_CONFIG.rule && "full implementation",
+    config.rule === "tp" && config.allowScaleUp && "scale-up stages",
+    config.strategy !== DEFAULT_PATHWAY_CONFIG.strategy && (config.strategy === "beam" ? "beam search" : "greedy"),
+    N !== DEFAULT_PATHWAY_CONFIG.resolution && `${N} steps`,
+    String(config.flatThreshold) !== String(DEFAULT_PATHWAY_CONFIG.flatThreshold) && "flat-response threshold",
+    Number(config.minGainShare) !== DEFAULT_PATHWAY_CONFIG.minGainShare && "minimum gain",
+    Number(config.maxIterations) !== DEFAULT_PATHWAY_CONFIG.maxIterations && "iterations",
+    config.outcomes.some((o) => o.target !== "" && o.target !== null && o.target !== undefined) && "desired levels",
+    config.levers.some((l) => Number(l.effort) !== 1) && "effort weights",
+    config.precedence.length > 0 && `${config.precedence.length} order constraint${config.precedence.length > 1 ? "s" : ""}`,
+    expertSequences.length > 0 && `${expertSequences.length} expert sequence${expertSequences.length > 1 ? "s" : ""}`,
+    config.robustness && "robustness test",
+  ].filter(Boolean);
   const pathwayContextLine = result
     ? `Outcomes: ${result.outcomes.map((o) => `${nameOf(o.id)} (${o.d === 1 ? "higher" : "lower"} is better)`).join(", ")}`
     : "";
@@ -10923,214 +11210,225 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
       <TransitionPathwaysGuide />
 
       {/* ============================ setup ============================ */}
+      {/* Three plain steps; everything technical waits under More options. */}
       <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-4">
-        <h3 className="font-semibold text-sm">Set up the analysis</h3>
-
-        <div>
-          <div className="flex items-center gap-2 mb-1.5">
-            <label className="text-xs text-neutral-700 font-medium">1. Nexus outcomes</label>
-            <select value="" onChange={(e) => addOutcome(e.target.value)} className="text-xs border border-slate-200 rounded px-2 py-1">
-              <option value="">Add an outcome…</option>
-              {concepts.filter((c) => !outcomeIds.includes(c.id)).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-            <span className="text-[12.5px] text-neutral-600">The outcomes a pathway should improve, for example food security, biodiversity, and climate.</span>
-          </div>
-          {config.outcomes.length === 0 ? (
-            <p className="text-xs text-neutral-600 italic">No outcomes yet.</p>
-          ) : (
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-left text-neutral-600 border-b border-slate-100">
-                  <th className="py-1 font-medium pr-3">Outcome</th>
-                  <th className="py-1 font-medium pr-3" title="Which direction counts as an improvement for this outcome.">Improvement means <HelpCircle size={10} className="inline text-neutral-500" /></th>
-                  <th className="py-1 font-medium pr-3" title="Relative importance in the total outcome gain. 1 for every outcome weighs them equally.">Weight <HelpCircle size={10} className="inline text-neutral-500" /></th>
-                  <th className="py-1 font-medium pr-3" title="Optional. The level this outcome should reach in the desired future state (on the -1 to +1 activation scale). Pathways report how many targets they reach.">Desired level (optional) <HelpCircle size={10} className="inline text-neutral-500" /></th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {config.outcomes.map((o) => (
-                  <tr key={o.id} className="border-b border-slate-50">
-                    <td className="py-1 pr-3">{nameOf(o.id)}{!inScope(o.id) && <span className="ml-1 text-[11.5px] text-amber-700">(outside the analysis scope)</span>}</td>
-                    <td className="py-1 pr-3">
-                      <div className="inline-flex border border-slate-200 rounded overflow-hidden">
-                        <button onClick={() => updateOutcome(o.id, { direction: 1 })} className={`text-[12.5px] px-2 py-0.5 ${o.direction !== -1 ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}>Higher is better</button>
-                        <button onClick={() => updateOutcome(o.id, { direction: -1 })} className={`text-[12.5px] px-2 py-0.5 ${o.direction === -1 ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}>Lower is better</button>
-                      </div>
-                    </td>
-                    <td className="py-1 pr-3"><input type="number" min={0} step={0.5} value={o.weight} onChange={(e) => updateOutcome(o.id, { weight: e.target.value })} className="w-16 border border-slate-200 rounded px-1.5 py-0.5 font-mono" /></td>
-                    <td className="py-1 pr-3"><input type="number" min={-1} max={1} step={0.1} value={o.target} placeholder="none" onChange={(e) => updateOutcome(o.id, { target: e.target.value })} className="w-20 border border-slate-200 rounded px-1.5 py-0.5 font-mono" /></td>
-                    <td className="py-1 text-right"><button onClick={() => removeOutcome(o.id)} className="text-neutral-600 hover:text-red-600" title="Remove this outcome"><X size={13} /></button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+        <div className="flex items-baseline justify-between gap-2 flex-wrap">
+          <h3 className="font-semibold text-sm">Set up the analysis</h3>
+          <span className="text-[12.5px] text-neutral-600">Three steps: what should improve, what can be changed, and how many stages a pathway may have.</span>
         </div>
 
-        <div>
-          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-            <label className="text-xs text-neutral-700 font-medium">2. Intervention levers</label>
-            <select value="" onChange={(e) => addLever(e.target.value)} className="text-xs border border-slate-200 rounded px-2 py-1">
-              <option value="">Add a lever…</option>
-              {concepts.filter((c) => !leverIds.includes(c.id) && !outcomeIds.includes(c.id)).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-            <button onClick={suggestLevers} className="text-[12.5px] px-2 py-1 rounded border border-slate-200 text-neutral-900 hover:border-slate-400" title="Adds every concept that acts on others but is not acted on by anything: the usual shape of a policy instrument. Review the suggestions before running.">Suggest levers</button>
-            <span className="text-[12.5px] text-neutral-600">The interventions that can be combined, in any order, into pathways.</span>
-          </div>
-          {config.levers.length === 0 ? (
-            <p className="text-xs text-neutral-600 italic">No levers yet.</p>
-          ) : (
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-left text-neutral-600 border-b border-slate-100">
-                  <th className="py-1 font-medium pr-3">Lever</th>
-                  <th className="py-1 font-medium pr-3" title="Increase: intensity 0 to 1 raises the lever's activation from 0 to +1, the same as setting it as a ▲ driver in Scenarios & Simulation. Decrease: intensity 0 to 1 lowers it from 0 to -1, the same as a ▼ driver. This is the same convention as on the Transition Point tab.">Intensity means <HelpCircle size={10} className="inline text-neutral-500" /></th>
-                  <th className="py-1 font-medium pr-3" title="Optional. How demanding one unit of this lever is compared with the others (1 = the same). Enters the cumulative intervention intensity; no cost data needed, a ranking is enough.">Effort weight <HelpCircle size={10} className="inline text-neutral-500" /></th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {config.levers.map((l) => (
-                  <tr key={l.id} className="border-b border-slate-50">
-                    <td className="py-1 pr-3">{nameOf(l.id)}{!inScope(l.id) && <span className="ml-1 text-[11.5px] text-amber-700">(outside the analysis scope)</span>}</td>
-                    <td className="py-1 pr-3">
-                      <div className="inline-flex border border-slate-200 rounded overflow-hidden">
-                        <button onClick={() => updateLever(l.id, { direction: "increase" })} className={`text-[12.5px] px-2 py-0.5 ${l.direction !== "decrease" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}>Increase (0 to 1)</button>
-                        <button onClick={() => updateLever(l.id, { direction: "decrease" })} className={`text-[12.5px] px-2 py-0.5 ${l.direction === "decrease" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}>Decrease (0 to -1)</button>
-                      </div>
-                    </td>
-                    <td className="py-1 pr-3"><input type="number" min={0.1} step={0.5} value={l.effort} onChange={(e) => updateLever(l.id, { effort: e.target.value })} className="w-16 border border-slate-200 rounded px-1.5 py-0.5 font-mono" /></td>
-                    <td className="py-1 text-right"><button onClick={() => removeLever(l.id)} className="text-neutral-600 hover:text-red-600" title="Remove this lever"><X size={13} /></button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-
-        <div>
-          <label className="text-xs text-neutral-700 font-medium">3. How pathways are built</label>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-1.5">
-            <div>
-              <div className="text-[12.5px] text-neutral-700 mb-0.5">Maximum number of stages</div>
-              <select value={J} onChange={(e) => patch({ maxLength: parseInt(e.target.value, 10) })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5">
-                {[1, 2, 3, 4, 5].map((k) => <option key={k} value={k}>{k} stage{k > 1 ? "s" : ""}</option>)}
-              </select>
-            </div>
-            <div>
-              <div className="text-[12.5px] text-neutral-700 mb-0.5" title="Up to the transition point: each stage stops at the lever's transition point, where its marginal benefit to the total outcome gain declines most steeply, the default in the method. Full: every lever goes to intensity 1, as a reference case.">Stage intensity <HelpCircle size={10} className="inline text-neutral-500" /></div>
-              <select value={config.rule} onChange={(e) => patch({ rule: e.target.value })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5">
-                <option value="tp">Up to the conditional transition point</option>
-                <option value="full">Full implementation (intensity 1)</option>
-              </select>
-              <label className={`flex items-center gap-1.5 mt-1 text-[12.5px] ${config.rule === "tp" ? "text-neutral-900" : "text-neutral-500"}`} title="Staged scale-up: a lever implemented to its transition point may come back once in a later stage and be raised to full intensity.">
-                <input type="checkbox" disabled={config.rule !== "tp"} checked={config.rule === "tp" && config.allowScaleUp} onChange={(e) => patch({ allowScaleUp: e.target.checked })} />
-                Allow scale-up stages
-              </label>
-            </div>
-            <div>
-              <div className="text-[12.5px] text-neutral-700 mb-0.5" title="Every order: all orderings of the levers up to the maximum length (exact, but grows fast). Beam search: keeps only the best partial pathways at each stage. Greedy: at each stage takes the lever with the highest marginal benefit (the steepest step of its sweep).">Pathway construction <HelpCircle size={10} className="inline text-neutral-500" /></div>
-              <select value={config.strategy} onChange={(e) => patch({ strategy: e.target.value })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5">
-                <option value="exhaustive">Every order (exhaustive)</option>
-                <option value="beam">Beam search</option>
-                <option value="greedy">Greedy (highest marginal benefit)</option>
-              </select>
-              {config.strategy === "beam" && (
-                <div className="flex items-center gap-1.5 mt-1 text-[12.5px] text-neutral-900">
-                  keep
-                  <input type="number" min={1} max={200} value={config.beamWidth} onChange={(e) => patch({ beamWidth: e.target.value })} className="w-12 border border-slate-200 rounded px-1 py-0.5 font-mono" />
-                  best by
-                  <select value={config.beamCriterion} onChange={(e) => patch({ beamCriterion: e.target.value })} className="border border-slate-200 rounded px-1 py-0.5">
-                    <option value="tog">outcome gain</option>
-                    <option value="pei">efficiency</option>
-                  </select>
-                </div>
-              )}
-            </div>
-            <div>
-              <div className="text-[12.5px] text-neutral-700 mb-0.5" title="Number of intensity steps each lever is swept in. A transition point can only fall on one of these steps, so this sets its precision.">Intensity resolution <HelpCircle size={10} className="inline text-neutral-500" /></div>
-              <select value={N} onChange={(e) => patch({ resolution: parseInt(e.target.value, 10) })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5">
-                <option value={10}>10 steps (±0.1)</option>
-                <option value={20}>20 steps (±0.05)</option>
-                <option value={50}>50 steps (±0.02)</option>
-              </select>
-            </div>
-            <div>
-              <div className="text-[12.5px] text-neutral-700 mb-0.5" title="An outcome change smaller than this counts as no change: for the synergy score, trade-offs, and excluding levers that move nothing.">Flat-response threshold <HelpCircle size={10} className="inline text-neutral-500" /></div>
-              <input type="number" step={0.005} min={0} max={1} value={config.flatThreshold} onChange={(e) => patch({ flatThreshold: e.target.value })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 font-mono" />
-            </div>
-            <div>
-              <div className="text-[12.5px] text-neutral-700 mb-0.5" title="Pathways count as admissible (and are classified into archetypes) only if their total outcome gain is at least this share of the best pathway's gain, and they have no trade-offs.">Minimum gain (% of best) <HelpCircle size={10} className="inline text-neutral-500" /></div>
-              <input type="number" step={5} min={0} max={100} value={Math.round((Number(config.minGainShare) || 0) * 100)} onChange={(e) => patch({ minGainShare: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) / 100 })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 font-mono" />
-            </div>
-            <div>
-              <div className="text-[12.5px] text-neutral-700 mb-0.5" title={`Near a transition point the model settles slowly, every stage sits at one, and transition points need runs settled to ${TP_PRECISION_THRESHOLD}, so pathway runs allow more iterations than the global setting, at least ${TP_MIN_ITERATIONS}. Whether a run counts as converged follows the global threshold. All other simulation settings are the global ones (Scenarios & Simulation, Advanced options).`}>Maximum iterations per run <HelpCircle size={10} className="inline text-neutral-500" /></div>
-              <input type="number" step={100} min={TP_MIN_ITERATIONS} value={config.maxIterations} onChange={(e) => patch({ maxIterations: e.target.value })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 font-mono" />
-            </div>
-            <div className="flex items-end">
-              <label className="flex items-center gap-1.5 text-[12.5px] text-neutral-900" title="Three families of variants. Simulation settings: the whole analysis repeated with steepness halved and doubled, the other squash function, and the other update rule. Outcome weights: repeated with each outcome's weight doubled and the others at 1. Archetype thresholds: the pathways classified again under shifted decision rules (no new simulations). Reports how often the top pathways stay admissible, keep their archetype, and stay in the top 5, per family. Several times longer.">
-                <input type="checkbox" checked={!!config.robustness} onChange={(e) => patch({ robustness: e.target.checked })} />
-                Also test robustness (settings, outcome weights, archetype thresholds)
-              </label>
-            </div>
-          </div>
-        </div>
-
-        <div>
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-neutral-700 font-medium">4. Order constraints (optional)</label>
-            <button onClick={addPrecedence} disabled={scopedLevers.length < 2} className="text-[12.5px] px-2 py-0.5 rounded border border-slate-200 text-neutral-900 hover:border-slate-400 disabled:opacity-40">Add a constraint</button>
-            <span className="text-[12.5px] text-neutral-600">For example a legal or practical prerequisite: one lever can only follow another.</span>
-          </div>
-          {config.precedence.map((p, i) => (
-            <div key={i} className="flex items-center gap-2 mt-1.5 text-xs">
-              <select value={p.after} onChange={(e) => patch({ precedence: config.precedence.map((x, j) => (j === i ? { ...x, after: e.target.value } : x)) })} className="border border-slate-200 rounded px-1.5 py-1">
-                {scopedLevers.map((l) => <option key={l.id} value={l.id}>{nameOf(l.id)}</option>)}
-              </select>
-              <span className="text-neutral-700">can only come after</span>
-              <select value={p.before} onChange={(e) => patch({ precedence: config.precedence.map((x, j) => (j === i ? { ...x, before: e.target.value } : x)) })} className="border border-slate-200 rounded px-1.5 py-1">
-                {scopedLevers.map((l) => <option key={l.id} value={l.id}>{nameOf(l.id)}</option>)}
-              </select>
-              {p.before === p.after && <span className="text-[11.5px] text-amber-700">(same lever: ignored)</span>}
-              <button onClick={() => patch({ precedence: config.precedence.filter((_, j) => j !== i) })} className="text-neutral-600 hover:text-red-600"><X size={13} /></button>
-            </div>
-          ))}
-        </div>
-
-        <div>
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-neutral-700 font-medium">5. Expert-defined sequences (optional)</label>
-            <button onClick={addExpert} disabled={!scopedLevers.length} className="text-[12.5px] px-2 py-0.5 rounded border border-slate-200 text-neutral-900 hover:border-slate-400 disabled:opacity-40">Add a sequence</button>
-            <span className="text-[12.5px] text-neutral-600">Pathways proposed by stakeholders, for example a policy roadmap. Simulated stage by stage like the others, without the order constraints, and classified with them.</span>
-          </div>
-          {expertSequences.map((q, i) => (
-            <div key={i} className="mt-2 rounded border border-slate-200 p-2 space-y-1.5" data-expert-sequence={i}>
-              <div className="flex items-center gap-2 text-xs">
-                <input value={q.name} onChange={(e) => setExpert(i, { name: e.target.value })} placeholder={`Expert sequence ${i + 1}`} aria-label="Sequence name" className="border border-slate-200 rounded px-1.5 py-1 w-64" />
-                <button onClick={() => setExpert(i, { stages: [...q.stages, { leverId: scopedLevers[0]?.id || "", mode: "tp", u: 0.5 }] })} disabled={!scopedLevers.length || q.stages.length >= PATHWAY_EXPERT_MAX_STAGES} className="text-[12.5px] px-2 py-0.5 rounded border border-slate-200 text-neutral-900 hover:border-slate-400 disabled:opacity-40"><Plus size={11} className="inline" /> Stage</button>
-                <button onClick={() => patch({ expertSequences: expertSequences.filter((_, j) => j !== i) })} className="text-neutral-600 hover:text-red-600" title="Remove this sequence"><Trash2 size={13} /></button>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="rounded-md border border-slate-200 p-3">
+            <div className="flex items-start gap-2 mb-2">
+              <span className="shrink-0 w-6 h-6 rounded-full bg-cobalt-700 text-white text-xs font-semibold flex items-center justify-center">1</span>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-neutral-900">What should improve?</p>
+                <p className="text-[12.5px] text-neutral-600">The outcomes a pathway is judged on, for example food production, biodiversity and emissions.</p>
               </div>
-              {q.stages.map((st, k) => (
-                <div key={k} className="flex items-center gap-2 text-xs pl-2">
-                  <span className="text-neutral-600 w-14">Stage {k + 1}</span>
-                  <select value={st.leverId} onChange={(e) => setExpertStage(i, k, { leverId: e.target.value })} aria-label={`Stage ${k + 1} lever`} className="border border-slate-200 rounded px-1.5 py-1">
-                    {!scopedLevers.some((l) => l.id === st.leverId) && <option value={st.leverId}>{st.leverId ? `${nameOf(st.leverId)} (not a chosen lever)` : "Choose a lever"}</option>}
-                    {scopedLevers.map((l) => <option key={l.id} value={l.id}>{nameOf(l.id)}</option>)}
-                  </select>
-                  <select value={st.mode} onChange={(e) => setExpertStage(i, k, { mode: e.target.value })} aria-label={`Stage ${k + 1} intensity`} className="border border-slate-200 rounded px-1.5 py-1">
-                    <option value="tp">up to its conditional transition point</option>
-                    <option value="fixed">to a fixed intensity</option>
-                  </select>
-                  {st.mode === "fixed" && (
-                    <input type="number" min={0} max={1} step={1 / N} value={st.u} onChange={(e) => setExpertStage(i, k, { u: e.target.value })} aria-label={`Stage ${k + 1} fixed intensity`} className="w-20 border border-slate-200 rounded px-1.5 py-1 font-mono" />
-                  )}
-                  <button onClick={() => setExpert(i, { stages: q.stages.filter((_, j) => j !== k) })} className="text-neutral-600 hover:text-red-600"><X size={13} /></button>
-                </div>
-              ))}
             </div>
-          ))}
-          {expertSequences.length > 0 && <p className="text-[11.5px] text-neutral-600 mt-1">Fixed intensities are rounded to the intensity resolution (steps of {round2(1 / N)}). A lever can appear again later in a sequence only at a higher intensity (a scale-up); intensities are never lowered. Expert pathways count toward the archetype thresholds like every other candidate pathway (Section 6.1 of the methods).</p>}
+            {config.outcomes.length > 0 && (
+              <ul className="space-y-1.5 mb-2">
+                {config.outcomes.map((o) => (
+                  <li key={o.id} className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="flex-1 min-w-[9rem] font-medium text-neutral-900">{nameOf(o.id)}{!inScope(o.id) && <span className="ml-1 text-[11.5px] text-amber-700">(outside the analysis scope)</span>}</span>
+                    <div className="inline-flex border border-slate-200 rounded overflow-hidden" role="group" aria-label={`Improvement for ${nameOf(o.id)}`}>
+                      <button onClick={() => updateOutcome(o.id, { direction: 1 })} className={`text-[12.5px] px-2 py-0.5 ${o.direction !== -1 ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}>Higher is better</button>
+                      <button onClick={() => updateOutcome(o.id, { direction: -1 })} className={`text-[12.5px] px-2 py-0.5 ${o.direction === -1 ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}>Lower is better</button>
+                    </div>
+                    <label className="inline-flex items-center gap-1 text-[12.5px] text-neutral-700" title="Relative importance in the total outcome gain. 1 for every outcome weighs them equally.">
+                      Weight <input type="number" min={0} step={0.5} value={o.weight} onChange={(e) => updateOutcome(o.id, { weight: e.target.value })} className="w-14 border border-slate-200 rounded px-1.5 py-0.5 font-mono" />
+                    </label>
+                    {setupMore && (
+                      <label className="inline-flex items-center gap-1 text-[12.5px] text-neutral-700" title="Optional. The level this outcome should reach in the desired future state (on the -1 to +1 activation scale). Pathways report how many targets they reach.">
+                        Desired level <input type="number" min={-1} max={1} step={0.1} value={o.target} placeholder="none" onChange={(e) => updateOutcome(o.id, { target: e.target.value })} className="w-16 border border-slate-200 rounded px-1.5 py-0.5 font-mono" />
+                      </label>
+                    )}
+                    <button onClick={() => removeOutcome(o.id)} className="text-neutral-600 hover:text-red-600" title="Remove this outcome" aria-label={`Remove ${nameOf(o.id)}`}><X size={13} /></button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <select value="" onChange={(e) => addOutcome(e.target.value)} className="text-xs border border-slate-300 rounded px-2 py-1" aria-label="Add an outcome">
+              <option value="">+ Add an outcome</option>
+              {concepts.filter((c) => !outcomeIds.includes(c.id) && !leverIds.includes(c.id)).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+
+          <div className="rounded-md border border-slate-200 p-3">
+            <div className="flex items-start gap-2 mb-2">
+              <span className="shrink-0 w-6 h-6 rounded-full bg-cobalt-700 text-white text-xs font-semibold flex items-center justify-center">2</span>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-neutral-900">What can be changed?</p>
+                <p className="text-[12.5px] text-neutral-600">The interventions (levers) that pathways combine, in any order. Increase raises a lever from 0 to +1; decrease lowers it from 0 to -1.</p>
+              </div>
+            </div>
+            {config.levers.length > 0 && (
+              <ul className="space-y-1.5 mb-2">
+                {config.levers.map((l) => (
+                  <li key={l.id} className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="flex-1 min-w-[9rem] font-medium text-neutral-900">{nameOf(l.id)}{!inScope(l.id) && <span className="ml-1 text-[11.5px] text-amber-700">(outside the analysis scope)</span>}</span>
+                    <div className="inline-flex border border-slate-200 rounded overflow-hidden" role="group" aria-label={`Direction for ${nameOf(l.id)}`}>
+                      <button onClick={() => updateLever(l.id, { direction: "increase" })} className={`text-[12.5px] px-2 py-0.5 ${l.direction !== "decrease" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}>Increase</button>
+                      <button onClick={() => updateLever(l.id, { direction: "decrease" })} className={`text-[12.5px] px-2 py-0.5 ${l.direction === "decrease" ? "bg-slate-900 text-white" : "bg-white text-neutral-900 hover:bg-slate-50"}`}>Decrease</button>
+                    </div>
+                    {setupMore && (
+                      <label className="inline-flex items-center gap-1 text-[12.5px] text-neutral-700" title="Optional. How demanding one unit of this lever is compared with the others (1 = the same). Enters the cumulative intervention intensity; no cost data needed, a ranking is enough.">
+                        Effort <input type="number" min={0.1} step={0.5} value={l.effort} onChange={(e) => updateLever(l.id, { effort: e.target.value })} className="w-14 border border-slate-200 rounded px-1.5 py-0.5 font-mono" />
+                      </label>
+                    )}
+                    <button onClick={() => removeLever(l.id)} className="text-neutral-600 hover:text-red-600" title="Remove this lever" aria-label={`Remove ${nameOf(l.id)}`}><X size={13} /></button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="flex flex-wrap items-center gap-2">
+              <select value="" onChange={(e) => addLever(e.target.value)} className="text-xs border border-slate-300 rounded px-2 py-1" aria-label="Add a lever">
+                <option value="">+ Add a lever</option>
+                {concepts.filter((c) => !leverIds.includes(c.id) && !outcomeIds.includes(c.id)).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <button onClick={suggestLevers} className="text-[12.5px] px-2 py-1 rounded border border-slate-200 text-neutral-900 hover:border-slate-400" title="Adds every concept that acts on others but is not acted on by anything: the usual shape of a policy instrument. Review the suggestions before running.">Suggest levers</button>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-md border border-slate-200 p-3 flex flex-wrap items-center gap-3">
+          <span className="shrink-0 w-6 h-6 rounded-full bg-cobalt-700 text-white text-xs font-semibold flex items-center justify-center">3</span>
+          <div className="flex-1 min-w-[14rem]">
+            <p className="text-sm font-semibold text-neutral-900">How many stages may a pathway have?</p>
+            <p className="text-[12.5px] text-neutral-600">Each stage adds one lever, up to its transition point. More stages find longer pathways but take longer to run.</p>
+          </div>
+          <div className="inline-flex border border-slate-200 rounded overflow-hidden" role="group" aria-label="Maximum number of stages">
+            {[1, 2, 3, 4, 5].map((k) => (
+              <button key={k} onClick={() => patch({ maxLength: k })} className={`text-xs px-3 py-1 ${k > 1 ? "border-l border-slate-200" : ""} ${J === k ? "bg-slate-900 text-white font-semibold" : "bg-white text-neutral-900 hover:bg-slate-50"}`}>{k}</button>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-md border border-slate-200">
+          <button onClick={() => setSetupMore((v) => !v)} aria-expanded={setupMore} className="w-full flex items-center gap-2 px-3 py-2 text-left">
+            {setupMore ? <ChevronDown size={14} className="text-neutral-700" /> : <ChevronRight size={14} className="text-neutral-700" />}
+            <span className="text-xs font-semibold text-neutral-900">More options</span>
+            <span className="text-[12.5px] text-neutral-600">{setupChanges.length ? `Changed: ${setupChanges.join(", ")}` : "Desired levels, effort weights, how pathways are built, order constraints, expert sequences, robustness"}</span>
+          </button>
+          {setupMore && (
+            <div className="px-3 pb-3 space-y-4 border-t border-slate-100 pt-3">
+              <div>
+                <label className="text-xs text-neutral-900 font-semibold">How pathways are built</label>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-1.5">
+                <div>
+                  <div className="text-[12.5px] text-neutral-700 mb-0.5" title="Up to the transition point: each stage stops at the lever's transition point, where its marginal benefit to the total outcome gain declines most steeply, the default in the method. Full: every lever goes to intensity 1, as a reference case.">Stage intensity <HelpCircle size={10} className="inline text-neutral-500" /></div>
+                  <select value={config.rule} onChange={(e) => patch({ rule: e.target.value })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5">
+                    <option value="tp">Up to the conditional transition point</option>
+                    <option value="full">Full implementation (intensity 1)</option>
+                  </select>
+                  <label className={`flex items-center gap-1.5 mt-1 text-[12.5px] ${config.rule === "tp" ? "text-neutral-900" : "text-neutral-500"}`} title="Staged scale-up: a lever implemented to its transition point may come back once in a later stage and be raised to full intensity.">
+                    <input type="checkbox" disabled={config.rule !== "tp"} checked={config.rule === "tp" && config.allowScaleUp} onChange={(e) => patch({ allowScaleUp: e.target.checked })} />
+                    Allow scale-up stages
+                  </label>
+                </div>
+                <div>
+                  <div className="text-[12.5px] text-neutral-700 mb-0.5" title="Every order: all orderings of the levers up to the maximum length (exact, but grows fast). Beam search: keeps only the best partial pathways at each stage. Greedy: at each stage takes the lever with the highest marginal benefit (the steepest step of its sweep).">Pathway construction <HelpCircle size={10} className="inline text-neutral-500" /></div>
+                  <select value={config.strategy} onChange={(e) => patch({ strategy: e.target.value })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5">
+                    <option value="exhaustive">Every order (exhaustive)</option>
+                    <option value="beam">Beam search</option>
+                    <option value="greedy">Greedy (highest marginal benefit)</option>
+                  </select>
+                  {config.strategy === "beam" && (
+                    <div className="flex items-center gap-1.5 mt-1 text-[12.5px] text-neutral-900">
+                      keep
+                      <input type="number" min={1} max={200} value={config.beamWidth} onChange={(e) => patch({ beamWidth: e.target.value })} className="w-12 border border-slate-200 rounded px-1 py-0.5 font-mono" />
+                      best by
+                      <select value={config.beamCriterion} onChange={(e) => patch({ beamCriterion: e.target.value })} className="border border-slate-200 rounded px-1 py-0.5">
+                        <option value="tog">outcome gain</option>
+                        <option value="pei">efficiency</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <div className="text-[12.5px] text-neutral-700 mb-0.5" title="Number of intensity steps each lever is swept in. A transition point can only fall on one of these steps, so this sets its precision.">Intensity resolution <HelpCircle size={10} className="inline text-neutral-500" /></div>
+                  <select value={N} onChange={(e) => patch({ resolution: parseInt(e.target.value, 10) })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5">
+                    <option value={10}>10 steps (±0.1)</option>
+                    <option value={20}>20 steps (±0.05)</option>
+                    <option value={50}>50 steps (±0.02)</option>
+                  </select>
+                </div>
+                <div>
+                  <div className="text-[12.5px] text-neutral-700 mb-0.5" title="An outcome change smaller than this counts as no change: for the synergy score, trade-offs, and excluding levers that move nothing.">Flat-response threshold <HelpCircle size={10} className="inline text-neutral-500" /></div>
+                  <input type="number" step={0.005} min={0} max={1} value={config.flatThreshold} onChange={(e) => patch({ flatThreshold: e.target.value })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 font-mono" />
+                </div>
+                <div>
+                  <div className="text-[12.5px] text-neutral-700 mb-0.5" title="Pathways count as admissible (and are classified into archetypes) only if their total outcome gain is at least this share of the best pathway's gain, and they have no trade-offs.">Minimum gain (% of best) <HelpCircle size={10} className="inline text-neutral-500" /></div>
+                  <input type="number" step={5} min={0} max={100} value={Math.round((Number(config.minGainShare) || 0) * 100)} onChange={(e) => patch({ minGainShare: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) / 100 })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 font-mono" />
+                </div>
+                <div>
+                  <div className="text-[12.5px] text-neutral-700 mb-0.5" title={`Near a transition point the model settles slowly, every stage sits at one, and transition points need runs settled to ${TP_PRECISION_THRESHOLD}, so pathway runs allow more iterations than the global setting, at least ${TP_MIN_ITERATIONS}. Whether a run counts as converged follows the global threshold. All other simulation settings are the global ones (Scenarios & Simulation, Advanced options).`}>Maximum iterations per run <HelpCircle size={10} className="inline text-neutral-500" /></div>
+                  <input type="number" step={100} min={TP_MIN_ITERATIONS} value={config.maxIterations} onChange={(e) => patch({ maxIterations: e.target.value })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 font-mono" />
+                </div>
+                <div className="flex items-end">
+                  <label className="flex items-center gap-1.5 text-[12.5px] text-neutral-900" title="Three families of variants. Simulation settings: the whole analysis repeated with steepness halved and doubled, the other squash function, and the other update rule. Outcome weights: repeated with each outcome's weight doubled and the others at 1. Archetype thresholds: the pathways classified again under shifted decision rules (no new simulations). Reports how often the top pathways stay admissible, keep their archetype, and stay in the top 5, per family. Several times longer.">
+                    <input type="checkbox" checked={!!config.robustness} onChange={(e) => patch({ robustness: e.target.checked })} />
+                    Also test robustness (settings, outcome weights, archetype thresholds)
+                  </label>
+                </div>
+              </div>
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-neutral-900 font-semibold">Order constraints</label>
+                  <button onClick={addPrecedence} disabled={scopedLevers.length < 2} className="text-[12.5px] px-2 py-0.5 rounded border border-slate-200 text-neutral-900 hover:border-slate-400 disabled:opacity-40">Add a constraint</button>
+                  <span className="text-[12.5px] text-neutral-600">For example a legal or practical prerequisite: one lever can only follow another.</span>
+                </div>
+                {config.precedence.map((p, i) => (
+                  <div key={i} className="flex items-center gap-2 mt-1.5 text-xs">
+                    <select value={p.after} onChange={(e) => patch({ precedence: config.precedence.map((x, j) => (j === i ? { ...x, after: e.target.value } : x)) })} className="border border-slate-200 rounded px-1.5 py-1">
+                      {scopedLevers.map((l) => <option key={l.id} value={l.id}>{nameOf(l.id)}</option>)}
+                    </select>
+                    <span className="text-neutral-700">can only come after</span>
+                    <select value={p.before} onChange={(e) => patch({ precedence: config.precedence.map((x, j) => (j === i ? { ...x, before: e.target.value } : x)) })} className="border border-slate-200 rounded px-1.5 py-1">
+                      {scopedLevers.map((l) => <option key={l.id} value={l.id}>{nameOf(l.id)}</option>)}
+                    </select>
+                    {p.before === p.after && <span className="text-[11.5px] text-amber-700">(same lever: ignored)</span>}
+                    <button onClick={() => patch({ precedence: config.precedence.filter((_, j) => j !== i) })} className="text-neutral-600 hover:text-red-600"><X size={13} /></button>
+                  </div>
+                ))}
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-neutral-900 font-semibold">Expert-defined sequences</label>
+                  <button onClick={addExpert} disabled={!scopedLevers.length} className="text-[12.5px] px-2 py-0.5 rounded border border-slate-200 text-neutral-900 hover:border-slate-400 disabled:opacity-40">Add a sequence</button>
+                  <span className="text-[12.5px] text-neutral-600">Pathways proposed by stakeholders, for example a policy roadmap. Simulated stage by stage like the others, without the order constraints, and classified with them.</span>
+                </div>
+                {expertSequences.map((q, i) => (
+                  <div key={i} className="mt-2 rounded border border-slate-200 p-2 space-y-1.5" data-expert-sequence={i}>
+                    <div className="flex items-center gap-2 text-xs">
+                      <input value={q.name} onChange={(e) => setExpert(i, { name: e.target.value })} placeholder={`Expert sequence ${i + 1}`} aria-label="Sequence name" className="border border-slate-200 rounded px-1.5 py-1 w-64" />
+                      <button onClick={() => setExpert(i, { stages: [...q.stages, { leverId: scopedLevers[0]?.id || "", mode: "tp", u: 0.5 }] })} disabled={!scopedLevers.length || q.stages.length >= PATHWAY_EXPERT_MAX_STAGES} className="text-[12.5px] px-2 py-0.5 rounded border border-slate-200 text-neutral-900 hover:border-slate-400 disabled:opacity-40"><Plus size={11} className="inline" /> Stage</button>
+                      <button onClick={() => patch({ expertSequences: expertSequences.filter((_, j) => j !== i) })} className="text-neutral-600 hover:text-red-600" title="Remove this sequence"><Trash2 size={13} /></button>
+                    </div>
+                    {q.stages.map((st, k) => (
+                      <div key={k} className="flex items-center gap-2 text-xs pl-2">
+                        <span className="text-neutral-600 w-14">Stage {k + 1}</span>
+                        <select value={st.leverId} onChange={(e) => setExpertStage(i, k, { leverId: e.target.value })} aria-label={`Stage ${k + 1} lever`} className="border border-slate-200 rounded px-1.5 py-1">
+                          {!scopedLevers.some((l) => l.id === st.leverId) && <option value={st.leverId}>{st.leverId ? `${nameOf(st.leverId)} (not a chosen lever)` : "Choose a lever"}</option>}
+                          {scopedLevers.map((l) => <option key={l.id} value={l.id}>{nameOf(l.id)}</option>)}
+                        </select>
+                        <select value={st.mode} onChange={(e) => setExpertStage(i, k, { mode: e.target.value })} aria-label={`Stage ${k + 1} intensity`} className="border border-slate-200 rounded px-1.5 py-1">
+                          <option value="tp">up to its conditional transition point</option>
+                          <option value="fixed">to a fixed intensity</option>
+                        </select>
+                        {st.mode === "fixed" && (
+                          <input type="number" min={0} max={1} step={1 / N} value={st.u} onChange={(e) => setExpertStage(i, k, { u: e.target.value })} aria-label={`Stage ${k + 1} fixed intensity`} className="w-20 border border-slate-200 rounded px-1.5 py-1 font-mono" />
+                        )}
+                        <button onClick={() => setExpert(i, { stages: q.stages.filter((_, j) => j !== k) })} className="text-neutral-600 hover:text-red-600"><X size={13} /></button>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+                {expertSequences.length > 0 && <p className="text-[11.5px] text-neutral-600 mt-1">Fixed intensities are rounded to the intensity resolution (steps of {round2(1 / N)}). A lever can appear again later in a sequence only at a higher intensity (a scale-up); intensities are never lowered. Expert pathways count toward the archetype thresholds like every other candidate pathway (Section 6.1 of the methods).</p>}
+              </div>
+            </div>
+          )}
         </div>
 
         {outOfScope.length > 0 && (
@@ -11184,49 +11482,89 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
             </div>
           )}
 
-          <MethodPanel
-            stats={[
-              { label: "Pathways evaluated", value: result.candidates.length.toLocaleString(), hint: "Every pathway and every shorter opening of it is a candidate." },
-              { label: "Admissible", value: `${s.counts.admissible} of ${s.counts.total}`, hint: `Converged, no trade-offs, and a total outcome gain of at least ${fmtNum(s.gMin)} (${Math.round((Number(result.config.minGainShare) || 0) * 100)}% of the best, or the flat threshold per outcome).` },
-              { label: "Simulation runs", value: result.runs.toLocaleString(), hint: "One run to equilibrium per sampled intensity, per lever, per stage (main analysis)." },
-              { label: "Did not converge", value: `${s.counts.nonConverged}`, tone: s.counts.nonConverged ? "warn" : undefined, hint: "Pathways with a stage that did not settle to the global convergence threshold within the iteration limit (usually a sustained oscillation, or with no squashing function, a runaway). They are reported but not classified." },
-              ...(result.imprecise !== undefined ? [{ label: `Settled to ${result.settingsUsed.convergenceThreshold}`, value: `${(result.runs - result.imprecise).toLocaleString()} of ${result.runs.toLocaleString()}`, tone: result.imprecise ? "warn" : undefined, hint: `Transition points compare neighbouring changes of the gain curve, which magnifies whatever is left of a run that has not quite settled, so every run continues until no concept changes by more than ${result.settingsUsed.convergenceThreshold} per iteration. Runs that stop short of that at the iteration limit give less precise transition points.` }] : []),
-              { label: "Transition point precision", value: `±${round2(1 / result.N)}`, hint: "A transition point can only fall on one of the sampled intensity steps." },
-              { label: "Transfer function / λ", value: transferFunctionLabel(result.settingsUsed) },
-              { label: "Update / iterations", value: `${result.settingsUsed.updateRule ?? "relative"}, synchronous, ≤ ${result.settingsUsed.maxIterations}`, hint: `Pathway runs are always synchronous (deterministic) and use this analysis's own iteration limit (at least ${TP_MIN_ITERATIONS}); everything else follows the global simulation settings.` },
-              { label: "Path dependence", value: result.invariance.tested ? `${result.invariance.pathDependent} of ${result.invariance.tested} lever sets` : "not tested", tone: result.invariance.pathDependent ? "warn" : undefined, hint: "Invariance test: the lever sets of the top pathways were simulated in every order at the same intensities. Different end states mean the order decides where the system ends up." },
-            ]}
-          >
-            <p><strong>Pathways are built stage by stage from Business-as-Usual.</strong> Business-as-Usual is the equilibrium of the model's own starting values with no scenario applied. In each stage a lever is swept from its current intensity to 1 in {result.N} steps, each run starting from the equilibrium the pathway has reached, with the earlier levers held in place. {result.rule === "tp" ? "The lever is implemented at its conditional transition point: the sampled intensity at which the marginal benefit of the lever to the total outcome gain declines most steeply, or 1 if it does not decline before full intensity. A lever whose gain at that point is no higher than the gain the pathway has already reached is not added." : "The lever is implemented at full intensity (the reference rule)."} A stage at full intensity (the reference rule, or a scale-up stage) can lower the total gain, when the lever worsens the outcomes beyond its transition point; such stage gains are shown in orange, and the efficient frontier and the rankings show whether the stage is worth taking.</p>
-            <p><strong>This is the transition point of the Transition Point tab, applied to the total outcome gain.</strong> The marginal benefit is the change in the gain per step of intensity, and benefit is counted in each outcome's desirable direction as set above, rather than in the direction the outcome happens to move. Every run continues until no concept changes by more than {result.settingsUsed.convergenceThreshold} per iteration, because comparing neighbouring changes of the gain curve magnifies whatever is left of a run that has not quite settled.</p>
-            <p><strong>Metrics.</strong> TOG is the weighted, direction-signed improvement of the outcomes relative to Business-as-Usual; CII the sum of final intensities times effort weights; PEI their ratio; the average TP the mean conditional transition point; SS the number of outcomes improved by more than {result.eps}; IG the gain beyond what the same levers achieve on their own at the same intensities (strongly negative when each lever alone already moves much of the system, so their separate effects overlap). The Early Benefit Index is the area under the accrual curve of gain against effort, traced at the sweep resolution within each stage (the stage-level formula uses only the stage end points; the finer curve keeps single-stage pathways classifiable).</p>
-            <p><strong>Archetype thresholds are relative.</strong> Quartiles and quintiles are taken across the {s.counts.admissible} admissible pathways of this run{s.counts.admissible < 10 ? ", which is a small set, so the thresholds are coarse" : ""}. The rules are conventions that structure the comparison, not properties of the system; the robustness test shows how much the top pathways depend on the simulation settings.</p>
-            <p><strong>What this does not tell you.</strong> Stages are implementation phases, not periods of time, and each is assumed to last long enough for the system to settle. Implemented levers are assumed to stay in place. Results are relative comparisons between pathways in the units of the map, implications of the causal structure as drawn rather than forecasts.</p>
-          </MethodPanel>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {PATHWAY_ARCHETYPES.map((a) => {
-              const top = s.ranked[a.key][0];
-              return (
-                <div key={a.key} className="bg-white rounded-lg border border-slate-200 p-3">
-                  <div className="flex items-center justify-between">
-                    <span className={`text-[11.5px] px-1.5 py-0.5 rounded-full border ${a.badge}`}>{a.label}</span>
-                    <span className="text-lg font-semibold font-mono" style={{ color: a.color }}>{s.counts[a.key]}</span>
+          {metro && metro.rows.length > 0 && (
+            <div className="bg-white rounded-lg border border-slate-200 p-4" data-metro-map>
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+                <h4 className="text-sm font-semibold">Pathways metro map</h4>
+                <div className="flex flex-wrap items-center gap-2 text-[12.5px] text-neutral-900">
+                  <label className="inline-flex items-center gap-1">Routes
+                    <select value={metroTop} onChange={(e) => setMetroTop(Number(e.target.value))} className="border border-slate-300 rounded px-1 py-0.5">
+                      {[5, 8, 12, 20, 30].map((n) => <option key={n} value={n}>top {n}</option>)}
+                    </select>
+                  </label>
+<label className="inline-flex items-center gap-1">Sort
+                    <select value={metro.sort} onChange={(e) => setMetroSort(e.target.value)} className="border border-slate-300 rounded px-1 py-0.5" aria-label="Sort the routes">
+                      <option value="network">as a network (by stage)</option>
+                      <option value="tog">by total outcome gain</option>
+                      {result.outcomes.map((o) => <option key={o.id} value={`outcome:${o.id}`}>by {nameOf(o.id)} ({o.d === 1 ? "highest" : "lowest"} first)</option>)}
+                      <option value="cii">by intensity (lowest CII first)</option>
+                    </select>
+                  </label>
+                  <label className="inline-flex items-center gap-1"><input type="checkbox" checked={metroReverse} onChange={(e) => setMetroReverse(e.target.checked)} />Reverse</label>
+                  <label className="inline-flex items-center gap-1">Text
+                    <select value={metroFont} onChange={(e) => setMetroFont(Number(e.target.value))} className="border border-slate-300 rounded px-1 py-0.5">
+                      {[11, 13, 15, 17].map((n) => <option key={n} value={n}>{n} px</option>)}
+                    </select>
+                  </label>
+                  {["png", "svg"].map((fmt) => (
+                    <Btn key={fmt} variant="outline" disabled={metroBusy} onClick={async () => {
+                      const svg = metroRef.current?.querySelector("svg");
+                      if (!svg) return;
+                      const vb = svg.viewBox.baseVal;
+                      setMetroBusy(true);
+                      // Saved at the drawing's natural size (one unit is one CSS pixel), at 300 dpi;
+                      // the Text setting sets how large the labels print.
+                      const mm = (px) => Math.ceil((px * 25.4) / 96);
+                      await exportFigure(metroRef.current, "transition-pathways-metro-map.png", { ...DEFAULT_FIGURE_SETTINGS, widthMm: mm(vb.width + 32), heightMm: mm(vb.height + 32 + 50), format: fmt }, {
+                        title: "Transition Pathways: metro map", subtitle: pathwayContextLine,
+                      });
+                      setMetroBusy(false);
+                    }}><Download size={13} />{fmt.toUpperCase()}</Btn>
+                  ))}
+                </div>
+              </div>
+              <p className="text-[12.5px] text-neutral-600 mb-2">Pathways drawn as routes, in the style of adaptation pathways maps. Each intervention has its own colour: a route of one intervention is a solid line, a combined pathway a dashed line in the colour of each stage's lever. An open circle is a transition point, where the next lever is added; the vertical lines are the transfers from a route to the routes that continue it. A filled circle ends a route; a bar ends a route past a tipping point, where at least one outcome ends worse than Business-as-Usual. The scorecard gives the total outcome gain and each outcome's end state. Shown: the top routes (by total outcome gain, or by the outcome you sort by), the selected pathway, and every shorter route they grow out of. Click a route to open it under Advanced results.</p>
+              <div ref={metroRef} className="overflow-x-auto">
+                <PathwayMetroMap
+                  rows={metro.rows} outcomes={result.outcomes} levers={result.levers} nameOf={nameOf}
+                  selectedId={selectedId} bestId={metro.bestId} onSelect={selectPathway} fontSize={metroFont}
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="bg-white rounded-lg border border-slate-200 p-4">
+            <h4 className="text-sm font-semibold mb-1">Pathway archetypes</h4>
+            <p className="text-[12.5px] text-neutral-600 mb-3">Four kinds of pathway, each with its own decision rule. The number is how many admissible pathways qualify; the list ranks the best of them. Click a pathway to open it under Advanced results.</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {PATHWAY_ARCHETYPES.map((a) => (
+                <div key={a.key} className="rounded-md border border-slate-200 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`text-[11.5px] px-1.5 py-0.5 rounded-full border ${a.badge}`} title={a.rule}>{a.label}</span>
+                    <span className="text-[11.5px] text-neutral-600">{s.counts[a.key]} pathway{s.counts[a.key] === 1 ? "" : "s"} &middot; {a.ranking.toLowerCase()}</span>
                   </div>
-                  <p className="text-[11.5px] text-neutral-600 mt-1">{a.purpose}</p>
-                  {top ? (
-                    <button onClick={() => selectPathway(top.id)} className="mt-2 text-left text-[12.5px] text-neutral-900 hover:text-cobalt-800">
-                      <div className="text-[11.5px] text-neutral-600 uppercase tracking-wide">Best: {a.ranking.toLowerCase()}</div>
-                      <PathwayStagesText c={top} nameOf={nameOf} compact />
-                    </button>
-                  ) : (
-                    <p className="mt-2 text-[12.5px] text-neutral-600 italic" title={Object.entries(s.why[a.key]).map(([k, v]) => `${k}: ${v} of ${s.counts.admissible}`).join("\n")}>
+                  <p className="text-[11.5px] text-neutral-600 mt-1 mb-1.5">{a.purpose}</p>
+                  {s.ranked[a.key].length === 0 ? (
+                    <p className="text-[12.5px] text-neutral-600 italic" title={Object.entries(s.why[a.key]).map(([k, v]) => `${k}: ${v} of ${s.counts.admissible}`).join("\n")}>
                       No pathway meets all conditions. {Object.entries(s.why[a.key]).map(([k, v]) => `${k}: ${v}`).join("; ")}.
                     </p>
+                  ) : (
+                    <ol className="space-y-0.5">
+                      {s.ranked[a.key].slice(0, PATHWAY_TOP_N).map((c, i) => (
+                        <li key={c.id}>
+                          <button onClick={() => selectPathway(c.id)} className={`w-full text-left text-[12.5px] px-1.5 py-1 rounded hover:bg-slate-50 flex gap-2 ${selectedId === c.id ? "bg-slate-100" : ""}`}>
+                            <span className="font-mono text-neutral-600 w-4 shrink-0">{i + 1}</span>
+                            <span className="flex-1"><PathwayStagesText c={c} nameOf={nameOf} compact /></span>
+                            <span className="font-mono text-neutral-700 shrink-0">{a.key === "ef" ? `PEI ${fmtNum(c.pei)}` : a.key === "lhf" ? `CII ${fmtNum(c.cii)}` : `TOG ${fmtNum(c.tog)}`}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ol>
                   )}
                 </div>
-              );
-            })}
+              ))}
+            </div>
           </div>
 
           {result.expert?.length > 0 && (
@@ -11264,420 +11602,6 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
               </div>
             </div>
           )}
-
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
-            <div className="flex items-center justify-between mb-1">
-              <h4 className="text-sm font-semibold">Effort-gain plane</h4>
-              <Btn variant="outline" onClick={() => setFigPlaneOpen((v) => !v)}><SlidersHorizontal size={13} />{figPlaneOpen ? "Hide figure options" : "Customize & export"}</Btn>
-            </div>
-            <p className="text-[12.5px] text-neutral-600 mb-2">Every pathway by the effort it needs (cumulative intervention intensity) and what it achieves (total outcome gain), coloured by primary archetype. The dashed line is the efficient frontier: no other pathway achieves more with less. The selected pathway is ringed and labelled directly on the chart, so it stays identifiable once the image is saved. Click a point to open that pathway below.</p>
-            <div ref={planeRef} data-chart="pathway-plane" className="w-full h-96" style={figPlaneOpen ? { width: mmToPx(figPlane.widthMm, 96), height: mmToPx(figPlane.heightMm, 96), maxWidth: "100%" } : undefined}>
-              <ResponsiveContainer>
-                <ScatterChart margin={{ top: 10, right: 24, bottom: 24, left: 16 }}>
-                  {figPlane.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
-                  <XAxis type="number" dataKey="x" name="CII" tick={{ fontSize: figPlane.tickFontSize }} tickFormatter={(v) => fmtDec(v, figPlane.decimals)} label={{ value: figPlane.xLabel || "Cumulative intervention intensity (effort)", position: "insideBottom", offset: -12, fontSize: figPlane.axisFontSize }} />
-                  {/* Zoomed to the data: in a saturating map the pathways' gains
-                      can differ only in the first decimal, which an axis from 0
-                      would flatten into a single line. */}
-                  <YAxis type="number" dataKey="y" name="TOG" domain={plane.yDomain} ticks={plane.yTicks} tickFormatter={(v) => fmtDec(v, figPlane.decimals)} tick={{ fontSize: figPlane.tickFontSize }} label={{ value: figPlane.yLabel || "Total outcome gain", angle: -90, position: "insideLeft", fontSize: figPlane.axisFontSize }} />
-                  <ZAxis range={[36 * figPlane.markerSize / 3, 36 * figPlane.markerSize / 3]} />
-                  <RTooltip cursor={{ strokeDasharray: "3 3" }} content={({ active, payload }) => {
-                    const c = active && payload?.[0] ? candById.get(payload[0].payload.id) : null;
-                    return c ? (
-                      <div className="bg-white border border-slate-200 rounded shadow-sm p-2 text-[12.5px] max-w-xs">
-                        <div className="font-semibold mb-0.5"><PathwayStagesText c={c} nameOf={nameOf} compact /></div>
-                        <div>TOG {fmtNum(c.tog)}, CII {fmtNum(c.cii)}, PEI {fmtNum(c.pei)}</div>
-                        <div className="text-neutral-700">{pathwayStatus(c)}</div>
-                      </div>
-                    ) : null;
-                  }} />
-                  {figPlane.legendPosition !== "hidden" && (
-                    <Legend
-                      wrapperStyle={{ fontSize: figPlane.legendFontSize, lineHeight: "17px" }}
-                      layout={figPlane.legendPosition === "left" || figPlane.legendPosition === "right" ? "vertical" : "horizontal"}
-                      verticalAlign={figPlane.legendPosition === "left" || figPlane.legendPosition === "right" ? "middle" : figPlane.legendPosition}
-                      align={figPlane.legendPosition === "left" || figPlane.legendPosition === "right" ? figPlane.legendPosition : "center"}
-                      height={figPlane.legendPosition === "top" || figPlane.legendPosition === "bottom" ? 42 : undefined}
-                    />
-                  )}
-                  {figPlane.title && <text x="50%" y={14} textAnchor="middle" fontSize={figPlane.titleFontSize} fontWeight={600} fill="#0f172a">{figPlane.title}</text>}
-                  <Scatter name="Other converged pathways" data={plane.other} fill="#cbd5e1" fillOpacity={figPlane.opacity} onClick={(p) => selectPathway(p?.payload?.id ?? p?.id)} isAnimationActive={false} />
-                  <Scatter name="Intermediate" data={plane.intermediate} fill="#94a3b8" fillOpacity={figPlane.opacity} onClick={(p) => selectPathway(p?.payload?.id ?? p?.id)} isAnimationActive={false} />
-                  {plane.series.map((a, i) => (
-                    <Scatter key={a.key} name={a.label} data={a.data} fill={figPlane.palette === "default" ? a.color : figurePalette(figPlane.palette, PATHWAY_ARCHETYPES.length)[i]} fillOpacity={figPlane.opacity} onClick={(p) => selectPathway(p?.payload?.id ?? p?.id)} isAnimationActive={false} />
-                  ))}
-                  <Scatter name="Efficient frontier" data={plane.frontier} fill="none" line={{ stroke: "#334155", strokeDasharray: "5 4", strokeWidth: figPlane.lineWidth }} shape={() => null} legendType="plainline" isAnimationActive={false} />
-                  {selected && (
-                    <Scatter
-                      name="Selected" data={[{ x: round3(selected.cii), y: round3(selected.tog), id: selected.id }]}
-                      fill="none" legendType="none" isAnimationActive={false}
-                      shape={(p) => (
-                        <g>
-                          <circle cx={p.cx} cy={p.cy} r={9} fill="none" stroke="#0f172a" strokeWidth={2} />
-                          <text x={p.cx} y={p.cy - 14} textAnchor="middle" fontSize={figPlane.tickFontSize} fontWeight={600} fill="#0f172a" stroke="#ffffff" strokeWidth={3} style={{ paintOrder: "stroke" }}>
-                            {selectedLabel}
-                          </text>
-                        </g>
-                      )}
-                    />
-                  )}
-                </ScatterChart>
-              </ResponsiveContainer>
-            </div>
-            {figPlaneOpen && (
-              <FigurePanel
-                settings={figPlane} onChange={setFigPlane}
-                maxPoints={planeMaxPoints} onMaxPointsChange={setPlaneMaxPoints} maxPointsCap={Math.max(result.candidates.length, 1)}
-                maxPointsLabel="Show only the top N unclassified pathways (by total outcome gain)"
-                exporting={figPlaneBusy}
-                onExport={async () => {
-                  setFigPlaneBusy(true);
-                  await exportFigure(planeRef.current, "transition-pathways-effort-gain.png", figPlane, {
-                    title: figPlane.title || "Transition Pathways: Effort-Gain Plane",
-                    subtitle: `${pathwayContextLine} · ${s.counts.admissible} of ${s.counts.total} pathways admissible`,
-                  });
-                  setFigPlaneBusy(false);
-                }}
-              />
-            )}
-          </div>
-
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
-            <h4 className="text-sm font-semibold mb-2">Rankings by archetype</h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {PATHWAY_ARCHETYPES.map((a) => (
-                <div key={a.key}>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className={`text-[11.5px] px-1.5 py-0.5 rounded-full border ${a.badge}`}>{a.label}</span>
-                    <span className="text-[11.5px] text-neutral-600">{a.ranking}</span>
-                  </div>
-                  {s.ranked[a.key].length === 0 ? (
-                    <p className="text-[12.5px] text-neutral-600 italic">None in this run.</p>
-                  ) : (
-                    <ol className="space-y-0.5">
-                      {s.ranked[a.key].slice(0, PATHWAY_TOP_N).map((c, i) => (
-                        <li key={c.id}>
-                          <button onClick={() => selectPathway(c.id)} className={`w-full text-left text-[12.5px] px-1.5 py-1 rounded hover:bg-slate-50 flex gap-2 ${selectedId === c.id ? "bg-slate-100" : ""}`}>
-                            <span className="font-mono text-neutral-600 w-4 shrink-0">{i + 1}</span>
-                            <span className="flex-1"><PathwayStagesText c={c} nameOf={nameOf} compact /></span>
-                            <span className="font-mono text-neutral-700 shrink-0">{a.key === "ef" ? `PEI ${fmtNum(c.pei)}` : a.key === "lhf" ? `CII ${fmtNum(c.cii)}` : `TOG ${fmtNum(c.tog)}`}</span>
-                          </button>
-                        </li>
-                      ))}
-                    </ol>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {selected && trajectory && (
-            <div data-pathway-detail className="bg-white rounded-lg border border-slate-200 p-4 space-y-3 scroll-mt-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h4 className="text-sm font-semibold">Selected pathway</h4>
-                  <div className="text-xs mt-1"><PathwayStagesText c={selected} nameOf={nameOf} /></div>
-                  <div className="mt-1.5"><ArchetypeBadges c={selected} />{selected.frontier && <span className="ml-1 text-[11.5px] px-1.5 py-0.5 rounded-full border border-slate-300 text-neutral-900">On the efficient frontier</span>}</div>
-                </div>
-                <Btn variant="outline" onClick={exportStagesCSV}><Download size={13} />Stages (CSV)</Btn>
-              </div>
-              <div className="grid grid-cols-3 md:grid-cols-8 gap-2">
-                {[["TOG", selected.tog, PATHWAY_METRIC_HELP.tog], ["CII", selected.cii, PATHWAY_METRIC_HELP.cii], ["PEI", selected.pei, PATHWAY_METRIC_HELP.pei], ["Avg TP", selected.avgTp, PATHWAY_METRIC_HELP.avgTp],
-                  ["SS", selected.ss, PATHWAY_METRIC_HELP.ss], ["EBI", selected.ebi, PATHWAY_METRIC_HELP.ebi], ["IG", selected.ig, PATHWAY_METRIC_HELP.ig], ["TP shift", selected.meanShift, PATHWAY_METRIC_HELP.shift]].map(([k, v, h]) => (
-                  <div key={k} className="border border-slate-200 rounded p-2" title={h}>
-                    <div className="text-[11.5px] text-neutral-600">{k}</div>
-                    <div className="text-sm font-mono">{k === "SS" ? `${v} of ${result.outcomes.length}` : k === "IG" || k === "TP shift" ? fmtSigned(v) : fmtNum(v)}</div>
-                  </div>
-                ))}
-              </div>
-              {selected.targetsSet > 0 && <p className="text-xs text-neutral-900">Reaches {selected.targetsMet} of {selected.targetsSet} desired outcome levels.</p>}
-              {!selected.converged && <p className="text-xs text-amber-700">At least one stage of this pathway did not converge within {result.settingsUsed.maxIterations} iterations; its end state is not a settled equilibrium.</p>}
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="text-left text-neutral-600 border-b border-slate-100">
-                      <th className="py-1 font-medium pr-3">Stage</th>
-                      <th className="py-1 font-medium pr-3">Lever</th>
-                      <th className="py-1 font-medium pr-3" title="The lever's transition point on its own, from Business-as-Usual.">TP alone</th>
-                      <th className="py-1 font-medium pr-3" title="The lever's transition point in the state this pathway has reached.">TP here</th>
-                      <th className="py-1 font-medium pr-3" title="Negative: earlier stages bring the lever's peak return forward (enabling). Positive: they push it later.">Shift</th>
-                      <th className="py-1 font-medium pr-3">Intensity</th>
-                      <th className="py-1 font-medium pr-3" title="Outcome gain added by this stage.">Stage gain</th>
-                      <th className="py-1 font-medium pr-3">Outcome gain after</th>
-                      <th className="py-1 font-medium pr-3" title="Stage gain per unit of effort spent in this stage.">Efficiency</th>
-                      {result.outcomes.map((o) => (
-                        <th key={o.id} className="py-1 font-medium pr-3" title="The value this outcome reaches at the end of the stage: a reference level to monitor before moving on to the next stage.">{nameOf(o.id)}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr className="border-b border-slate-50 text-neutral-600">
-                      <td className="py-1 pr-3">BAU</td><td className="py-1 pr-3" colSpan={8}>Business-as-Usual equilibrium</td>
-                      {result.outcomes.map((o) => <td key={o.id} className="py-1 pr-3 font-mono">{fmtNum(result.bauOutcomes[o.id])}</td>)}
-                    </tr>
-                    {selected.stages.map((st, i) => {
-                      const dG = st.gainAfter - st.gainBefore;
-                      const du = st.u - st.uPrev;
-                      return (
-                        <tr key={i} className="border-b border-slate-50">
-                          <td className="py-1 pr-3">{i + 1}</td>
-                          <td className="py-1 pr-3">{nameOf(st.leverId)}{st.scaleUp && <span className="text-[11.5px] text-neutral-600"> (scale-up)</span>}{!st.converged && <span className="text-[11.5px] text-amber-700"> (not converged)</span>}</td>
-                          <td className="py-1 pr-3 font-mono">{fmtNum(st.tauIso)}</td>
-                          <td className="py-1 pr-3 font-mono">{fmtNum(st.tauCond)}</td>
-                          <td className={`py-1 pr-3 font-mono ${st.shift < 0 ? "text-cobalt-700" : st.shift > 0 ? "text-orange-700" : ""}`}>{st.shift === null ? "" : fmtSigned(st.shift)}</td>
-                          <td className="py-1 pr-3 font-mono">{st.scaleUp ? `${round2(st.uPrev)} to ` : ""}{round2(st.u)}</td>
-                          <td className={`py-1 pr-3 font-mono ${dG < -1e-6 ? "text-orange-700" : ""}`} title={dG < -1e-6 ? "This stage lowers the total outcome gain: from this state, the lever at this intensity worsens the outcomes." : undefined}>{fmtSigned(dG)}</td>
-                          <td className="py-1 pr-3 font-mono">{fmtNum(st.gainAfter)}</td>
-                          <td className="py-1 pr-3 font-mono">{du > 0 ? fmtNum(dG / (st.effort * du)) : "n/a"}</td>
-                          {st.outcomes.map((o) => <td key={o.id} className="py-1 pr-3 font-mono">{fmtNum(o.value)}</td>)}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="text-xs font-medium text-neutral-900">Outcome trajectory</div>
-                    <Btn variant="outline" onClick={() => setFigTrajectoryOpen((v) => !v)}><SlidersHorizontal size={13} />{figTrajectoryOpen ? "Hide figure options" : "Customize & export"}</Btn>
-                  </div>
-                  <p className="text-[11.5px] text-neutral-600 mb-1">Improvement of each outcome relative to Business-as-Usual after every stage (up is better for every outcome), and the total outcome gain.</p>
-                  <div ref={trajectoryRef} className="h-60" style={figTrajectoryOpen ? { width: mmToPx(figTrajectory.widthMm, 96), height: mmToPx(figTrajectory.heightMm, 96), maxWidth: "100%" } : undefined}>
-                    <ResponsiveContainer>
-                      <LineChart data={trajectory.rows} margin={{ top: 16, right: 10, bottom: 5, left: 0 }}>
-                        {figTrajectory.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
-                        <XAxis dataKey="stage" tick={{ fontSize: figTrajectory.tickFontSize }} label={figTrajectory.xLabel ? { value: figTrajectory.xLabel, position: "insideBottom", offset: -2, fontSize: figTrajectory.axisFontSize } : undefined} />
-                        <YAxis tick={{ fontSize: figTrajectory.tickFontSize }} tickFormatter={(v) => fmtDec(v, figTrajectory.decimals)} label={{ value: figTrajectory.yLabel || "vs. BAU", angle: -90, position: "insideLeft", fontSize: figTrajectory.axisFontSize }} />
-                        <RTooltip />
-                        {figTrajectory.legendPosition !== "hidden" && (
-                          <Legend
-                            wrapperStyle={{ fontSize: figTrajectory.legendFontSize }}
-                            layout={figTrajectory.legendPosition === "left" || figTrajectory.legendPosition === "right" ? "vertical" : "horizontal"}
-                            verticalAlign={figTrajectory.legendPosition === "left" || figTrajectory.legendPosition === "right" ? "middle" : figTrajectory.legendPosition}
-                            align={figTrajectory.legendPosition === "left" || figTrajectory.legendPosition === "right" ? figTrajectory.legendPosition : "center"}
-                          />
-                        )}
-                        {figTrajectory.title && <text x="50%" y={14} textAnchor="middle" fontSize={figTrajectory.titleFontSize} fontWeight={600} fill="#0f172a">{figTrajectory.title}</text>}
-                        <ReferenceLine y={0} stroke="#94a3b8" />
-                        {trajectoryOutcomeRows.map((o, i) => (
-                          <Line key={o.id} type="linear" dataKey={o.id} name={o.name} stroke={figurePalette(figTrajectory.palette, trajectoryOutcomeRows.length)[i]} strokeWidth={figTrajectory.lineWidth} strokeOpacity={figTrajectory.opacity} dot={figTrajectory.markerSize > 0 ? { r: figTrajectory.markerSize } : false} isAnimationActive={false} />
-                        ))}
-                        <Line type="linear" dataKey="total" name="Total outcome gain" stroke="#0f172a" strokeDasharray="5 4" strokeWidth={figTrajectory.lineWidth} dot={figTrajectory.markerSize > 0 ? { r: figTrajectory.markerSize } : false} isAnimationActive={false}>
-                          <LabelList dataKey="total" position="top" formatter={(v) => fmtDec(v, figTrajectory.decimals)} style={{ fontSize: figTrajectory.tickFontSize, fill: "#0f172a", fontWeight: 600 }} />
-                        </Line>
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                  {figTrajectoryOpen && (
-                    <FigurePanel
-                      settings={figTrajectory} onChange={setFigTrajectory}
-                      seriesOptions={trajectorySeriesOptions} hiddenKeys={hiddenTrajectoryOutcomes} onToggleSeries={toggleHiddenTrajectoryOutcome}
-                      sortOptions={TRAJECTORY_ORDER_OPTIONS} sortValue={trajectoryOrder} onSortChange={setTrajectoryOrder}
-                      exporting={figTrajectoryBusy}
-                      onExport={async () => {
-                        setFigTrajectoryBusy(true);
-                        await exportFigure(trajectoryRef.current, "transition-pathway-trajectory.png", figTrajectory, {
-                          title: figTrajectory.title || `Outcome trajectory: ${selectedLabel}`,
-                          subtitle: pathwayContextLine,
-                        });
-                        setFigTrajectoryBusy(false);
-                      }}
-                    />
-                  )}
-                </div>
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="text-xs font-medium text-neutral-900">Benefit accrual (EBI {fmtNum(selected.ebi)})</div>
-                    <Btn variant="outline" onClick={() => setFigAccrualOpen((v) => !v)} disabled={trajectory.accrual.length <= 1}><SlidersHorizontal size={13} />{figAccrualOpen ? "Hide figure options" : "Customize & export"}</Btn>
-                  </div>
-                  <p className="text-[11.5px] text-neutral-600 mb-1">Share of the final gain realized against share of the effort spent. The shaded area is the Early Benefit Index itself; above the dashed diagonal, benefits arrive ahead of effort.</p>
-                  <div ref={accrualRef} className="h-60" style={figAccrualOpen ? { width: mmToPx(figAccrual.widthMm, 96), height: mmToPx(figAccrual.heightMm, 96), maxWidth: "100%" } : undefined}>
-                    {trajectory.accrual.length > 1 ? (
-                      <ResponsiveContainer>
-                        <AreaChart data={trajectory.accrual} margin={{ top: 16, right: 10, bottom: 18, left: 0 }}>
-                          {figAccrual.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
-                          <XAxis type="number" dataKey="x" domain={[0, 1]} tick={{ fontSize: figAccrual.tickFontSize }} tickFormatter={(v) => fmtDec(v, figAccrual.decimals)} label={{ value: figAccrual.xLabel || "Share of effort", position: "insideBottom", offset: -8, fontSize: figAccrual.axisFontSize }} />
-                          <YAxis type="number" domain={[(m) => Math.min(0, m), (m) => Math.max(1, m)]} tick={{ fontSize: figAccrual.tickFontSize }} tickFormatter={(v) => fmtDec(v, figAccrual.decimals)} label={{ value: figAccrual.yLabel || "Share of gain", angle: -90, position: "insideLeft", fontSize: figAccrual.axisFontSize }} />
-                          <RTooltip formatter={(v) => fmtDec(v, figAccrual.decimals)} labelFormatter={(v) => `effort ${fmtDec(v, figAccrual.decimals)}`} />
-                          {figAccrual.legendPosition !== "hidden" && <Legend wrapperStyle={{ fontSize: figAccrual.legendFontSize }} verticalAlign={figAccrual.legendPosition === "left" || figAccrual.legendPosition === "right" ? "middle" : figAccrual.legendPosition} align={figAccrual.legendPosition === "left" || figAccrual.legendPosition === "right" ? figAccrual.legendPosition : "center"} />}
-                          {figAccrual.title && <text x="50%" y={14} textAnchor="middle" fontSize={figAccrual.titleFontSize} fontWeight={600} fill="#0f172a">{figAccrual.title}</text>}
-                          <ReferenceLine segment={[{ x: 0, y: 0 }, { x: 1, y: 1 }]} stroke="#94a3b8" strokeDasharray="4 4" />
-                          <Area type="linear" dataKey="y" name="Share of gain" stroke={figurePalette(figAccrual.palette, 1)[0]} strokeWidth={figAccrual.lineWidth} fill={figurePalette(figAccrual.palette, 1)[0]} fillOpacity={0.22 * figAccrual.opacity} dot={figAccrual.markerSize > 0 ? { r: figAccrual.markerSize } : false} isAnimationActive={false} />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    ) : <p className="text-[12.5px] text-neutral-600 italic">Not defined for a pathway without a positive gain and effort.</p>}
-                  </div>
-                  {figAccrualOpen && trajectory.accrual.length > 1 && (
-                    <FigurePanel
-                      settings={figAccrual} onChange={setFigAccrual}
-                      exporting={figAccrualBusy}
-                      onExport={async () => {
-                        setFigAccrualBusy(true);
-                        await exportFigure(accrualRef.current, "transition-pathway-benefit-accrual.png", figAccrual, {
-                          title: figAccrual.title || `Benefit accrual: ${selectedLabel}`,
-                          subtitle: `Early Benefit Index ${fmtNum(selected.ebi)}: share of the final gain realized against share of effort spent`,
-                        });
-                        setFigAccrualBusy(false);
-                      }}
-                    />
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
-            <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
-              <h4 className="text-sm font-semibold">All pathways</h4>
-              <div className="flex items-center gap-2">
-                <select value={filter} onChange={(e) => { setFilter(e.target.value); setShowCount(50); }} className="text-xs border border-slate-200 rounded px-2 py-1">
-                  <option value="all">All ({s.counts.total})</option>
-                  <option value="admissible">Admissible ({s.counts.admissible})</option>
-                  <option value="frontier">Efficient frontier ({result.candidates.filter((c) => c.frontier).length})</option>
-                  {PATHWAY_ARCHETYPES.map((a) => <option key={a.key} value={a.key}>{a.label} ({s.counts[a.key]})</option>)}
-                  <option value="conditional">Conditional, with trade-offs ({s.counts.conditional})</option>
-                  <option value="other">Not admissible ({s.counts.total - s.counts.admissible - s.counts.conditional})</option>
-                  {result.candidates.some((c) => c.expertNames?.length) && <option value="expert">Expert-defined ({result.candidates.filter((c) => c.expertNames?.length).length})</option>}
-                </select>
-                <Btn variant="outline" onClick={exportPathwaysCSV}><Download size={13} />Export CSV</Btn>
-              </div>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-left text-neutral-600 border-b border-slate-100">
-                    {PATHWAY_TABLE_COLUMNS.map((col) => <SortHeader key={col.key} col={col} sortKey={sortKey} sortDir={sortDir} onSort={onSort} />)}
-                  </tr>
-                </thead>
-                <tbody>
-                  {sorted.slice(0, showCount).map((r) => (
-                    <tr key={r.id} onClick={() => selectPathway(r.id)} className={`border-b border-slate-50 cursor-pointer hover:bg-slate-50 ${selectedId === r.id ? "bg-cobalt-50/60" : ""}`}>
-                      <td className="py-1 pr-3"><PathwayStagesText c={r.c} nameOf={nameOf} compact />{r.c.expertNames?.length > 0 && <ExpertBadge c={r.c} />}</td>
-                      <td className="py-1 pr-3 font-mono">{r.length}</td>
-                      <td className="py-1 pr-3 font-mono">{fmtNum(r.tog)}</td>
-                      <td className="py-1 pr-3 font-mono">{fmtNum(r.cii)}</td>
-                      <td className="py-1 pr-3 font-mono">{fmtNum(r.pei)}</td>
-                      <td className="py-1 pr-3 font-mono">{fmtNum(r.avgTp)}</td>
-                      <td className="py-1 pr-3 font-mono">{r.ss}</td>
-                      <td className="py-1 pr-3 font-mono">{fmtNum(r.ebi)}</td>
-                      <td className="py-1 pr-3 font-mono">{fmtSigned(r.ig)}</td>
-                      <td className="py-1 pr-3 font-mono">{fmtSigned(r.meanShift)}</td>
-                      <td className="py-1 pr-3"><ArchetypeBadges c={r.c} /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {sorted.length > showCount && (
-              <button onClick={() => setShowCount((n) => n + 100)} className="mt-2 text-xs text-cobalt-700 hover:underline">Show 100 more ({sorted.length - showCount} not shown)</button>
-            )}
-          </div>
-
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
-            <div className="flex items-center justify-between mb-1">
-              <h4 className="text-sm font-semibold">Implementation portfolios</h4>
-              <Btn variant="outline" onClick={exportPortfoliosCSV}><Download size={13} />Export CSV</Btn>
-            </div>
-            <p className="text-[12.5px] text-neutral-600 mb-2">Every pathway starts with one of these opening moves. <strong className="text-neutral-900">Regret</strong> is how much total outcome gain an opening gives up compared with the best pathway of all (0: the best outcome stays within reach). The best gain, and the pathways counted per opening, are taken over the pathways that converged: the {s.counts.nonConverged} that did not have no defined end state and are left out. <strong className="text-neutral-900">Top pathways opened</strong> counts how many of the top {PATHWAY_TOP_N} pathways of each archetype start this way; a low-regret opening that opens many of them is a no-regret first move.</p>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-left text-neutral-600 border-b border-slate-100">
-                    <th className="py-1 font-medium pr-3">Opening</th>
-                    <th className="py-1 font-medium pr-3">Regret</th>
-                    <th className="py-1 font-medium pr-3">Top pathways opened</th>
-                    {PATHWAY_ARCHETYPES.map((a) => <th key={a.key} className="py-1 font-medium pr-3">Best {a.label} continuation</th>)}
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...result.portfolios.firstMoves, ...result.portfolios.openings].map((f, i) => (
-                    <tr key={f.key} className={`border-b border-slate-50 ${i === result.portfolios.firstMoves.length ? "border-t-2 border-t-slate-200" : ""}`}>
-                      <td className="py-1 pr-3"><PathwayStagesText c={{ stages: f.stages, length: f.stages.length }} nameOf={nameOf} compact /></td>
-                      <td className={`py-1 pr-3 font-mono ${f.regret <= 1e-6 ? "text-cobalt-700 font-semibold" : ""}`}>{fmtNum(f.regret)}</td>
-                      <td className="py-1 pr-3 font-mono">{f.opens}</td>
-                      {PATHWAY_ARCHETYPES.map((a) => {
-                        const c = f.bestBy[a.key] !== null ? candById.get(f.bestBy[a.key]) : null;
-                        return (
-                          <td key={a.key} className="py-1 pr-3">
-                            {c ? <button onClick={() => selectPathway(c.id)} className="text-left hover:text-cobalt-800"><PathwayStagesText c={{ ...c, stages: c.stages.slice(f.stages.length), length: c.length - f.stages.length }} nameOf={nameOf} compact />{c.length === f.stages.length && <span className="text-neutral-600">(stop here)</span>}</button> : <span className="text-neutral-500">none</span>}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {result.portfolios.openings.length > 0 && <p className="text-[11.5px] text-neutral-600 mt-1">Below the line: the two-stage openings shared by the most top-ranked pathways.</p>}
-          </div>
-
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
-            <div className="flex items-center justify-between mb-1">
-              <h4 className="text-sm font-semibold">Lever profiles (each lever on its own, from Business-as-Usual)</h4>
-              <Btn variant="outline" onClick={exportLeversCSV}><Download size={13} />Export CSV</Btn>
-            </div>
-            <p className="text-[12.5px] text-neutral-600 mb-2">Step 1 of the method: the building blocks. Levers that move no outcome, or never improve the outcome gain, are left out of the pathways.</p>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-left text-neutral-600 border-b border-slate-100">
-                    <th className="py-1 font-medium pr-3">Lever</th>
-                    <th className="py-1 font-medium pr-3">TP</th>
-                    <th className="py-1 font-medium pr-3">Response type</th>
-                    <th className="py-1 font-medium pr-3" title="Outcome gain with the lever at full intensity, on its own.">Gain at full intensity</th>
-                    <th className="py-1 font-medium pr-3">Synergy</th>
-                    {result.outcomes.map((o) => <th key={o.id} className="py-1 font-medium pr-3" title="Improvement at full intensity, and the outcome's own transition point in brackets.">{nameOf(o.id)}</th>)}
-                    <th className="py-1 font-medium pr-3">In pathways</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {result.iso.map((l) => (
-                    <tr key={l.id} className="border-b border-slate-50">
-                      <td className="py-1 pr-3">{nameOf(l.id)}{l.decrease && <span className="text-[11.5px] text-neutral-600"> (decrease)</span>}</td>
-                      <td className="py-1 pr-3 font-mono">{fmtNum(l.tau)}</td>
-                      <td className="py-1 pr-3"><span title={RESPONSE_TYPE_HELP[l.responseType] || l.reason} className={`text-[11.5px] px-1.5 py-0.5 rounded-full border ${RESPONSE_TYPE_STYLE[l.responseType] || "bg-slate-100 text-neutral-700 border-slate-200"}`}>{l.responseType}</span></td>
-                      <td className="py-1 pr-3 font-mono">{fmtSigned(l.gainAtFull)}</td>
-                      <td className="py-1 pr-3"><span className={`text-[11.5px] px-1.5 py-0.5 rounded-full border ${SYNERGY_STYLE[l.synergy.type]}`}>{l.synergy.type}</span></td>
-                      {l.outcomeRows.map((r) => <td key={r.id} className="py-1 pr-3 font-mono">{fmtSigned(r.effect)} <span className="text-neutral-600">({fmtNum(r.tp)})</span></td>)}
-                      <td className="py-1 pr-3">{l.included ? <Check size={13} className="text-cobalt-700" /> : <span className="text-[11.5px] text-amber-700" title={l.reason}>No: {l.reason.split(":")[0]}</span>}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
-            <h4 className="text-sm font-semibold mb-1">Does the order decide the end state? (invariance test)</h4>
-            <p className="text-[12.5px] text-neutral-600 mb-2">For the lever sets of the top pathways, every order of the same levers at the same final intensities was simulated stage by stage. If the end states differ by more than {PATHWAY_INVARIANCE_TOLERANCE}, the model has more than one equilibrium for these levers, and the order of implementation decides where the system ends up (path dependence). Smaller differences come from where each run stops settling.</p>
-            {result.invariance.tested === 0 ? (
-              <p className="text-xs text-neutral-600 italic">No top pathway combines two or more levers, so there was nothing to test.</p>
-            ) : (
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-left text-neutral-600 border-b border-slate-100">
-                    <th className="py-1 font-medium pr-3">Levers (final intensity)</th>
-                    <th className="py-1 font-medium pr-3">Orders tested</th>
-                    <th className="py-1 font-medium pr-3">Largest difference between end states</th>
-                    <th className="py-1 font-medium pr-3">Result</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {result.invariance.rows.map((r, i) => (
-                    <tr key={i} className="border-b border-slate-50">
-                      <td className="py-1 pr-3">{r.ids.map((id) => `${nameOf(id)} (${round2(r.final[id])})`).join(", ")}</td>
-                      <td className="py-1 pr-3 font-mono">{r.perms}</td>
-                      <td className="py-1 pr-3 font-mono">{fmtNum(r.maxDiff, 3)}</td>
-                      <td className="py-1 pr-3">{!r.allConverged ? <span className="text-neutral-700">Not all orders converged: undecided</span> : r.pathDependent ? <span className="text-amber-700 font-medium">Path dependent: the order matters</span> : <span className="text-cobalt-700">Same end state in every order</span>}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
 
           {result.robustness && (
             <div className="bg-white rounded-lg border border-slate-200 p-4" data-robustness>
@@ -11738,6 +11662,366 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
             </div>
           )}
 
+          <div className="bg-white rounded-lg border border-slate-200" data-pathway-advanced>
+            <button onClick={() => setAdvancedOpen((v) => !v)} aria-expanded={advancedOpen} className="w-full flex items-center gap-2 px-4 py-3 text-left">
+              {advancedOpen ? <ChevronDown size={15} className="text-neutral-700" /> : <ChevronRight size={15} className="text-neutral-700" />}
+              <span className="text-sm font-semibold">Advanced results</span>
+              <span className="text-[12.5px] text-neutral-600">Effort-gain plane, selected pathway, all pathways, implementation portfolios, and the invariance test</span>
+            </button>
+            {advancedOpen && (
+              <div className="space-y-5 px-4 pb-4">
+              <div className="bg-white rounded-lg border border-slate-200 p-4">
+                <div className="flex items-center justify-between mb-1">
+                  <h4 className="text-sm font-semibold">Effort-gain plane</h4>
+                  <Btn variant="outline" onClick={() => setFigPlaneOpen((v) => !v)}><SlidersHorizontal size={13} />{figPlaneOpen ? "Hide figure options" : "Customize & export"}</Btn>
+                </div>
+                <p className="text-[12.5px] text-neutral-600 mb-2">Every pathway by the effort it needs (cumulative intervention intensity) and what it achieves (total outcome gain), coloured by primary archetype. The dashed line is the efficient frontier: no other pathway achieves more with less. The selected pathway is ringed and labelled directly on the chart, so it stays identifiable once the image is saved. Click a point to open that pathway below.</p>
+                <div ref={planeRef} data-chart="pathway-plane" className="w-full h-96" style={figPlaneOpen ? { width: mmToPx(figPlane.widthMm, 96), height: mmToPx(figPlane.heightMm, 96), maxWidth: "100%" } : undefined}>
+                  <ResponsiveContainer>
+                    <ScatterChart margin={{ top: 10, right: 24, bottom: 24, left: 16 }}>
+                      {figPlane.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
+                      <XAxis type="number" dataKey="x" name="CII" tick={{ fontSize: figPlane.tickFontSize }} tickFormatter={(v) => fmtDec(v, figPlane.decimals)} label={{ value: figPlane.xLabel || "Cumulative intervention intensity (effort)", position: "insideBottom", offset: -12, fontSize: figPlane.axisFontSize }} />
+                      {/* Zoomed to the data: in a saturating map the pathways' gains
+                          can differ only in the first decimal, which an axis from 0
+                          would flatten into a single line. */}
+                      <YAxis type="number" dataKey="y" name="TOG" domain={plane.yDomain} ticks={plane.yTicks} tickFormatter={(v) => fmtDec(v, figPlane.decimals)} tick={{ fontSize: figPlane.tickFontSize }} label={{ value: figPlane.yLabel || "Total outcome gain", angle: -90, position: "insideLeft", fontSize: figPlane.axisFontSize }} />
+                      <ZAxis range={[36 * figPlane.markerSize / 3, 36 * figPlane.markerSize / 3]} />
+                      <RTooltip cursor={{ strokeDasharray: "3 3" }} content={({ active, payload }) => {
+                        const c = active && payload?.[0] ? candById.get(payload[0].payload.id) : null;
+                        return c ? (
+                          <div className="bg-white border border-slate-200 rounded shadow-sm p-2 text-[12.5px] max-w-xs">
+                            <div className="font-semibold mb-0.5"><PathwayStagesText c={c} nameOf={nameOf} compact /></div>
+                            <div>TOG {fmtNum(c.tog)}, CII {fmtNum(c.cii)}, PEI {fmtNum(c.pei)}</div>
+                            <div className="text-neutral-700">{pathwayStatus(c)}</div>
+                          </div>
+                        ) : null;
+                      }} />
+                      {figPlane.legendPosition !== "hidden" && (
+                        <Legend
+                          wrapperStyle={{ fontSize: figPlane.legendFontSize, lineHeight: "17px" }}
+                          layout={figPlane.legendPosition === "left" || figPlane.legendPosition === "right" ? "vertical" : "horizontal"}
+                          verticalAlign={figPlane.legendPosition === "left" || figPlane.legendPosition === "right" ? "middle" : figPlane.legendPosition}
+                          align={figPlane.legendPosition === "left" || figPlane.legendPosition === "right" ? figPlane.legendPosition : "center"}
+                          height={figPlane.legendPosition === "top" || figPlane.legendPosition === "bottom" ? 42 : undefined}
+                        />
+                      )}
+                      {figPlane.title && <text x="50%" y={14} textAnchor="middle" fontSize={figPlane.titleFontSize} fontWeight={600} fill="#0f172a">{figPlane.title}</text>}
+                      <Scatter name="Other converged pathways" data={plane.other} fill="#cbd5e1" fillOpacity={figPlane.opacity} onClick={(p) => selectPathway(p?.payload?.id ?? p?.id)} isAnimationActive={false} />
+                      <Scatter name="Intermediate" data={plane.intermediate} fill="#94a3b8" fillOpacity={figPlane.opacity} onClick={(p) => selectPathway(p?.payload?.id ?? p?.id)} isAnimationActive={false} />
+                      {plane.series.map((a, i) => (
+                        <Scatter key={a.key} name={a.label} data={a.data} fill={figPlane.palette === "default" ? a.color : figurePalette(figPlane.palette, PATHWAY_ARCHETYPES.length)[i]} fillOpacity={figPlane.opacity} onClick={(p) => selectPathway(p?.payload?.id ?? p?.id)} isAnimationActive={false} />
+                      ))}
+                      <Scatter name="Efficient frontier" data={plane.frontier} fill="none" line={{ stroke: "#334155", strokeDasharray: "5 4", strokeWidth: figPlane.lineWidth }} shape={() => null} legendType="plainline" isAnimationActive={false} />
+                      {selected && (
+                        <Scatter
+                          name="Selected" data={[{ x: round3(selected.cii), y: round3(selected.tog), id: selected.id }]}
+                          fill="none" legendType="none" isAnimationActive={false}
+                          shape={(p) => (
+                            <g>
+                              <circle cx={p.cx} cy={p.cy} r={9} fill="none" stroke="#0f172a" strokeWidth={2} />
+                              <text x={p.cx} y={p.cy - 14} textAnchor="middle" fontSize={figPlane.tickFontSize} fontWeight={600} fill="#0f172a" stroke="#ffffff" strokeWidth={3} style={{ paintOrder: "stroke" }}>
+                                {selectedLabel}
+                              </text>
+                            </g>
+                          )}
+                        />
+                      )}
+                    </ScatterChart>
+                  </ResponsiveContainer>
+                </div>
+                {figPlaneOpen && (
+                  <FigurePanel
+                    settings={figPlane} onChange={setFigPlane}
+                    maxPoints={planeMaxPoints} onMaxPointsChange={setPlaneMaxPoints} maxPointsCap={Math.max(result.candidates.length, 1)}
+                    maxPointsLabel="Show only the top N unclassified pathways (by total outcome gain)"
+                    exporting={figPlaneBusy}
+                    onExport={async () => {
+                      setFigPlaneBusy(true);
+                      await exportFigure(planeRef.current, "transition-pathways-effort-gain.png", figPlane, {
+                        title: figPlane.title || "Transition Pathways: Effort-Gain Plane",
+                        subtitle: `${pathwayContextLine} · ${s.counts.admissible} of ${s.counts.total} pathways admissible`,
+                      });
+                      setFigPlaneBusy(false);
+                    }}
+                  />
+                )}
+              </div>
+
+              {selected && trajectory && (
+                <div data-pathway-detail className="bg-white rounded-lg border border-slate-200 p-4 space-y-3 scroll-mt-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h4 className="text-sm font-semibold">Selected pathway</h4>
+                      <div className="text-xs mt-1"><PathwayStagesText c={selected} nameOf={nameOf} /></div>
+                      <div className="mt-1.5"><ArchetypeBadges c={selected} />{selected.frontier && <span className="ml-1 text-[11.5px] px-1.5 py-0.5 rounded-full border border-slate-300 text-neutral-900">On the efficient frontier</span>}</div>
+                    </div>
+                    <Btn variant="outline" onClick={exportStagesCSV}><Download size={13} />Stages (CSV)</Btn>
+                  </div>
+                  <div className="grid grid-cols-3 md:grid-cols-8 gap-2">
+                    {[["TOG", selected.tog, PATHWAY_METRIC_HELP.tog], ["CII", selected.cii, PATHWAY_METRIC_HELP.cii], ["PEI", selected.pei, PATHWAY_METRIC_HELP.pei], ["Avg TP", selected.avgTp, PATHWAY_METRIC_HELP.avgTp],
+                      ["SS", selected.ss, PATHWAY_METRIC_HELP.ss], ["EBI", selected.ebi, PATHWAY_METRIC_HELP.ebi], ["IG", selected.ig, PATHWAY_METRIC_HELP.ig], ["TP shift", selected.meanShift, PATHWAY_METRIC_HELP.shift]].map(([k, v, h]) => (
+                      <div key={k} className="border border-slate-200 rounded p-2" title={h}>
+                        <div className="text-[11.5px] text-neutral-600">{k}</div>
+                        <div className="text-sm font-mono">{k === "SS" ? `${v} of ${result.outcomes.length}` : k === "IG" || k === "TP shift" ? fmtSigned(v) : fmtNum(v)}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {selected.targetsSet > 0 && <p className="text-xs text-neutral-900">Reaches {selected.targetsMet} of {selected.targetsSet} desired outcome levels.</p>}
+                  {!selected.converged && <p className="text-xs text-amber-700">At least one stage of this pathway did not converge within {result.settingsUsed.maxIterations} iterations; its end state is not a settled equilibrium.</p>}
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-left text-neutral-600 border-b border-slate-100">
+                          <th className="py-1 font-medium pr-3">Stage</th>
+                          <th className="py-1 font-medium pr-3">Lever</th>
+                          <th className="py-1 font-medium pr-3" title="The lever's transition point on its own, from Business-as-Usual.">TP alone</th>
+                          <th className="py-1 font-medium pr-3" title="The lever's transition point in the state this pathway has reached.">TP here</th>
+                          <th className="py-1 font-medium pr-3" title="Negative: earlier stages bring the lever's peak return forward (enabling). Positive: they push it later.">Shift</th>
+                          <th className="py-1 font-medium pr-3">Intensity</th>
+                          <th className="py-1 font-medium pr-3" title="Outcome gain added by this stage.">Stage gain</th>
+                          <th className="py-1 font-medium pr-3">Outcome gain after</th>
+                          <th className="py-1 font-medium pr-3" title="Stage gain per unit of effort spent in this stage.">Efficiency</th>
+                          {result.outcomes.map((o) => (
+                            <th key={o.id} className="py-1 font-medium pr-3" title="The value this outcome reaches at the end of the stage: a reference level to monitor before moving on to the next stage.">{nameOf(o.id)}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr className="border-b border-slate-50 text-neutral-600">
+                          <td className="py-1 pr-3">BAU</td><td className="py-1 pr-3" colSpan={8}>Business-as-Usual equilibrium</td>
+                          {result.outcomes.map((o) => <td key={o.id} className="py-1 pr-3 font-mono">{fmtNum(result.bauOutcomes[o.id])}</td>)}
+                        </tr>
+                        {selected.stages.map((st, i) => {
+                          const dG = st.gainAfter - st.gainBefore;
+                          const du = st.u - st.uPrev;
+                          return (
+                            <tr key={i} className="border-b border-slate-50">
+                              <td className="py-1 pr-3">{i + 1}</td>
+                              <td className="py-1 pr-3">{nameOf(st.leverId)}{st.scaleUp && <span className="text-[11.5px] text-neutral-600"> (scale-up)</span>}{!st.converged && <span className="text-[11.5px] text-amber-700"> (not converged)</span>}</td>
+                              <td className="py-1 pr-3 font-mono">{fmtNum(st.tauIso)}</td>
+                              <td className="py-1 pr-3 font-mono">{fmtNum(st.tauCond)}</td>
+                              <td className={`py-1 pr-3 font-mono ${st.shift < 0 ? "text-cobalt-700" : st.shift > 0 ? "text-orange-700" : ""}`}>{st.shift === null ? "" : fmtSigned(st.shift)}</td>
+                              <td className="py-1 pr-3 font-mono">{st.scaleUp ? `${round2(st.uPrev)} to ` : ""}{round2(st.u)}</td>
+                              <td className={`py-1 pr-3 font-mono ${dG < -1e-6 ? "text-orange-700" : ""}`} title={dG < -1e-6 ? "This stage lowers the total outcome gain: from this state, the lever at this intensity worsens the outcomes." : undefined}>{fmtSigned(dG)}</td>
+                              <td className="py-1 pr-3 font-mono">{fmtNum(st.gainAfter)}</td>
+                              <td className="py-1 pr-3 font-mono">{du > 0 ? fmtNum(dG / (st.effort * du)) : "n/a"}</td>
+                              {st.outcomes.map((o) => <td key={o.id} className="py-1 pr-3 font-mono">{fmtNum(o.value)}</td>)}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="text-xs font-medium text-neutral-900">Outcome trajectory</div>
+                        <Btn variant="outline" onClick={() => setFigTrajectoryOpen((v) => !v)}><SlidersHorizontal size={13} />{figTrajectoryOpen ? "Hide figure options" : "Customize & export"}</Btn>
+                      </div>
+                      <p className="text-[11.5px] text-neutral-600 mb-1">Improvement of each outcome relative to Business-as-Usual after every stage (up is better for every outcome), and the total outcome gain.</p>
+                      <div ref={trajectoryRef} className="h-60" style={figTrajectoryOpen ? { width: mmToPx(figTrajectory.widthMm, 96), height: mmToPx(figTrajectory.heightMm, 96), maxWidth: "100%" } : undefined}>
+                        <ResponsiveContainer>
+                          <LineChart data={trajectory.rows} margin={{ top: 16, right: 10, bottom: 5, left: 0 }}>
+                            {figTrajectory.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
+                            <XAxis dataKey="stage" tick={{ fontSize: figTrajectory.tickFontSize }} label={figTrajectory.xLabel ? { value: figTrajectory.xLabel, position: "insideBottom", offset: -2, fontSize: figTrajectory.axisFontSize } : undefined} />
+                            <YAxis tick={{ fontSize: figTrajectory.tickFontSize }} tickFormatter={(v) => fmtDec(v, figTrajectory.decimals)} label={{ value: figTrajectory.yLabel || "vs. BAU", angle: -90, position: "insideLeft", fontSize: figTrajectory.axisFontSize }} />
+                            <RTooltip />
+                            {figTrajectory.legendPosition !== "hidden" && (
+                              <Legend
+                                wrapperStyle={{ fontSize: figTrajectory.legendFontSize }}
+                                layout={figTrajectory.legendPosition === "left" || figTrajectory.legendPosition === "right" ? "vertical" : "horizontal"}
+                                verticalAlign={figTrajectory.legendPosition === "left" || figTrajectory.legendPosition === "right" ? "middle" : figTrajectory.legendPosition}
+                                align={figTrajectory.legendPosition === "left" || figTrajectory.legendPosition === "right" ? figTrajectory.legendPosition : "center"}
+                              />
+                            )}
+                            {figTrajectory.title && <text x="50%" y={14} textAnchor="middle" fontSize={figTrajectory.titleFontSize} fontWeight={600} fill="#0f172a">{figTrajectory.title}</text>}
+                            <ReferenceLine y={0} stroke="#94a3b8" />
+                            {trajectoryOutcomeRows.map((o, i) => (
+                              <Line key={o.id} type="linear" dataKey={o.id} name={o.name} stroke={figurePalette(figTrajectory.palette, trajectoryOutcomeRows.length)[i]} strokeWidth={figTrajectory.lineWidth} strokeOpacity={figTrajectory.opacity} dot={figTrajectory.markerSize > 0 ? { r: figTrajectory.markerSize } : false} isAnimationActive={false} />
+                            ))}
+                            <Line type="linear" dataKey="total" name="Total outcome gain" stroke="#0f172a" strokeDasharray="5 4" strokeWidth={figTrajectory.lineWidth} dot={figTrajectory.markerSize > 0 ? { r: figTrajectory.markerSize } : false} isAnimationActive={false}>
+                              <LabelList dataKey="total" position="top" formatter={(v) => fmtDec(v, figTrajectory.decimals)} style={{ fontSize: figTrajectory.tickFontSize, fill: "#0f172a", fontWeight: 600 }} />
+                            </Line>
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                      {figTrajectoryOpen && (
+                        <FigurePanel
+                          settings={figTrajectory} onChange={setFigTrajectory}
+                          seriesOptions={trajectorySeriesOptions} hiddenKeys={hiddenTrajectoryOutcomes} onToggleSeries={toggleHiddenTrajectoryOutcome}
+                          sortOptions={TRAJECTORY_ORDER_OPTIONS} sortValue={trajectoryOrder} onSortChange={setTrajectoryOrder}
+                          exporting={figTrajectoryBusy}
+                          onExport={async () => {
+                            setFigTrajectoryBusy(true);
+                            await exportFigure(trajectoryRef.current, "transition-pathway-trajectory.png", figTrajectory, {
+                              title: figTrajectory.title || `Outcome trajectory: ${selectedLabel}`,
+                              subtitle: pathwayContextLine,
+                            });
+                            setFigTrajectoryBusy(false);
+                          }}
+                        />
+                      )}
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="text-xs font-medium text-neutral-900">Benefit accrual (EBI {fmtNum(selected.ebi)})</div>
+                        <Btn variant="outline" onClick={() => setFigAccrualOpen((v) => !v)} disabled={trajectory.accrual.length <= 1}><SlidersHorizontal size={13} />{figAccrualOpen ? "Hide figure options" : "Customize & export"}</Btn>
+                      </div>
+                      <p className="text-[11.5px] text-neutral-600 mb-1">Share of the final gain realized against share of the effort spent. The shaded area is the Early Benefit Index itself; above the dashed diagonal, benefits arrive ahead of effort.</p>
+                      <div ref={accrualRef} className="h-60" style={figAccrualOpen ? { width: mmToPx(figAccrual.widthMm, 96), height: mmToPx(figAccrual.heightMm, 96), maxWidth: "100%" } : undefined}>
+                        {trajectory.accrual.length > 1 ? (
+                          <ResponsiveContainer>
+                            <AreaChart data={trajectory.accrual} margin={{ top: 16, right: 10, bottom: 18, left: 0 }}>
+                              {figAccrual.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
+                              <XAxis type="number" dataKey="x" domain={[0, 1]} tick={{ fontSize: figAccrual.tickFontSize }} tickFormatter={(v) => fmtDec(v, figAccrual.decimals)} label={{ value: figAccrual.xLabel || "Share of effort", position: "insideBottom", offset: -8, fontSize: figAccrual.axisFontSize }} />
+                              <YAxis type="number" domain={[(m) => Math.min(0, m), (m) => Math.max(1, m)]} tick={{ fontSize: figAccrual.tickFontSize }} tickFormatter={(v) => fmtDec(v, figAccrual.decimals)} label={{ value: figAccrual.yLabel || "Share of gain", angle: -90, position: "insideLeft", fontSize: figAccrual.axisFontSize }} />
+                              <RTooltip formatter={(v) => fmtDec(v, figAccrual.decimals)} labelFormatter={(v) => `effort ${fmtDec(v, figAccrual.decimals)}`} />
+                              {figAccrual.legendPosition !== "hidden" && <Legend wrapperStyle={{ fontSize: figAccrual.legendFontSize }} verticalAlign={figAccrual.legendPosition === "left" || figAccrual.legendPosition === "right" ? "middle" : figAccrual.legendPosition} align={figAccrual.legendPosition === "left" || figAccrual.legendPosition === "right" ? figAccrual.legendPosition : "center"} />}
+                              {figAccrual.title && <text x="50%" y={14} textAnchor="middle" fontSize={figAccrual.titleFontSize} fontWeight={600} fill="#0f172a">{figAccrual.title}</text>}
+                              <ReferenceLine segment={[{ x: 0, y: 0 }, { x: 1, y: 1 }]} stroke="#94a3b8" strokeDasharray="4 4" />
+                              <Area type="linear" dataKey="y" name="Share of gain" stroke={figurePalette(figAccrual.palette, 1)[0]} strokeWidth={figAccrual.lineWidth} fill={figurePalette(figAccrual.palette, 1)[0]} fillOpacity={0.22 * figAccrual.opacity} dot={figAccrual.markerSize > 0 ? { r: figAccrual.markerSize } : false} isAnimationActive={false} />
+                            </AreaChart>
+                          </ResponsiveContainer>
+                        ) : <p className="text-[12.5px] text-neutral-600 italic">Not defined for a pathway without a positive gain and effort.</p>}
+                      </div>
+                      {figAccrualOpen && trajectory.accrual.length > 1 && (
+                        <FigurePanel
+                          settings={figAccrual} onChange={setFigAccrual}
+                          exporting={figAccrualBusy}
+                          onExport={async () => {
+                            setFigAccrualBusy(true);
+                            await exportFigure(accrualRef.current, "transition-pathway-benefit-accrual.png", figAccrual, {
+                              title: figAccrual.title || `Benefit accrual: ${selectedLabel}`,
+                              subtitle: `Early Benefit Index ${fmtNum(selected.ebi)}: share of the final gain realized against share of effort spent`,
+                            });
+                            setFigAccrualBusy(false);
+                          }}
+                        />
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="bg-white rounded-lg border border-slate-200 p-4">
+                <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+                  <h4 className="text-sm font-semibold">All pathways</h4>
+                  <div className="flex items-center gap-2">
+                    <select value={filter} onChange={(e) => { setFilter(e.target.value); setShowCount(50); }} className="text-xs border border-slate-200 rounded px-2 py-1">
+                      <option value="all">All ({s.counts.total})</option>
+                      <option value="admissible">Admissible ({s.counts.admissible})</option>
+                      <option value="frontier">Efficient frontier ({result.candidates.filter((c) => c.frontier).length})</option>
+                      {PATHWAY_ARCHETYPES.map((a) => <option key={a.key} value={a.key}>{a.label} ({s.counts[a.key]})</option>)}
+                      <option value="conditional">Conditional, with trade-offs ({s.counts.conditional})</option>
+                      <option value="other">Not admissible ({s.counts.total - s.counts.admissible - s.counts.conditional})</option>
+                      {result.candidates.some((c) => c.expertNames?.length) && <option value="expert">Expert-defined ({result.candidates.filter((c) => c.expertNames?.length).length})</option>}
+                    </select>
+                    <Btn variant="outline" onClick={exportPathwaysCSV}><Download size={13} />Export CSV</Btn>
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-left text-neutral-600 border-b border-slate-100">
+                        {PATHWAY_TABLE_COLUMNS.map((col) => <SortHeader key={col.key} col={col} sortKey={sortKey} sortDir={sortDir} onSort={onSort} />)}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sorted.slice(0, showCount).map((r) => (
+                        <tr key={r.id} onClick={() => selectPathway(r.id)} className={`border-b border-slate-50 cursor-pointer hover:bg-slate-50 ${selectedId === r.id ? "bg-cobalt-50/60" : ""}`}>
+                          <td className="py-1 pr-3"><PathwayStagesText c={r.c} nameOf={nameOf} compact />{r.c.expertNames?.length > 0 && <ExpertBadge c={r.c} />}</td>
+                          <td className="py-1 pr-3 font-mono">{r.length}</td>
+                          <td className="py-1 pr-3 font-mono">{fmtNum(r.tog)}</td>
+                          <td className="py-1 pr-3 font-mono">{fmtNum(r.cii)}</td>
+                          <td className="py-1 pr-3 font-mono">{fmtNum(r.pei)}</td>
+                          <td className="py-1 pr-3 font-mono">{fmtNum(r.avgTp)}</td>
+                          <td className="py-1 pr-3 font-mono">{r.ss}</td>
+                          <td className="py-1 pr-3 font-mono">{fmtNum(r.ebi)}</td>
+                          <td className="py-1 pr-3 font-mono">{fmtSigned(r.ig)}</td>
+                          <td className="py-1 pr-3 font-mono">{fmtSigned(r.meanShift)}</td>
+                          <td className="py-1 pr-3"><ArchetypeBadges c={r.c} /></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {sorted.length > showCount && (
+                  <button onClick={() => setShowCount((n) => n + 100)} className="mt-2 text-xs text-cobalt-700 hover:underline">Show 100 more ({sorted.length - showCount} not shown)</button>
+                )}
+              </div>
+
+              <div className="bg-white rounded-lg border border-slate-200 p-4">
+                <div className="flex items-center justify-between mb-1">
+                  <h4 className="text-sm font-semibold">Implementation portfolios</h4>
+                  <Btn variant="outline" onClick={exportPortfoliosCSV}><Download size={13} />Export CSV</Btn>
+                </div>
+                <p className="text-[12.5px] text-neutral-600 mb-2">Every pathway starts with one of these opening moves. <strong className="text-neutral-900">Regret</strong> is how much total outcome gain an opening gives up compared with the best pathway of all (0: the best outcome stays within reach). The best gain, and the pathways counted per opening, are taken over the pathways that converged: the {s.counts.nonConverged} that did not have no defined end state and are left out. <strong className="text-neutral-900">Top pathways opened</strong> counts how many of the top {PATHWAY_TOP_N} pathways of each archetype start this way; a low-regret opening that opens many of them is a no-regret first move.</p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-left text-neutral-600 border-b border-slate-100">
+                        <th className="py-1 font-medium pr-3">Opening</th>
+                        <th className="py-1 font-medium pr-3">Regret</th>
+                        <th className="py-1 font-medium pr-3">Top pathways opened</th>
+                        {PATHWAY_ARCHETYPES.map((a) => <th key={a.key} className="py-1 font-medium pr-3">Best {a.label} continuation</th>)}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...result.portfolios.firstMoves, ...result.portfolios.openings].map((f, i) => (
+                        <tr key={f.key} className={`border-b border-slate-50 ${i === result.portfolios.firstMoves.length ? "border-t-2 border-t-slate-200" : ""}`}>
+                          <td className="py-1 pr-3"><PathwayStagesText c={{ stages: f.stages, length: f.stages.length }} nameOf={nameOf} compact /></td>
+                          <td className={`py-1 pr-3 font-mono ${f.regret <= 1e-6 ? "text-cobalt-700 font-semibold" : ""}`}>{fmtNum(f.regret)}</td>
+                          <td className="py-1 pr-3 font-mono">{f.opens}</td>
+                          {PATHWAY_ARCHETYPES.map((a) => {
+                            const c = f.bestBy[a.key] !== null ? candById.get(f.bestBy[a.key]) : null;
+                            return (
+                              <td key={a.key} className="py-1 pr-3">
+                                {c ? <button onClick={() => selectPathway(c.id)} className="text-left hover:text-cobalt-800"><PathwayStagesText c={{ ...c, stages: c.stages.slice(f.stages.length), length: c.length - f.stages.length }} nameOf={nameOf} compact />{c.length === f.stages.length && <span className="text-neutral-600">(stop here)</span>}</button> : <span className="text-neutral-500">none</span>}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {result.portfolios.openings.length > 0 && <p className="text-[11.5px] text-neutral-600 mt-1">Below the line: the two-stage openings shared by the most top-ranked pathways.</p>}
+              </div>
+
+              <div className="bg-white rounded-lg border border-slate-200 p-4">
+                <h4 className="text-sm font-semibold mb-1">Does the order decide the end state? (invariance test)</h4>
+                <p className="text-[12.5px] text-neutral-600 mb-2">For the lever sets of the top pathways, every order of the same levers at the same final intensities was simulated stage by stage. If the end states differ by more than {PATHWAY_INVARIANCE_TOLERANCE}, the model has more than one equilibrium for these levers, and the order of implementation decides where the system ends up (path dependence). Smaller differences come from where each run stops settling.</p>
+                {result.invariance.tested === 0 ? (
+                  <p className="text-xs text-neutral-600 italic">No top pathway combines two or more levers, so there was nothing to test.</p>
+                ) : (
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-left text-neutral-600 border-b border-slate-100">
+                        <th className="py-1 font-medium pr-3">Levers (final intensity)</th>
+                        <th className="py-1 font-medium pr-3">Orders tested</th>
+                        <th className="py-1 font-medium pr-3">Largest difference between end states</th>
+                        <th className="py-1 font-medium pr-3">Result</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {result.invariance.rows.map((r, i) => (
+                        <tr key={i} className="border-b border-slate-50">
+                          <td className="py-1 pr-3">{r.ids.map((id) => `${nameOf(id)} (${round2(r.final[id])})`).join(", ")}</td>
+                          <td className="py-1 pr-3 font-mono">{r.perms}</td>
+                          <td className="py-1 pr-3 font-mono">{fmtNum(r.maxDiff, 3)}</td>
+                          <td className="py-1 pr-3">{!r.allConverged ? <span className="text-neutral-700">Not all orders converged: undecided</span> : r.pathDependent ? <span className="text-amber-700 font-medium">Path dependent: the order matters</span> : <span className="text-cobalt-700">Same end state in every order</span>}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+              </div>
+            )}
+          </div>
+
           <div className="bg-white rounded-lg border border-slate-200 p-4">
             <h4 className="text-sm font-semibold mb-2">Export</h4>
             <div className="flex flex-wrap gap-2">
@@ -11745,12 +12029,33 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
               <Btn variant="outline" onClick={exportStagesCSV} disabled={!selected}><Download size={13} />Selected pathway stages (CSV)</Btn>
               <Btn variant="outline" onClick={exportLeversCSV}><Download size={13} />Lever profiles (CSV)</Btn>
               <Btn variant="outline" onClick={exportPortfoliosCSV}><Download size={13} />Portfolios (CSV)</Btn>
-              <Btn variant="outline" onClick={() => exportFigure(planeRef.current, "transition-pathways-effort-gain.png", figPlane, { title: figPlane.title || "Transition Pathways: Effort-Gain Plane", subtitle: `${pathwayContextLine} · ${s.counts.admissible} of ${s.counts.total} pathways admissible` })}><Download size={13} />Effort-gain plane ({figPlane.format.toUpperCase()})</Btn>
-              <Btn variant="outline" onClick={() => exportFigure(trajectoryRef.current, "transition-pathway-trajectory.png", figTrajectory, { title: figTrajectory.title || `Outcome trajectory: ${selectedLabel}`, subtitle: pathwayContextLine })} disabled={!selected}><Download size={13} />Selected trajectory ({figTrajectory.format.toUpperCase()})</Btn>
-              <Btn variant="outline" onClick={() => exportFigure(accrualRef.current, "transition-pathway-benefit-accrual.png", figAccrual, { title: figAccrual.title || `Benefit accrual: ${selectedLabel}`, subtitle: `Early Benefit Index ${fmtNum(selected?.ebi)}` })} disabled={!selected || !trajectory || trajectory.accrual.length <= 1}><Download size={13} />Selected benefit accrual ({figAccrual.format.toUpperCase()})</Btn>
+              <Btn variant="outline" disabled={!advancedOpen} title={advancedOpen ? undefined : "Open Advanced results to export this chart"} onClick={() => exportFigure(planeRef.current, "transition-pathways-effort-gain.png", figPlane, { title: figPlane.title || "Transition Pathways: Effort-Gain Plane", subtitle: `${pathwayContextLine} · ${s.counts.admissible} of ${s.counts.total} pathways admissible` })}><Download size={13} />Effort-gain plane ({figPlane.format.toUpperCase()})</Btn>
+              <Btn variant="outline" onClick={() => exportFigure(trajectoryRef.current, "transition-pathway-trajectory.png", figTrajectory, { title: figTrajectory.title || `Outcome trajectory: ${selectedLabel}`, subtitle: pathwayContextLine })} disabled={!selected || !advancedOpen} title={advancedOpen ? undefined : "Open Advanced results to export this chart"}><Download size={13} />Selected trajectory ({figTrajectory.format.toUpperCase()})</Btn>
+              <Btn variant="outline" onClick={() => exportFigure(accrualRef.current, "transition-pathway-benefit-accrual.png", figAccrual, { title: figAccrual.title || `Benefit accrual: ${selectedLabel}`, subtitle: `Early Benefit Index ${fmtNum(selected?.ebi)}` })} disabled={!selected || !advancedOpen || !trajectory || trajectory.accrual.length <= 1} title={advancedOpen ? undefined : "Open Advanced results to export this chart"}><Download size={13} />Selected benefit accrual ({figAccrual.format.toUpperCase()})</Btn>
             </div>
             <p className="text-[11.5px] text-neutral-600 mt-2">The Export Analysis Workbook in the header also includes these results (pathways, rankings, stages of the top pathways, lever profiles, portfolios, and the invariance and robustness tests).</p>
           </div>
+
+          <MethodPanel
+            fold
+            stats={[
+              { label: "Pathways evaluated", value: result.candidates.length.toLocaleString(), hint: "Every pathway and every shorter opening of it is a candidate." },
+              { label: "Admissible", value: `${s.counts.admissible} of ${s.counts.total}`, hint: `Converged, no trade-offs, and a total outcome gain of at least ${fmtNum(s.gMin)} (${Math.round((Number(result.config.minGainShare) || 0) * 100)}% of the best, or the flat threshold per outcome).` },
+              { label: "Simulation runs", value: result.runs.toLocaleString(), hint: "One run to equilibrium per sampled intensity, per lever, per stage (main analysis)." },
+              { label: "Did not converge", value: `${s.counts.nonConverged}`, tone: s.counts.nonConverged ? "warn" : undefined, hint: "Pathways with a stage that did not settle to the global convergence threshold within the iteration limit (usually a sustained oscillation, or with no squashing function, a runaway). They are reported but not classified." },
+              ...(result.imprecise !== undefined ? [{ label: `Settled to ${result.settingsUsed.convergenceThreshold}`, value: `${(result.runs - result.imprecise).toLocaleString()} of ${result.runs.toLocaleString()}`, tone: result.imprecise ? "warn" : undefined, hint: `Transition points compare neighbouring changes of the gain curve, which magnifies whatever is left of a run that has not quite settled, so every run continues until no concept changes by more than ${result.settingsUsed.convergenceThreshold} per iteration. Runs that stop short of that at the iteration limit give less precise transition points.` }] : []),
+              { label: "Transition point precision", value: `±${round2(1 / result.N)}`, hint: "A transition point can only fall on one of the sampled intensity steps." },
+              { label: "Transfer function / λ", value: transferFunctionLabel(result.settingsUsed) },
+              { label: "Update / iterations", value: `${result.settingsUsed.updateRule ?? "relative"}, synchronous, ≤ ${result.settingsUsed.maxIterations}`, hint: `Pathway runs are always synchronous (deterministic) and use this analysis's own iteration limit (at least ${TP_MIN_ITERATIONS}); everything else follows the global simulation settings.` },
+              { label: "Path dependence", value: result.invariance.tested ? `${result.invariance.pathDependent} of ${result.invariance.tested} lever sets` : "not tested", tone: result.invariance.pathDependent ? "warn" : undefined, hint: "Invariance test: the lever sets of the top pathways were simulated in every order at the same intensities. Different end states mean the order decides where the system ends up." },
+            ]}
+          >
+            <p><strong>Pathways are built stage by stage from Business-as-Usual.</strong> Business-as-Usual is the equilibrium of the model's own starting values with no scenario applied. In each stage a lever is swept from its current intensity to 1 in {result.N} steps, each run starting from the equilibrium the pathway has reached, with the earlier levers held in place. {result.rule === "tp" ? "The lever is implemented at its conditional transition point: the sampled intensity at which the marginal benefit of the lever to the total outcome gain declines most steeply, or 1 if it does not decline before full intensity. A lever whose gain at that point is no higher than the gain the pathway has already reached is not added." : "The lever is implemented at full intensity (the reference rule)."} A stage at full intensity (the reference rule, or a scale-up stage) can lower the total gain, when the lever worsens the outcomes beyond its transition point; such stage gains are shown in orange, and the efficient frontier and the rankings show whether the stage is worth taking.</p>
+            <p><strong>This is the transition point of the Transition Point tab, applied to the total outcome gain.</strong> The marginal benefit is the change in the gain per step of intensity, and benefit is counted in each outcome's desirable direction as set above, rather than in the direction the outcome happens to move. Every run continues until no concept changes by more than {result.settingsUsed.convergenceThreshold} per iteration, because comparing neighbouring changes of the gain curve magnifies whatever is left of a run that has not quite settled.</p>
+            <p><strong>Metrics.</strong> TOG is the weighted, direction-signed improvement of the outcomes relative to Business-as-Usual; CII the sum of final intensities times effort weights; PEI their ratio; the average TP the mean conditional transition point; SS the number of outcomes improved by more than {result.eps}; IG the gain beyond what the same levers achieve on their own at the same intensities (strongly negative when each lever alone already moves much of the system, so their separate effects overlap). The Early Benefit Index is the area under the accrual curve of gain against effort, traced at the sweep resolution within each stage (the stage-level formula uses only the stage end points; the finer curve keeps single-stage pathways classifiable).</p>
+            <p><strong>Archetype thresholds are relative.</strong> Quartiles and quintiles are taken across the {s.counts.admissible} admissible pathways of this run{s.counts.admissible < 10 ? ", which is a small set, so the thresholds are coarse" : ""}. The rules are conventions that structure the comparison, not properties of the system; the robustness test shows how much the top pathways depend on the simulation settings.</p>
+            <p><strong>What this does not tell you.</strong> Stages are implementation phases, not periods of time, and each is assumed to last long enough for the system to settle. Implemented levers are assumed to stay in place. Results are relative comparisons between pathways in the units of the map, implications of the causal structure as drawn rather than forecasts.</p>
+          </MethodPanel>
         </>
       )}
     </div>
@@ -11989,19 +12294,19 @@ const TAB_GROUPS = [
     ],
   },
   {
-    id: "sensitivity", label: "Sensitivity analyses",
-    hint: "Test how far the results depend on the weights and starting values. Mainly for the analyst.",
-    tabs: [
-      { id: "sensitivity", label: "Sensitivity Analysis", icon: SlidersHorizontal },
-      { id: "montecarlo", label: "Monte Carlo", icon: Dices },
-    ],
-  },
-  {
     id: "transition", label: "Transition analyses",
     hint: "Find tipping points and effective routes to change. Mainly for the analyst.",
     tabs: [
       { id: "transition", label: "Transition Point Analysis", icon: TrendingUp },
       { id: "pathways", label: "Transition Pathways", icon: Waypoints },
+    ],
+  },
+  {
+    id: "sensitivity", label: "Sensitivity analyses",
+    hint: "Test how far the results depend on the weights and starting values. Mainly for the analyst.",
+    tabs: [
+      { id: "sensitivity", label: "Sensitivity Analysis", icon: SlidersHorizontal },
+      { id: "montecarlo", label: "Monte Carlo", icon: Dices },
     ],
   },
   {
@@ -12284,8 +12589,11 @@ function SpaghettiEngineApp() {
 
   const [matrixText, setMatrixText] = useState("");
   const [showMatrixPanel, setShowMatrixPanel] = useState(false);
-  const [showInitialValueHelp, setShowInitialValueHelp] = useState(false);
   const [showScenarioHelp, setShowScenarioHelp] = useState(false);
+  // Scenarios tab: the change being added, and what the comparison bars show.
+  const [newChange, setNewChange] = useState({ conceptId: "", value: 0.5 });
+  const [comparisonMode, setComparisonMode] = useState("change");
+  const comparisonFigRef = useRef(null);
   const [matrixError, setMatrixError] = useState(null);
   const [matrixSuccess, setMatrixSuccess] = useState(null);
   const fileInputRef = useRef(null);
@@ -12471,7 +12779,8 @@ function SpaghettiEngineApp() {
     if (concepts.length < 2) return;
     setEdges((es) => [...es, { id: uid("e"), source: concepts[0].id, target: concepts[1].id, weight: 0.5, description: "" }]);
   };
-  const updateEdge = (id, patch) => setEdges((es) => es.map((e) => (e.id === id ? { ...e, ...patch } : e)));
+  // `patch` is an object, or a function of the relationship that returns one.
+  const updateEdge = (id, patch) => setEdges((es) => es.map((e) => (e.id === id ? { ...e, ...(typeof patch === "function" ? patch(e) : patch) } : e)));
   const removeEdge = (id) => {
     const removed = edges.find((e) => e.id === id);
     const nameOf = (cid) => concepts.find((c) => c.id === cid)?.name || "?";
@@ -12561,6 +12870,47 @@ function SpaghettiEngineApp() {
         lockedConcepts: { ...s.lockedConcepts, [conceptId]: direction },
       });
     }
+  };
+
+  // The changes a scenario makes, in plain words, for the Scenarios tab:
+  // pushed up or down (held at +1 / -1), held at a value, a different
+  // starting value, or a relationship with another weight.
+  const scenarioChanges = (sc) => {
+    if (!sc) return [];
+    const nameOf = (id) => concepts.find((c) => c.id === id)?.name || id;
+    const ids = [...new Set([...Object.keys(sc.lockedConcepts || {}), ...Object.keys(sc.initialOverrides || {})])];
+    const out = ids.map((id) => {
+      const lock = sc.lockedConcepts?.[id], ov = sc.initialOverrides?.[id];
+      if (lock === 1 && (ov === undefined || ov === 1)) return { id, name: nameOf(id), kind: "up", text: "▲ pushed up" };
+      if (lock === -1 && (ov === undefined || ov === -1)) return { id, name: nameOf(id), kind: "down", text: "▼ pushed down" };
+      if (lock !== undefined) return { id, name: nameOf(id), kind: "hold", text: `held at ${round2(lock)}` };
+      return { id, name: nameOf(id), kind: "start", text: `starts at ${round2(ov)}` };
+    });
+    Object.entries(sc.weightOverrides || {}).forEach(([eid, w]) => {
+      const e = edges.find((x) => x.id === eid);
+      if (e) out.push({ id: `w:${eid}`, name: `${nameOf(e.source)} → ${nameOf(e.target)}`, kind: "weight", text: `weight ${round2(w)}` });
+    });
+    return out;
+  };
+  const removeScenarioChange = (scenarioId, changeId) => {
+    const sc = scenarios.find((x) => x.id === scenarioId);
+    if (!sc) return;
+    if (changeId.startsWith("w:")) {
+      const next = { ...(sc.weightOverrides || {}) }; delete next[changeId.slice(2)];
+      updateScenario(scenarioId, { weightOverrides: next });
+      return;
+    }
+    const ov = { ...(sc.initialOverrides || {}) }; delete ov[changeId];
+    const lk = { ...(sc.lockedConcepts || {}) }; delete lk[changeId];
+    updateScenario(scenarioId, { initialOverrides: ov, lockedConcepts: lk });
+  };
+  const applyScenarioChange = (scenarioId, kind) => {
+    const sc = scenarios.find((x) => x.id === scenarioId);
+    const id = newChange.conceptId;
+    if (!sc || !id) return;
+    const v = kind === "up" ? 1 : kind === "down" ? -1 : clamp(parseFloat(newChange.value) || 0);
+    updateScenario(scenarioId, { initialOverrides: { ...(sc.initialOverrides || {}), [id]: v }, lockedConcepts: { ...(sc.lockedConcepts || {}), [id]: v } });
+    setNewChange((c) => ({ ...c, conceptId: "" }));
   };
 
   // ==== run ==================================================================
@@ -13133,7 +13483,7 @@ function SpaghettiEngineApp() {
 
       {tab !== "about" && !basic && <AnalysisScopeBar viewInfo={viewInfo} modules={modules} networkView={networkView} setNetworkView={setNetworkView} />}
 
-      <div className="flex-1 overflow-auto p-3 sm:p-5 bg-slate-50">
+      <div className="se-content flex-1 overflow-auto p-3 sm:p-5 bg-slate-50">
         {/* A display error in one tab stays in that tab: the rest of the app,
             the tab bar, and the model are unaffected, and switching tabs
             (the key) starts that tab fresh. */}
@@ -13144,57 +13494,11 @@ function SpaghettiEngineApp() {
         {/* ============================= EDITOR ============================= */}
         {tab === "editor" && (
           <div className="space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-neutral-700">Every concept and relationship as a list. To draw them instead, use the <button onClick={() => setTab("network")} className="underline font-medium text-cobalt-800">Network tab</button>.</p>
+            </div>
+
             <ModelCheck concepts={concepts} edges={edges} onSelectConcept={(id) => revealItem("concept", id)} onSelectEdge={(id) => revealItem("edge", id)} />
-            <div className="bg-white rounded-lg border border-slate-200 p-4">
-              <button onClick={() => setShowMatrixPanel((v) => !v)} className="flex items-center gap-1.5 text-sm font-semibold w-full text-left">
-                <ClipboardPaste size={15} className="text-cobalt-700" />
-                Build from an adjacency matrix
-                {showMatrixPanel ? <ChevronDown size={14} className="ml-auto text-neutral-600" /> : <ChevronRight size={14} className="ml-auto text-neutral-600" />}
-              </button>
-              {showMatrixPanel && (
-                <div className="mt-3 space-y-2">
-                  <p className="text-xs text-neutral-700">
-                    Copy a square weight matrix out of Excel (concept names as both column headers and row labels, cell [row, col] = weight of the edge <em>row → col</em>) and paste it below. This <strong>replaces</strong> the current model.
-                  </p>
-                  <textarea
-                    value={matrixText}
-                    onChange={(e) => setMatrixText(e.target.value)}
-                    placeholder={"Paste directly from Excel, e.g.:\n\t Concept A\tConcept B\tConcept C\nConcept A\t0\t0.5\t0\nConcept B\t-0.25\t0\t0.5\nConcept C\t0\t0\t0"}
-                    className="w-full h-32 text-xs font-mono border border-slate-200 rounded p-2 focus:outline-none focus:ring-1 focus:ring-cobalt-500"
-                  />
-                  <div className="flex items-center gap-2">
-                    <Btn onClick={buildFromMatrix} disabled={!matrixText.trim()}><ClipboardPaste size={13} />Build model from matrix</Btn>
-                    {matrixError && <span className="text-xs text-rose-600">{matrixError}</span>}
-                    {matrixSuccess && <span className="text-xs text-cobalt-700 flex items-center gap-1"><Check size={12} />{matrixSuccess}</span>}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="bg-cobalt-50 border border-cobalt-100 rounded-lg p-3 text-xs text-cobalt-800">
-              Prefer building visually? The <button onClick={() => setTab("network")} className="underline font-medium">Network tab</button> is now the primary way to create and edit concepts and relationships by dragging on a canvas (this table view is for bulk review and editing).
-            </div>
-
-            <div className="bg-white rounded-lg border border-slate-200 p-4">
-              <button onClick={() => setShowInitialValueHelp((v) => !v)} className="flex items-center gap-1.5 text-sm font-semibold w-full text-left">
-                <HelpCircle size={15} className="text-cobalt-700" />
-                How to set each concept's "Initial" value
-                {showInitialValueHelp ? <ChevronDown size={14} className="ml-auto text-neutral-600" /> : <ChevronRight size={14} className="ml-auto text-neutral-600" />}
-              </button>
-              {showInitialValueHelp && (
-                <div className="mt-3 space-y-2.5 text-xs text-neutral-900">
-                  <p>This is <strong>A(0)</strong>: each concept's activation at the start of a run, on the same -1 (fully suppressed) to +1 (fully active) scale as relationship weights. It's what the <button onClick={() => setTab("equilibrium")} className="underline font-medium text-cobalt-700">Baseline Equilibrium tab</button> starts from.</p>
-
-                  <p><strong>Important: all-zero will always stay at zero.</strong> If every concept is set to 0 here, the Baseline Equilibrium run cannot move away from zero, no matter how strong or complex the causal weights are. This isn't a limit of this app; it's a mathematical property of the tanh/sigmoid update rule itself, since tanh(0) = sigmoid(0) = 0: with nothing pushing a concept away from zero, the model has no way to activate itself from nothing. Use this "all zeros" setup only when you specifically want that structural check ("could this network run away on its own from total rest, e.g. because of a strong self-reinforcing loop") rather than a realistic system state.</p>
-
-                  <p><strong>For a meaningful, non-trivial baseline equilibrium: give at least the currently-active concepts a real starting value</strong>, reflecting the stakeholder-elicited or observed current state of the system, on the same -1 to +1 scale used for weights (e.g. "already strongly present" -&gt; +0.75 to +1; "moderately present" -&gt; +0.25 to +0.5; "actively suppressed" -&gt; negative). This is what produces an equilibrium that actually diverges from zero: the model's own structure then carries those starting conditions forward to wherever the causal relationships settle.</p>
-
-                  <p><strong>Don't use this field to test interventions or policies</strong> once you have a meaningful baseline set up. Setting, say, "Fertiliser use" to +1 to see "what if fertiliser use were at its maximum" changes what the baseline itself represents, so it stops being a clean reference to compare against. For that, use the <button onClick={() => setTab("scenarios")} className="underline font-medium text-cobalt-700">Scenarios &amp; Simulation tab</button> instead: its driver controls (▲/▼) hold a concept at full activation for a whole run without touching these baseline values, and every scenario there is automatically compared back against this baseline.</p>
-
-                  <p className="text-neutral-600">After setting values here, open Baseline Equilibrium and click Run. With any concept away from zero, expect a multi-iteration trace toward wherever the structure settles; with everything still at zero, expect immediate convergence back to zero, exactly as described above, and the diagnostics panel there will say so explicitly.</p>
-                </div>
-              )}
-            </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             <div className="bg-white rounded-lg border border-slate-200 p-4">
@@ -13203,7 +13507,7 @@ function SpaghettiEngineApp() {
                 <Btn onClick={addConcept}><Plus size={14} />Add concept</Btn>
               </div>
               <div className="space-y-2 max-h-[560px] overflow-auto pr-1">
-                {concepts.length === 0 && <p className="text-sm text-neutral-600 italic">No concepts yet: add one here, paste a matrix above, or draw them on the Network tab.</p>}
+                {concepts.length === 0 && <p className="text-sm text-neutral-600 italic">No concepts yet.</p>}
                 <ProgressiveList items={concepts} render={(c) => (
                   <div key={c.id} className="border border-slate-200 rounded-md p-2.5">
                     <div className="flex items-center gap-2">
@@ -13216,7 +13520,7 @@ function SpaghettiEngineApp() {
                         placeholder="Concept name"
                         className="flex-1 text-sm font-medium border-none focus:outline-none focus:ring-1 focus:ring-cobalt-500 rounded px-1"
                       />
-                      <button onClick={() => revealItem("concept", c.id)} className="text-[12.5px] text-neutral-600 hover:text-cobalt-700" title="Show this concept on the map">show</button>
+                      <button onClick={() => revealItem("concept", c.id)} className="text-neutral-500 hover:text-cobalt-700" title="Show this concept on the map" aria-label={`Show ${c.name} on the map`}><Eye size={14} /></button>
                       <button onClick={() => { commitHistory(); removeConcept(c.id); }} className="text-neutral-500 hover:text-red-500" title="Delete this concept"><Trash2 size={14} /></button>
                     </div>
                     <div className="flex items-center gap-2 mt-1.5">
@@ -13228,7 +13532,7 @@ function SpaghettiEngineApp() {
                         onChange={(e) => updateConcept(c.id, { category: e.target.value })}
                         className="text-xs flex-1 border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-cobalt-500"
                       />
-                      <label className="text-[12.5px] text-neutral-700" title="Starting value for simulations, from -1 (very low) to +1 (very high)">Start</label>
+                      <label className="text-[12.5px] text-neutral-700 inline-flex items-center gap-0.5" title="Starting value for simulations, from -1 (very low) to +1 (very high). Give the concepts that describe today's situation a value: if every value is 0, nothing can move. Test interventions in Scenarios & Simulation, not here.">Start<HelpCircle size={10} className="text-neutral-500" /></label>
                       <input
                         type="number" min={-1} max={1} step={0.05} value={c.initialValue}
                         onChange={(e) => updateConcept(c.id, { initialValue: clamp(parseFloat(e.target.value) || 0) })}
@@ -13274,23 +13578,43 @@ function SpaghettiEngineApp() {
             </div>
 
             <div className="bg-white rounded-lg border border-slate-200 p-4">
-              <div className="flex items-center gap-3 flex-wrap">
-                <h3 className="font-semibold text-sm flex items-center gap-1.5"><Download size={15} className="text-cobalt-700" />Export model tables</h3>
-                <span className="text-xs text-neutral-700">The complete model as tables, for a report, an appendix, or other software.</span>
-              </div>
-              <div className="flex items-center gap-2 flex-wrap mt-3">
-                <Btn variant="accent" onClick={exportModelTablesXlsx} disabled={!concepts.length} title="One Excel file with three sheets: Concepts, Relationships, Adjacency Matrix">
-                  <Table2 size={14} />All three as Excel (.xlsx)
-                </Btn>
-                <Btn variant="outline" onClick={() => exportModelTable("concepts")} disabled={!concepts.length}><Download size={13} />Concepts with definitions (CSV)</Btn>
-                <Btn variant="outline" onClick={() => exportModelTable("relationships")} disabled={!edges.length}><Download size={13} />Relationships (CSV)</Btn>
-                <Btn variant="outline" onClick={() => exportModelTable("matrix")} disabled={!concepts.length}><Download size={13} />Adjacency matrix (CSV)</Btn>
-              </div>
-              <p className="text-[12.5px] text-neutral-600 mt-2">
-                Concepts: ID, name, module, definition, starting value, and number of relationships. Relationships: from, to, weight, effect, strength, the relationship in words,
-                modules, and whether it links two modules. Adjacency matrix: rows are the source concept, columns the target, 0 where there is no relationship; it can be pasted
-                back into "Build from an adjacency matrix". The Excel file is the easiest to open in Excel with any regional settings.
-              </p>
+              <button onClick={() => setShowMatrixPanel((v) => !v)} aria-expanded={showMatrixPanel} className="flex items-center gap-1.5 text-sm font-semibold w-full text-left">
+                <Table2 size={15} className="text-cobalt-700" />
+                Import and export tables
+                <span className="text-xs font-normal text-neutral-600 ml-1">Paste a matrix from Excel, or save the model as tables</span>
+                {showMatrixPanel ? <ChevronDown size={14} className="ml-auto text-neutral-600" /> : <ChevronRight size={14} className="ml-auto text-neutral-600" />}
+              </button>
+              {showMatrixPanel && (
+                <div className="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-5">
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-neutral-900 flex items-center gap-1.5"><ClipboardPaste size={13} className="text-cobalt-700" />Build from an adjacency matrix</p>
+                    <p className="text-[12.5px] text-neutral-700" title="Concept names as both the column headers and the row labels; the cell in row A, column B is the weight of A → B.">Paste a square weight matrix from Excel, with concept names as headers. This <strong>replaces</strong> the current model.</p>
+                      <textarea
+                        value={matrixText}
+                        onChange={(e) => setMatrixText(e.target.value)}
+                        placeholder={"Paste directly from Excel, e.g.:\n\t Concept A\tConcept B\tConcept C\nConcept A\t0\t0.5\t0\nConcept B\t-0.25\t0\t0.5\nConcept C\t0\t0\t0"}
+                        className="w-full h-32 text-xs font-mono border border-slate-200 rounded p-2 focus:outline-none focus:ring-1 focus:ring-cobalt-500"
+                      />
+                      <div className="flex items-center gap-2">
+                        <Btn onClick={buildFromMatrix} disabled={!matrixText.trim()}><ClipboardPaste size={13} />Build model from matrix</Btn>
+                        {matrixError && <span className="text-xs text-rose-600">{matrixError}</span>}
+                        {matrixSuccess && <span className="text-xs text-cobalt-700 flex items-center gap-1"><Check size={12} />{matrixSuccess}</span>}
+                      </div>
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-neutral-900 flex items-center gap-1.5"><Download size={13} className="text-cobalt-700" />Export model tables</p>
+                    <p className="text-[12.5px] text-neutral-700">Concepts, relationships and the adjacency matrix, for a report or other software. The exported matrix can be pasted back here.</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Btn variant="accent" onClick={exportModelTablesXlsx} disabled={!concepts.length} title="One Excel file with three sheets: Concepts, Relationships, Adjacency Matrix">
+                      <Table2 size={14} />All three as Excel (.xlsx)
+                    </Btn>
+                    <Btn variant="outline" onClick={() => exportModelTable("concepts")} disabled={!concepts.length}><Download size={13} />Concepts with definitions (CSV)</Btn>
+                    <Btn variant="outline" onClick={() => exportModelTable("relationships")} disabled={!edges.length}><Download size={13} />Relationships (CSV)</Btn>
+                    <Btn variant="outline" onClick={() => exportModelTable("matrix")} disabled={!concepts.length}><Download size={13} />Adjacency matrix (CSV)</Btn>
+                  </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -13362,60 +13686,133 @@ function SpaghettiEngineApp() {
               )}
             </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-5">
-            <div className="bg-white rounded-lg border border-slate-200 p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold text-sm">Scenarios</h3>
-              </div>
-              <div className="flex gap-1.5 mb-3 flex-wrap">
-                <Btn variant="outline" onClick={() => addScenario("intervention")}><Plus size={13} />New</Btn>
-                <Btn variant="outline" onClick={() => duplicateScenario(activeScenarioId)}>Duplicate</Btn>
-              </div>
-              <div className="space-y-1.5">
-                {scenarios.map((s) => (
-                  <div key={s.id} className={`rounded-md border p-2 cursor-pointer ${activeScenarioId === s.id ? "border-cobalt-600 bg-cobalt-50" : "border-slate-200"}`} onClick={() => setActiveScenarioId(s.id)}>
-                    <div className="flex items-center justify-between">
-                      <input
-                        value={s.name}
-                        onChange={(e) => updateScenario(s.id, { name: e.target.value })}
-                        onClick={(e) => e.stopPropagation()}
-                        className="text-sm bg-transparent font-medium flex-1 focus:outline-none"
-                      />
-                      {s.id === "baseline" ? (
-                        <span className="text-[11.5px] text-neutral-600 whitespace-nowrap" title="The baseline is always included in the comparison; tick compare on the scenarios you want to set against it.">
-                          always compared
-                        </span>
-                      ) : (
-                        <label className="flex items-center gap-1 text-[11.5px] text-neutral-700" onClick={(e) => e.stopPropagation()}>
-                          <input type="checkbox" checked={compareIds.includes(s.id)} onChange={() => toggleCompare(s.id)} /> compare
-                        </label>
-                      )}
-                      {s.id !== "baseline" && (
-                        <button onClick={(e) => { e.stopPropagation(); removeScenario(s.id); }} className="text-neutral-500 hover:text-red-500 ml-1"><Trash2 size={12} /></button>
-                      )}
-                    </div>
-                    <select
-                      value={s.type} onClick={(e) => e.stopPropagation()}
-                      onChange={(e) => updateScenario(s.id, { type: e.target.value })}
-                      className="text-[11.5px] text-neutral-700 mt-1 bg-transparent"
-                    >
-                      <option value="baseline">baseline</option>
-                      <option value="intervention">intervention</option>
-                      <option value="shock">shock</option>
-                      <option value="policy_bundle">policy bundle</option>
-                    </select>
-                    <input
-                      value={s.description || ""}
-                      placeholder="Short description (used in the exported workbook)"
-                      onChange={(e) => updateScenario(s.id, { description: e.target.value })}
-                      onClick={(e) => e.stopPropagation()}
-                      className="w-full mt-1 text-[12.5px] bg-transparent text-neutral-700 placeholder:text-neutral-400 focus:outline-none border-b border-transparent focus:border-slate-200"
-                    />
-                  </div>
-                ))}
+            {/* ===== 1. Scenarios: choose, build and run, all in one block ===== */}
+            <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-semibold text-sm">Your scenarios</h3>
+                  <p className="text-xs text-neutral-700">A scenario is a "what if": push a few concepts up or down and see where the system settles compared with the baseline. Tick the scenarios to compare, then run.</p>
+                </div>
+                <div className="flex gap-2">
+                  <Btn variant="accent" onClick={runAll}><Play size={14} />Run simulation</Btn>
+                  <Btn variant="ghost" onClick={resetActivation} title="Clear the results"><RotateCcw size={14} />Reset</Btn>
+                </div>
               </div>
 
-              <div className={`mt-4 pt-3 border-t border-slate-100 ${basic ? "hidden" : ""}`}>
+              {/* the scenarios as tabs: click one to edit it, tick it to compare it */}
+              <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Scenarios">
+                {scenarios.map((s) => {
+                  const on = s.id === "baseline" || compareIds.includes(s.id);
+                  const n = scenarioChanges(s).length;
+                  return (
+                    <div key={s.id} role="tab" aria-selected={activeScenarioId === s.id} onClick={() => setActiveScenarioId(s.id)}
+                      className={`flex items-center gap-1.5 rounded-full border pl-2 pr-3 py-1 cursor-pointer text-xs ${activeScenarioId === s.id ? "border-cobalt-600 bg-cobalt-50 text-cobalt-900" : "border-slate-300 bg-white text-neutral-900 hover:border-slate-400"}`}>
+                      <input type="checkbox" checked={on} disabled={s.id === "baseline"} onClick={(e) => e.stopPropagation()} onChange={() => toggleCompare(s.id)}
+                        title={s.id === "baseline" ? "The baseline is always compared" : "Include in the comparison"} aria-label={`Compare ${s.name}`} />
+                      <span className="font-medium">{s.id === "baseline" ? "Baseline" : (s.name || "Unnamed scenario")}</span>
+                      {s.id !== "baseline" && <span className="text-[11.5px] text-neutral-600">{n} change{n === 1 ? "" : "s"}</span>}
+                    </div>
+                  );
+                })}
+                <Btn variant="outline" onClick={() => addScenario("intervention")}><Plus size={13} />New scenario</Btn>
+                {activeScenarioId !== "baseline" && <Btn variant="ghost" onClick={() => duplicateScenario(activeScenarioId)}><Copy size={13} />Duplicate</Btn>}
+              </div>
+
+              {/* editing the selected scenario */}
+              {activeScenario && (
+                <div className="rounded-md border border-slate-200 p-3 space-y-3">
+                  {activeScenario.id === "baseline" ? (
+                    <p className="text-xs text-neutral-700">The <strong>baseline</strong> is the model as it is, with nothing pushed: the reference every scenario is compared with. Select another scenario to edit it, or make a new one.</p>
+                  ) : (
+                    <>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input value={activeScenario.name} onChange={(e) => updateScenario(activeScenario.id, { name: e.target.value })} aria-label="Scenario name"
+                          className="text-sm font-semibold border border-slate-200 rounded px-2 py-1 flex-1 min-w-[12rem]" />
+                        <select value={activeScenario.type} onChange={(e) => updateScenario(activeScenario.id, { type: e.target.value })} aria-label="Kind of scenario" className="text-xs border border-slate-200 rounded px-1.5 py-1">
+                          <option value="intervention">Intervention</option>
+                          <option value="shock">Shock</option>
+                          <option value="policy_bundle">Policy bundle</option>
+                          <option value="baseline">Baseline</option>
+                        </select>
+                        <button onClick={() => removeScenario(activeScenario.id)} className="text-neutral-500 hover:text-red-600" title="Delete this scenario" aria-label="Delete this scenario"><Trash2 size={14} /></button>
+                      </div>
+                      <input value={activeScenario.description || ""} onChange={(e) => updateScenario(activeScenario.id, { description: e.target.value })}
+                        placeholder="What does this scenario stand for? (optional)" aria-label="Scenario description"
+                        className="w-full text-xs border border-slate-200 rounded px-2 py-1 placeholder:text-neutral-400" />
+                    </>
+                  )}
+
+                  <div>
+                    <p className="text-xs font-semibold text-neutral-900 mb-1.5">What changes in this scenario</p>
+                    {scenarioChanges(activeScenario).length === 0 ? (
+                      <p className="text-xs text-neutral-600 italic">Nothing yet. Add a change below.</p>
+                    ) : (
+                      <ul className="flex flex-wrap gap-1.5">
+                        {scenarioChanges(activeScenario).map((ch) => (
+                          <li key={ch.id} className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs ${ch.kind === "up" ? "border-cobalt-300 bg-cobalt-50 text-cobalt-900" : ch.kind === "down" ? "border-rose-300 bg-rose-50 text-rose-800" : "border-slate-300 bg-slate-50 text-neutral-900"}`}>
+                            <span className="font-medium">{ch.name}</span><span>{ch.text}</span>
+                            <button onClick={() => removeScenarioChange(activeScenario.id, ch.id)} className="text-neutral-500 hover:text-red-600" aria-label={`Remove the change to ${ch.name}`}><X size={12} /></button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="text-neutral-700 font-medium">Add a change:</span>
+                    <select value={newChange.conceptId} onChange={(ev) => setNewChange((c) => ({ ...c, conceptId: ev.target.value }))} aria-label="Concept to change" className="text-xs border border-slate-300 rounded px-1.5 py-1 max-w-[16rem]">
+                      <option value="">Choose a concept</option>
+                      {aConcepts.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                    <button disabled={!newChange.conceptId} onClick={() => applyScenarioChange(activeScenario.id, "up")} className="px-2 py-1 rounded border border-cobalt-300 bg-cobalt-50 text-cobalt-900 hover:bg-cobalt-100 disabled:opacity-40" title="Held at +1 for the whole run">▲ Push up</button>
+                    <button disabled={!newChange.conceptId} onClick={() => applyScenarioChange(activeScenario.id, "down")} className="px-2 py-1 rounded border border-rose-300 bg-rose-50 text-rose-800 hover:bg-rose-100 disabled:opacity-40" title="Held at -1 for the whole run">▼ Push down</button>
+                    <span className="text-neutral-500">or</span>
+                    <button disabled={!newChange.conceptId} onClick={() => applyScenarioChange(activeScenario.id, "hold")} className="px-2 py-1 rounded border border-slate-300 bg-white hover:bg-slate-50 disabled:opacity-40" title="Held at this value for the whole run">Hold at</button>
+                    <input type="number" min={-1} max={1} step={0.05} value={newChange.value} onChange={(e) => setNewChange((c) => ({ ...c, value: e.target.value }))} aria-label="Value to hold at" className="w-16 border border-slate-300 rounded px-1.5 py-1 font-mono" />
+                  </div>
+
+                  <details className="text-xs">
+                    <summary className="cursor-pointer text-neutral-700">All concepts at once (push, set a starting value, or lock)</summary>
+                    <div className="mt-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      {aConcepts.map((c) => {
+                        const ov = activeScenario?.initialOverrides?.[c.id];
+                        const locked = activeScenario?.lockedConcepts?.[c.id] !== undefined;
+                        const isIncreaseDriver = locked && activeScenario?.lockedConcepts?.[c.id] === 1 && ov === 1;
+                        const isDecreaseDriver = locked && activeScenario?.lockedConcepts?.[c.id] === -1 && ov === -1;
+                        return (
+                          <div key={c.id} className="border border-slate-200 rounded p-2 flex items-center gap-1.5">
+                            <span className="text-xs flex-1 truncate">{c.name}</span>
+                            <button
+                              onClick={() => setDriver(activeScenario.id, c.id, 1)}
+                              title="Driver: increase (locked at +1)"
+                              className={`text-[11.5px] w-5 h-5 rounded border leading-none ${isIncreaseDriver ? "border-cobalt-700 bg-cobalt-50 text-cobalt-800" : "border-slate-200 text-neutral-600 hover:border-slate-400"}`}
+                            >▲</button>
+                            <button
+                              onClick={() => setDriver(activeScenario.id, c.id, -1)}
+                              title="Driver: decrease (locked at −1)"
+                              className={`text-[11.5px] w-5 h-5 rounded border leading-none ${isDecreaseDriver ? "border-rose-600 bg-rose-50 text-rose-700" : "border-slate-200 text-neutral-600 hover:border-slate-400"}`}
+                            >▼</button>
+                            <input
+                              type="number" step={0.05} min={-1} max={1}
+                              placeholder={String(c.initialValue)}
+                              value={ov ?? ""}
+                              onChange={(e) => e.target.value === "" ? clearOverride(activeScenario.id, c.id) : setOverride(activeScenario.id, c.id, clamp(parseFloat(e.target.value)))}
+                              className="w-14 text-xs border border-slate-200 rounded px-1 py-0.5"
+                            />
+                            <button onClick={() => toggleLock(activeScenario.id, c.id, ov ?? c.initialValue)} title="Lock this value for the whole run" className={locked ? "text-cobalt-700" : "text-neutral-500 hover:text-neutral-900"}>
+                              {locked ? <Lock size={13} /> : <Unlock size={13} />}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    </div>
+                  </details>
+                </div>
+              )}
+
+              <div className={`pt-1 ${basic ? "hidden" : ""}`}>
                 <details>
                   <summary className="text-xs font-medium text-neutral-700 cursor-pointer">Advanced options</summary>
                   <p className="text-[12.5px] text-neutral-600 mt-2 mb-1">
@@ -13466,317 +13863,234 @@ function SpaghettiEngineApp() {
                   </div>
                 </details>
               </div>
-
-              <div className="flex gap-2 mt-4">
-                <Btn variant="accent" onClick={runAll}><Play size={14} />Run simulation</Btn>
-                <Btn variant="ghost" onClick={resetActivation}><RotateCcw size={14} />Reset</Btn>
-              </div>
             </div>
 
-            <div className="space-y-5">
-              {/* editing overrides for the active scenario */}
-              <div className="bg-white rounded-lg border border-slate-200 p-4">
-                <h3 className="font-semibold text-sm mb-1">Editing: {activeScenario?.name}</h3>
-                <p className="text-xs text-neutral-600 mb-3">
-                  Mark a concept as a <strong>driver</strong> (▲ increase / ▼ decrease) the way Mental Modeler scenarios work: it's forced to full activation (+1 / -1) and held there for the entire run. Or set a custom starting value for finer-grained control, and lock it independently if you want it held fixed too.
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  {aConcepts.map((c) => {
-                    const ov = activeScenario?.initialOverrides?.[c.id];
-                    const locked = activeScenario?.lockedConcepts?.[c.id] !== undefined;
-                    const isIncreaseDriver = locked && activeScenario?.lockedConcepts?.[c.id] === 1 && ov === 1;
-                    const isDecreaseDriver = locked && activeScenario?.lockedConcepts?.[c.id] === -1 && ov === -1;
-                    return (
-                      <div key={c.id} className="border border-slate-200 rounded p-2 flex items-center gap-1.5">
-                        <span className="text-xs flex-1 truncate">{c.name}</span>
-                        <button
-                          onClick={() => setDriver(activeScenario.id, c.id, 1)}
-                          title="Driver: increase (locked at +1)"
-                          className={`text-[11.5px] w-5 h-5 rounded border leading-none ${isIncreaseDriver ? "border-cobalt-700 bg-cobalt-50 text-cobalt-800" : "border-slate-200 text-neutral-600 hover:border-slate-400"}`}
-                        >▲</button>
-                        <button
-                          onClick={() => setDriver(activeScenario.id, c.id, -1)}
-                          title="Driver: decrease (locked at −1)"
-                          className={`text-[11.5px] w-5 h-5 rounded border leading-none ${isDecreaseDriver ? "border-rose-600 bg-rose-50 text-rose-700" : "border-slate-200 text-neutral-600 hover:border-slate-400"}`}
-                        >▼</button>
-                        <input
-                          type="number" step={0.05} min={-1} max={1}
-                          placeholder={String(c.initialValue)}
-                          value={ov ?? ""}
-                          onChange={(e) => e.target.value === "" ? clearOverride(activeScenario.id, c.id) : setOverride(activeScenario.id, c.id, clamp(parseFloat(e.target.value)))}
-                          className="w-14 text-xs border border-slate-200 rounded px-1 py-0.5"
-                        />
-                        <button onClick={() => toggleLock(activeScenario.id, c.id, ov ?? c.initialValue)} title="Lock this value for the whole run" className={locked ? "text-cobalt-700" : "text-neutral-500 hover:text-neutral-900"}>
-                          {locked ? <Lock size={13} /> : <Unlock size={13} />}
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
+            {/* ===== 2. Results ===== */}
+            {comparedIds.length === 0 ? (
+              <div className="bg-white rounded-lg border border-dashed border-slate-300 p-4 text-xs text-neutral-700">
+                Tick one or more scenarios above, then click <strong>Run simulation</strong>, to compare them with the baseline.
               </div>
-
-              {/* comparison */}
-              {comparedIds.length === 0 && (
-                <div className="bg-white rounded-lg border border-dashed border-slate-300 p-4 text-xs text-neutral-700">
-                  Tick <strong>compare</strong> on one or more scenarios in the list, then click Run simulation, to see them side by side with the baseline.
-                </div>
-              )}
-              {comparedIds.length > 0 && (
-                <div className="bg-white rounded-lg border border-slate-200 p-4" data-chart="scenario-comparison">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-semibold text-sm">Comparison to baseline</h3>
-                    <div className="flex items-center gap-2">
-                      <Btn variant="outline" onClick={() => setFigComparisonBarOpen((v) => !v)} disabled={!Object.keys(results).length}><SlidersHorizontal size={13} />{figComparisonBarOpen ? "Hide figure options" : "Customize & export"}</Btn>
-                      <Btn variant="outline" onClick={exportComparisonCSV} disabled={!Object.keys(results).length}><Download size={13} />Export CSV</Btn>
+            ) : (
+              <div className="bg-white rounded-lg border border-slate-200 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                  <h3 className="font-semibold text-sm">Scenario comparison</h3>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="inline-flex border border-slate-300 rounded overflow-hidden text-xs" role="group" aria-label="What the bars show">
+                      <button onClick={() => setComparisonMode("change")} className={`px-2 py-1 ${comparisonMode === "change" ? "bg-slate-900 text-white" : "bg-white hover:bg-slate-50"}`}>Change vs baseline</button>
+                      <button onClick={() => setComparisonMode("state")} className={`px-2 py-1 border-l border-slate-300 ${comparisonMode === "state" ? "bg-slate-900 text-white" : "bg-white hover:bg-slate-50"}`}>End state</button>
                     </div>
+                    {["png", "svg"].map((fmt) => (
+                      <Btn key={fmt} variant="outline" disabled={!Object.keys(results).length} onClick={() => exportSvgFigure(comparisonFigRef.current, "scenario-comparison", fmt, "Scenario comparison", `${comparisonMode === "change" ? "Change relative to the baseline" : "End state"}: ${comparedIds.map((id) => comparisonNames[id]).join(", ")}`)}><Download size={13} />{fmt.toUpperCase()}</Btn>
+                    ))}
+                    <Btn variant="outline" onClick={exportComparisonCSV} disabled={!Object.keys(results).length}><Download size={13} />CSV</Btn>
                   </div>
-                  {!Object.keys(results).length ? (
-                    <p className="text-xs text-neutral-600 italic">Run the simulation to see results here.</p>
-                  ) : (
-                    <>
-                      {resultsStale && <div className="mb-3"><StaleResultBanner label="this comparison" /></div>}
-                      {notYetRun.length > 0 && (
-                        <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800 flex items-start gap-1.5">
-                          <Info size={13} className="shrink-0 mt-0.5" />
-                          <span>Not run yet: {notYetRun.map((id) => `"${comparisonNames[id]}"`).join(", ")}. Click Run simulation to include {notYetRun.length === 1 ? "it" : "them"}.</span>
-                        </div>
-                      )}
-                      <div className="mb-4">
-                        <MethodPanel
-                          title="Method & diagnostics for this comparison"
-                          stats={[
-                            { label: "Scenarios simulated", value: 1 + comparedIds.length, hint: "The baseline plus every scenario selected for comparison. Each is an independent run." },
-                            { label: "Transfer function / λ", value: transferFunctionLabel(settings) },
-                            { label: "Update rule / mode", value: `${settings.updateRule ?? "relative"} / ${settings.mode ?? "synchronous"}` },
-                            {
-                              label: "All runs converged",
-                              value: ["baseline", ...comparedIds].every((id) => !results[id] || results[id].converged) ? "Yes" : "No",
-                              tone: ["baseline", ...comparedIds].every((id) => !results[id] || results[id].converged) ? "good" : "warn",
-                              hint: "A run that hit the iteration cap without converging has not reached a steady state, so its 'final' values are wherever it happened to stop.",
-                            },
-                            ...(settings.squashFunction === "linear" ? [{
-                              label: "Runs that diverged",
-                              value: `${["baseline", ...comparedIds].filter((id) => results[id]?.diverged).length}`,
-                              tone: ["baseline", ...comparedIds].some((id) => results[id]?.diverged) ? "warn" : "good",
-                              hint: `With no squashing function nothing keeps activation inside -1 to +1. A run is stopped and marked diverged once a concept passes ±${LINEAR_DIVERGENCE_LIMIT}: its 'final' values are where it was stopped, not a steady state.`,
-                            }] : []),
-                          ]}
-                        >
-                          <p><strong>"Synergy" and "Trade-Off" describe direction of movement, not whether something got better.</strong> The classification counts how many outcome concepts moved up versus down relative to baseline by more than the threshold. This tool has no notion of which direction is desirable for any given concept, so a scenario that drives a harmful concept (a pollution or loss indicator, for instance) upward is counted exactly as an improvement would be. Apply your own valence to each concept before repeating any of these labels in writing.</p>
-                          <p><strong>Effects are differences between two settled states.</strong> Each scenario is run independently from its own starting vector with its own locks and overrides, and the effect shown is scenario equilibrium minus baseline equilibrium, concept by concept. Concepts you have locked are held at their set value for the entire run, so their "effect" reflects your intervention rather than the model's response.</p>
-                          <p><strong>The labels are count-based thresholds.</strong> Full means every outcome moved the same way, Partial means at least half did, Narrow means at least one did, and any mix of upward and downward movement past the threshold becomes a Trade-Off. A concept moving by slightly more or less than the threshold flips the count, and with few outcomes selected a single concept can change the label.</p>
-                          <p><strong>Nothing here is dynamic.</strong> Iteration counts are steps to convergence, not time: a scenario converging in 8 iterations is not "faster" in any real-world sense than one converging in 40.</p>
-                        </MethodPanel>
+                </div>
+                {!Object.keys(results).length ? (
+                  <p className="text-xs text-neutral-600 italic">Click Run simulation to see the comparison here.</p>
+                ) : (
+                  <>
+                {resultsStale && <div className="mb-3"><StaleResultBanner label="this comparison" /></div>}
+                {notYetRun.length > 0 && (
+                  <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800 flex items-start gap-1.5">
+                    <Info size={13} className="shrink-0 mt-0.5" />
+                    <span>Not run yet: {notYetRun.map((id) => `"${comparisonNames[id]}"`).join(", ")}. Click Run simulation to include {notYetRun.length === 1 ? "it" : "them"}.</span>
+                  </div>
+                )}
+                    <p className="text-[12.5px] text-neutral-600 mb-2">{comparisonMode === "change" ? "One panel per scenario: how far each concept ends above (right) or below (left) where it ends in the baseline." : "One panel per scenario: where each concept settles."} Concepts are coloured by module; hatched bars are concepts the scenario holds fixed.</p>
+                    <div ref={comparisonFigRef} data-chart="scenario-comparison" className="overflow-x-auto">
+                      <ScenarioComparisonFigure
+                        concepts={aConcepts} baseline={results.baseline} mode={comparisonMode}
+                        panels={comparedIds.map((id) => ({ id, name: comparisonNames[id], result: results[id], held: scenarios.find((x) => x.id === id)?.lockedConcepts || {} }))}
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* ===== 3. Advanced results ===== */}
+            {comparedIds.length > 0 && Object.keys(results).length > 0 && (
+              <FoldableBox storageKey="se.fold.scenarioAdvanced" title="Advanced results" icon={FlaskConical} summary="Method and diagnostics, the comparison table, the customizable bar chart, the trajectories and the component change.">
+                <div className="space-y-5">
+                <div className="mb-4">
+                  <MethodPanel
+                    title="Method & diagnostics for this comparison"
+                    stats={[
+                      { label: "Scenarios simulated", value: 1 + comparedIds.length, hint: "The baseline plus every scenario selected for comparison. Each is an independent run." },
+                      { label: "Transfer function / λ", value: transferFunctionLabel(settings) },
+                      { label: "Update rule / mode", value: `${settings.updateRule ?? "relative"} / ${settings.mode ?? "synchronous"}` },
+                      {
+                        label: "All runs converged",
+                        value: ["baseline", ...comparedIds].every((id) => !results[id] || results[id].converged) ? "Yes" : "No",
+                        tone: ["baseline", ...comparedIds].every((id) => !results[id] || results[id].converged) ? "good" : "warn",
+                        hint: "A run that hit the iteration cap without converging has not reached a steady state, so its 'final' values are wherever it happened to stop.",
+                      },
+                      ...(settings.squashFunction === "linear" ? [{
+                        label: "Runs that diverged",
+                        value: `${["baseline", ...comparedIds].filter((id) => results[id]?.diverged).length}`,
+                        tone: ["baseline", ...comparedIds].some((id) => results[id]?.diverged) ? "warn" : "good",
+                        hint: `With no squashing function nothing keeps activation inside -1 to +1. A run is stopped and marked diverged once a concept passes ±${LINEAR_DIVERGENCE_LIMIT}: its 'final' values are where it was stopped, not a steady state.`,
+                      }] : []),
+                    ]}
+                  >
+                    <p><strong>"Synergy" and "Trade-Off" describe direction of movement, not whether something got better.</strong> The classification counts how many outcome concepts moved up versus down relative to baseline by more than the threshold. This tool has no notion of which direction is desirable for any given concept, so a scenario that drives a harmful concept (a pollution or loss indicator, for instance) upward is counted exactly as an improvement would be. Apply your own valence to each concept before repeating any of these labels in writing.</p>
+                    <p><strong>Effects are differences between two settled states.</strong> Each scenario is run independently from its own starting vector with its own locks and overrides, and the effect shown is scenario equilibrium minus baseline equilibrium, concept by concept. Concepts you have locked are held at their set value for the entire run, so their "effect" reflects your intervention rather than the model's response.</p>
+                    <p><strong>The labels are count-based thresholds.</strong> Full means every outcome moved the same way, Partial means at least half did, Narrow means at least one did, and any mix of upward and downward movement past the threshold becomes a Trade-Off. A concept moving by slightly more or less than the threshold flips the count, and with few outcomes selected a single concept can change the label.</p>
+                    <p><strong>Nothing here is dynamic.</strong> Iteration counts are steps to convergence, not time: a scenario converging in 8 iterations is not "faster" in any real-world sense than one converging in 40.</p>
+                  </MethodPanel>
+                </div>
+
+                  <div className="bg-white rounded-lg border border-slate-200 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+                      <h4 className="text-sm font-semibold">End state of every concept, baseline and scenarios</h4>
+                      <div className="flex gap-2">
+                        {["png", "svg"].map((fmt) => (
+                          <Btn key={fmt} variant="outline" onClick={() => exportSvgFigure(comparisonBarRef.current, "scenario-end-states", fmt, "Scenario comparison: end states", `Scenarios: ${["baseline", ...comparedIds].map((id) => comparisonNames[id]).join(", ")}`)}><Download size={13} />{fmt.toUpperCase()}</Btn>
+                        ))}
                       </div>
-                      {(() => {
-                        // Rows keyed by scenario id (never by name, which can be
-                        // edited or shared by two scenarios); names are only for
-                        // display. A scenario that has not been run yet has no
-                        // value (null: no bar), rather than a misleading 0.
-                        const seriesIds = ["baseline", ...comparedIds];
-                        const data = aConcepts.map((c) => {
-                          const row = { concept: c.name };
-                          seriesIds.forEach((id) => { row[id] = results[id] ? round2(results[id].final[c.id] ?? 0) : null; });
-                          return row;
-                        });
-                        const baselineAllZero = !!results.baseline && aConcepts.every((c) => Math.abs(results.baseline.final[c.id] ?? 0) < 1e-9);
-                        const colors = figurePalette(figComparisonBar.palette, Math.max(comparedIds.length, 1));
-                        const short = (t) => (t.length > 18 ? `${t.slice(0, 17)}\u2026` : t);
-                        const ConceptTick = ({ x, y, payload }) => (
-                          <g transform={`translate(${x},${y})`}>
-                            <title>{payload.value}</title>
-                            <text dy={10} textAnchor="end" transform="rotate(-35)" fontSize={figComparisonBar.tickFontSize} fill="#262626">{short(payload.value)}</text>
-                          </g>
-                        );
-                        return (
-                          <>
-                            <div ref={comparisonBarRef} className="w-full mb-2" style={figComparisonBarOpen ? { width: mmToPx(figComparisonBar.widthMm, 96), height: mmToPx(figComparisonBar.heightMm, 96), maxWidth: "100%" } : { height: 300 }}>
+                    </div>
+                    <p className="text-[12.5px] text-neutral-600 mb-3">For each concept, one bar per run: the baseline in grey and each scenario in its own colour. The table below gives the same numbers.</p>
+                    <div ref={comparisonBarRef} data-chart="scenario-end-states" className="mb-5">
+                      <ScenarioGroupedBars
+                        concepts={aConcepts} linear={settings.squashFunction === "linear"}
+                        series={[
+                          { id: "baseline", name: comparisonNames.baseline, color: "#6b7280", final: results.baseline?.final || null },
+                          ...comparedIds.map((id, i) => ({ id, name: comparisonNames[id], color: SCENARIO_COLORS[i % SCENARIO_COLORS.length], final: results[id]?.final || null })),
+                        ]}
+                      />
+                    </div>
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-left text-neutral-600 border-b border-slate-100">
+                          <th className="py-1 font-medium">Concept</th>
+                          <th className="py-1 font-medium">{comparisonNames.baseline}</th>
+                          {comparedIds.map((id) => <th key={id} className="py-1 font-medium">{comparisonNames[id]}</th>)}
+                          {comparedIds.length === 1 && <th className="py-1 font-medium">Δ</th>}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {aConcepts.map((c) => {
+                          const b = results.baseline?.final?.[c.id];
+                          return (
+                            <tr key={c.id} className="border-b border-slate-50">
+                              <td className="py-1">{c.name}</td>
+                              <td className="py-1 font-mono">{b !== undefined ? round2(b).toFixed(2) : "n/a"}</td>
+                              {comparedIds.map((id) => {
+                                const v = results[id]?.final?.[c.id];
+                                return <td key={id} className="py-1 font-mono">{v !== undefined ? round2(v).toFixed(2) : "n/a"}</td>;
+                              })}
+                              {comparedIds.length === 1 && (
+                                <td className="py-1 font-mono">
+                                  {b !== undefined && results[comparedIds[0]]?.final?.[c.id] !== undefined
+                                    ? (results[comparedIds[0]].final[c.id] - b >= 0 ? "+" : "") + round2(results[comparedIds[0]].final[c.id] - b).toFixed(2)
+                                    : "n/a"}
+                                </td>
+                              )}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                    {trajectoryComparison && (
+                      <div className="mt-5 pt-4 border-t border-slate-100 space-y-4">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-sm font-semibold flex items-center gap-1.5"><Activity size={14} className="text-cobalt-700" />Trajectory comparison</h4>
+                          <Btn variant="outline" onClick={() => setFigTrajComparisonOpen((v) => !v)}><SlidersHorizontal size={13} />{figTrajComparisonOpen ? "Hide figure options" : "Customize & export"}</Btn>
+                        </div>
+                        <p className="text-xs text-neutral-600">
+                          The baseline is always computed and shown alongside every scenario run. Baseline (no scenario applied) and "{comparisonNames[comparedIds[0]]}", iteration by iteration, plus their difference (scenario minus baseline).
+                        </p>
+                        {figTrajComparisonOpen && (
+                          <FigurePanel
+                            settings={figTrajComparison} onChange={setFigTrajComparison} defaults={TRAJECTORY_FIGURE_DEFAULTS}
+                            seriesOptions={trajComparisonSeriesOptions} hiddenKeys={hiddenTrajComparisonIds} onToggleSeries={toggleHiddenTrajComparison}
+                            sortOptions={TRAJ_COMPARISON_ORDER_OPTIONS} sortValue={trajComparisonOrder} onSortChange={setTrajComparisonOrder}
+                            exporting={figTrajComparisonBusy}
+                            onExport={async () => {
+                              setFigTrajComparisonBusy(true);
+                              const targets = [
+                                { ref: trajBaselineRef, key: "baseline", title: "Baseline (time series)" },
+                                { ref: trajScenarioRef, key: "scenario", title: `${comparisonNames[comparedIds[0]]} (time series)` },
+                                { ref: trajDifferenceRef, key: "difference", title: "Difference (scenario minus baseline)" },
+                              ];
+                              for (const t of targets) {
+                                // eslint-disable-next-line no-await-in-loop
+                                await exportFigure(t.ref.current, `scenario-trajectory-${t.key}.png`, figTrajComparison, { title: figTrajComparison.title || t.title, subtitle: "Trajectory comparison" });
+                              }
+                              setFigTrajComparisonBusy(false);
+                            }}
+                          />
+                        )}
+                        {[
+                          { key: "baseline", title: "Baseline (time series)", ref: trajBaselineRef },
+                          { key: "scenario", title: `${comparisonNames[comparedIds[0]]} (time series)`, ref: trajScenarioRef },
+                          { key: "difference", title: "Difference (scenario minus baseline)", ref: trajDifferenceRef },
+                        ].map(({ key, title, ref }) => (
+                          <div key={key}>
+                            <div className="text-xs font-medium text-neutral-900 mb-1">{title}</div>
+                            <div ref={ref} className="w-full h-52" style={figTrajComparisonOpen ? { width: mmToPx(figTrajComparison.widthMm, 96), height: mmToPx(figTrajComparison.heightMm, 96), maxWidth: "100%" } : undefined}>
                               <ResponsiveContainer>
-                                <BarChart data={data} margin={{ top: 16, right: 16, left: 0, bottom: 8 }}>
-                                  {figComparisonBar.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
-                                  <XAxis dataKey="concept" interval={0} height={90} tick={(p) => <ConceptTick {...p} />} label={figComparisonBar.xLabel ? { value: figComparisonBar.xLabel, position: "bottom", offset: 60, fontSize: figComparisonBar.axisFontSize } : undefined} />
-                                  <YAxis domain={settings.squashFunction === "linear" ? ["auto", "auto"] : [-1, 1]} tick={{ fontSize: figComparisonBar.tickFontSize }} tickFormatter={(v) => fmtDec(v, figComparisonBar.decimals)} label={{ value: figComparisonBar.yLabel || "Activation", angle: -90, position: "insideLeft", fontSize: figComparisonBar.axisFontSize }} />
-                                  <RTooltip formatter={(v, name) => [v === null ? "not run" : v.toFixed(2), name]} />
-                                  {figComparisonBar.legendPosition !== "hidden" && (
+                                <LineChart data={trajectoryComparison[key]}>
+                                  {figTrajComparison.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
+                                  <XAxis dataKey="iteration" tick={{ fontSize: figTrajComparison.tickFontSize }} label={figTrajComparison.xLabel ? { value: figTrajComparison.xLabel, position: "insideBottom", offset: -2, fontSize: figTrajComparison.axisFontSize } : undefined} />
+                                  <YAxis domain={key === "difference" || settings.squashFunction === "linear" ? ["auto", "auto"] : [-1, 1]} tick={{ fontSize: figTrajComparison.tickFontSize }} tickFormatter={(v) => fmtDec(v, figTrajComparison.decimals)} label={figTrajComparison.yLabel ? { value: figTrajComparison.yLabel, angle: -90, position: "insideLeft", fontSize: figTrajComparison.axisFontSize } : undefined} />
+                                  <RTooltip />
+                                  {figTrajComparison.legendPosition !== "hidden" && (
                                     <Legend
-                                      wrapperStyle={{ fontSize: figComparisonBar.legendFontSize }}
-                                      layout={figComparisonBar.legendPosition === "left" || figComparisonBar.legendPosition === "right" ? "vertical" : "horizontal"}
-                                      verticalAlign={figComparisonBar.legendPosition === "left" || figComparisonBar.legendPosition === "right" ? "middle" : figComparisonBar.legendPosition}
-                                      align={figComparisonBar.legendPosition === "left" || figComparisonBar.legendPosition === "right" ? figComparisonBar.legendPosition : "center"}
+                                      wrapperStyle={{ fontSize: figTrajComparison.legendFontSize }}
+                                      layout={figTrajComparison.legendPosition === "left" || figTrajComparison.legendPosition === "right" ? "vertical" : "horizontal"}
+                                      verticalAlign={figTrajComparison.legendPosition === "left" || figTrajComparison.legendPosition === "right" ? "middle" : figTrajComparison.legendPosition}
+                                      align={figTrajComparison.legendPosition === "left" || figTrajComparison.legendPosition === "right" ? figTrajComparison.legendPosition : "center"}
                                     />
                                   )}
-                                  {figComparisonBar.title && <text x="50%" y={14} textAnchor="middle" fontSize={figComparisonBar.titleFontSize} fontWeight={600} fill="#0f172a">{figComparisonBar.title}</text>}
-                                  <ReferenceLine y={0} stroke="#94a3b8" />
-                                  {/* minPointSize: a value of exactly 0 is drawn as a thin bar on the
-                                      zero line, so "settled at 0" is visibly different from "missing". */}
-                                  <Bar dataKey="baseline" name={comparisonNames.baseline} fill="#404040" fillOpacity={figComparisonBar.opacity} radius={[3, 3, 0, 0]} minPointSize={2} />
-                                  {comparedIds.map((id, i) => (
-                                    <Bar key={id} dataKey={id} name={comparisonNames[id]} fill={colors[i % colors.length]} fillOpacity={figComparisonBar.opacity} radius={[3, 3, 0, 0]} minPointSize={2} />
+                                  {figTrajComparison.title && <text x="50%" y={14} textAnchor="middle" fontSize={figTrajComparison.titleFontSize} fontWeight={600} fill="#0f172a">{figTrajComparison.title}</text>}
+                                  <ReferenceLine y={0} stroke="#cbd5e1" />
+                                  {trajComparisonRows.map((c, i) => (
+                                    <Line key={c.id} type="monotone" dataKey={c.id} name={c.name} stroke={figurePalette(figTrajComparison.palette, trajComparisonRows.length)[i]} strokeWidth={figTrajComparison.lineWidth} strokeOpacity={figTrajComparison.opacity} dot={figTrajComparison.markerSize > 0 ? { r: figTrajComparison.markerSize } : false} />
                                   ))}
-                                </BarChart>
+                                </LineChart>
                               </ResponsiveContainer>
                             </div>
-                            {baselineAllZero && (
-                              <p className="text-[12.5px] text-neutral-700 mb-4">
-                                The baseline settles at 0 for every concept, so its bars are the thin grey marks on the zero line. That happens when every concept starts at 0 and nothing is held fixed;
-                                give concepts a starting value (Inspector or Model editor) for a baseline that reflects the current state of the system.
-                              </p>
-                            )}
-                            {figComparisonBarOpen && (
-                              <div className="mb-4">
-                                <FigurePanel
-                                  settings={figComparisonBar} onChange={setFigComparisonBar}
-                                  exporting={figComparisonBarBusy}
-                                  onExport={async () => {
-                                    setFigComparisonBarBusy(true);
-                                    await exportFigure(comparisonBarRef.current, "scenario-comparison.png", figComparisonBar, {
-                                      title: figComparisonBar.title || "Scenario Comparison to Baseline",
-                                      subtitle: `Scenarios: ${["baseline", ...comparedIds].map((id) => comparisonNames[id]).join(", ")}`,
-                                    });
-                                    setFigComparisonBarBusy(false);
-                                  }}
-                                />
-                              </div>
-                            )}
-                          </>
-                        );
-                      })()}
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="text-left text-neutral-600 border-b border-slate-100">
-                            <th className="py-1 font-medium">Concept</th>
-                            <th className="py-1 font-medium">{comparisonNames.baseline}</th>
-                            {comparedIds.map((id) => <th key={id} className="py-1 font-medium">{comparisonNames[id]}</th>)}
-                            {comparedIds.length === 1 && <th className="py-1 font-medium">Δ</th>}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {aConcepts.map((c) => {
-                            const b = results.baseline?.final?.[c.id];
-                            return (
-                              <tr key={c.id} className="border-b border-slate-50">
-                                <td className="py-1">{c.name}</td>
-                                <td className="py-1 font-mono">{b !== undefined ? round2(b).toFixed(2) : "n/a"}</td>
-                                {comparedIds.map((id) => {
-                                  const v = results[id]?.final?.[c.id];
-                                  return <td key={id} className="py-1 font-mono">{v !== undefined ? round2(v).toFixed(2) : "n/a"}</td>;
-                                })}
-                                {comparedIds.length === 1 && (
-                                  <td className="py-1 font-mono">
-                                    {b !== undefined && results[comparedIds[0]]?.final?.[c.id] !== undefined
-                                      ? (results[comparedIds[0]].final[c.id] - b >= 0 ? "+" : "") + round2(results[comparedIds[0]].final[c.id] - b).toFixed(2)
-                                      : "n/a"}
-                                  </td>
-                                )}
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-
-                      {trajectoryComparison && (
-                        <div className="mt-5 pt-4 border-t border-slate-100 space-y-4">
-                          <div className="flex items-center justify-between">
-                            <h4 className="text-sm font-semibold flex items-center gap-1.5"><Activity size={14} className="text-cobalt-700" />Trajectory comparison</h4>
-                            <Btn variant="outline" onClick={() => setFigTrajComparisonOpen((v) => !v)}><SlidersHorizontal size={13} />{figTrajComparisonOpen ? "Hide figure options" : "Customize & export"}</Btn>
                           </div>
-                          <p className="text-xs text-neutral-600">
-                            The baseline is always computed and shown alongside every scenario run. Baseline (no scenario applied) and "{comparisonNames[comparedIds[0]]}", iteration by iteration, plus their difference (scenario minus baseline).
-                          </p>
-                          {figTrajComparisonOpen && (
-                            <FigurePanel
-                              settings={figTrajComparison} onChange={setFigTrajComparison} defaults={TRAJECTORY_FIGURE_DEFAULTS}
-                              seriesOptions={trajComparisonSeriesOptions} hiddenKeys={hiddenTrajComparisonIds} onToggleSeries={toggleHiddenTrajComparison}
-                              sortOptions={TRAJ_COMPARISON_ORDER_OPTIONS} sortValue={trajComparisonOrder} onSortChange={setTrajComparisonOrder}
-                              exporting={figTrajComparisonBusy}
-                              onExport={async () => {
-                                setFigTrajComparisonBusy(true);
-                                const targets = [
-                                  { ref: trajBaselineRef, key: "baseline", title: "Baseline (time series)" },
-                                  { ref: trajScenarioRef, key: "scenario", title: `${comparisonNames[comparedIds[0]]} (time series)` },
-                                  { ref: trajDifferenceRef, key: "difference", title: "Difference (scenario minus baseline)" },
-                                ];
-                                for (const t of targets) {
-                                  // eslint-disable-next-line no-await-in-loop
-                                  await exportFigure(t.ref.current, `scenario-trajectory-${t.key}.png`, figTrajComparison, { title: figTrajComparison.title || t.title, subtitle: "Trajectory comparison" });
-                                }
-                                setFigTrajComparisonBusy(false);
-                              }}
-                            />
-                          )}
-                          {[
-                            { key: "baseline", title: "Baseline (time series)", ref: trajBaselineRef },
-                            { key: "scenario", title: `${comparisonNames[comparedIds[0]]} (time series)`, ref: trajScenarioRef },
-                            { key: "difference", title: "Difference (scenario minus baseline)", ref: trajDifferenceRef },
-                          ].map(({ key, title, ref }) => (
-                            <div key={key}>
-                              <div className="text-xs font-medium text-neutral-900 mb-1">{title}</div>
-                              <div ref={ref} className="w-full h-52" style={figTrajComparisonOpen ? { width: mmToPx(figTrajComparison.widthMm, 96), height: mmToPx(figTrajComparison.heightMm, 96), maxWidth: "100%" } : undefined}>
-                                <ResponsiveContainer>
-                                  <LineChart data={trajectoryComparison[key]}>
-                                    {figTrajComparison.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
-                                    <XAxis dataKey="iteration" tick={{ fontSize: figTrajComparison.tickFontSize }} label={figTrajComparison.xLabel ? { value: figTrajComparison.xLabel, position: "insideBottom", offset: -2, fontSize: figTrajComparison.axisFontSize } : undefined} />
-                                    <YAxis domain={key === "difference" || settings.squashFunction === "linear" ? ["auto", "auto"] : [-1, 1]} tick={{ fontSize: figTrajComparison.tickFontSize }} tickFormatter={(v) => fmtDec(v, figTrajComparison.decimals)} label={figTrajComparison.yLabel ? { value: figTrajComparison.yLabel, angle: -90, position: "insideLeft", fontSize: figTrajComparison.axisFontSize } : undefined} />
-                                    <RTooltip />
-                                    {figTrajComparison.legendPosition !== "hidden" && (
-                                      <Legend
-                                        wrapperStyle={{ fontSize: figTrajComparison.legendFontSize }}
-                                        layout={figTrajComparison.legendPosition === "left" || figTrajComparison.legendPosition === "right" ? "vertical" : "horizontal"}
-                                        verticalAlign={figTrajComparison.legendPosition === "left" || figTrajComparison.legendPosition === "right" ? "middle" : figTrajComparison.legendPosition}
-                                        align={figTrajComparison.legendPosition === "left" || figTrajComparison.legendPosition === "right" ? figTrajComparison.legendPosition : "center"}
-                                      />
-                                    )}
-                                    {figTrajComparison.title && <text x="50%" y={14} textAnchor="middle" fontSize={figTrajComparison.titleFontSize} fontWeight={600} fill="#0f172a">{figTrajComparison.title}</text>}
-                                    <ReferenceLine y={0} stroke="#cbd5e1" />
-                                    {trajComparisonRows.map((c, i) => (
-                                      <Line key={c.id} type="monotone" dataKey={c.id} name={c.name} stroke={figurePalette(figTrajComparison.palette, trajComparisonRows.length)[i]} strokeWidth={figTrajComparison.lineWidth} strokeOpacity={figTrajComparison.opacity} dot={figTrajComparison.markerSize > 0 ? { r: figTrajComparison.markerSize } : false} />
-                                    ))}
-                                  </LineChart>
-                                </ResponsiveContainer>
-                              </div>
-                            </div>
-                          ))}
+                        ))}
+                      </div>
+                    )}
+                    {componentChangeData && (
+                      <div className="mt-5 pt-4 border-t border-slate-100">
+                        <h4 className="text-sm font-semibold mb-1 flex items-center gap-1.5"><GitCompare size={14} className="text-cobalt-700" />Component change vs. baseline</h4>
+                        <p className="text-xs text-neutral-600 mb-3">
+                          Mental-Modeler-style output: each concept's equilibrium activation under "{comparisonNames[comparedIds[0]]}", expressed in percentage points of the full −100%…+100% activation range, relative to baseline. Sorted by magnitude of change.
+                        </p>
+                        <div className="w-full" style={{ height: Math.max(200, componentChangeData.length * 26 + 40) }}>
+                          <ResponsiveContainer>
+                            <BarChart data={componentChangeData} layout="vertical" margin={{ left: 8, right: 24 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                              {/* A concept swinging from fully negative to fully positive is a
+                                  200-point change, past a fixed [-100,100] domain (confirmed
+                                  reproducible: Biodiversity decline swung -194 points in this
+                                  session's own agriculture-template test), which silently clipped
+                                  the bar. Same dataMin/dataMax-expanding pattern already used for
+                                  the Sensitivity curves' YAxis below: -100..100 stays the default
+                                  view for ordinary changes, and only expands when the data actually
+                                  needs it, so nothing is ever cut off. */}
+                              <XAxis type="number" domain={[(dataMin) => Math.min(-100, dataMin - 10), (dataMax) => Math.max(100, dataMax + 10)]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 12 }} />
+                              <YAxis type="category" dataKey="name" width={labelAxisWidth(componentChangeData.map((d) => d.name))} interval={0} tick={(p) => <SingleLineTick {...p} />} />
+                              <RTooltip formatter={(v) => [`${v > 0 ? "+" : ""}${v}%`, "Change"]} />
+                              <ReferenceLine x={0} stroke="#94a3b8" />
+                              <Bar dataKey="change" radius={[0, 3, 3, 0]}>
+                                {componentChangeData.map((d) => (
+                                  <Cell key={d.name} fill={d.change >= 0 ? "#16a34a" : "#dc2626"} />
+                                ))}
+                              </Bar>
+                            </BarChart>
+                          </ResponsiveContainer>
                         </div>
-                      )}
-
-                      {componentChangeData && (
-                        <div className="mt-5 pt-4 border-t border-slate-100">
-                          <h4 className="text-sm font-semibold mb-1 flex items-center gap-1.5"><GitCompare size={14} className="text-cobalt-700" />Component change vs. baseline</h4>
-                          <p className="text-xs text-neutral-600 mb-3">
-                            Mental-Modeler-style output: each concept's equilibrium activation under "{comparisonNames[comparedIds[0]]}", expressed in percentage points of the full −100%…+100% activation range, relative to baseline. Sorted by magnitude of change.
-                          </p>
-                          <div className="w-full" style={{ height: Math.max(200, componentChangeData.length * 26 + 40) }}>
-                            <ResponsiveContainer>
-                              <BarChart data={componentChangeData} layout="vertical" margin={{ left: 8, right: 24 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                                {/* A concept swinging from fully negative to fully positive is a
-                                    200-point change, past a fixed [-100,100] domain (confirmed
-                                    reproducible: Biodiversity decline swung -194 points in this
-                                    session's own agriculture-template test), which silently clipped
-                                    the bar. Same dataMin/dataMax-expanding pattern already used for
-                                    the Sensitivity curves' YAxis below: -100..100 stays the default
-                                    view for ordinary changes, and only expands when the data actually
-                                    needs it, so nothing is ever cut off. */}
-                                <XAxis type="number" domain={[(dataMin) => Math.min(-100, dataMin - 10), (dataMax) => Math.max(100, dataMax + 10)]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 12 }} />
-                                <YAxis type="category" dataKey="name" width={labelAxisWidth(componentChangeData.map((d) => d.name))} interval={0} tick={(p) => <SingleLineTick {...p} />} />
-                                <RTooltip formatter={(v) => [`${v > 0 ? "+" : ""}${v}%`, "Change"]} />
-                                <ReferenceLine x={0} stroke="#94a3b8" />
-                                <Bar dataKey="change" radius={[0, 3, 3, 0]}>
-                                  {componentChangeData.map((d) => (
-                                    <Cell key={d.name} fill={d.change >= 0 ? "#16a34a" : "#dc2626"} />
-                                  ))}
-                                </Bar>
-                              </BarChart>
-                            </ResponsiveContainer>
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  )}
+                      </div>
+                    )}
                 </div>
-              )}
-            </div>
-          </div>
+              </FoldableBox>
+            )}
           </div>
         )}
 

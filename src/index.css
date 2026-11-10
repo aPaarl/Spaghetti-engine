@@ -43,11 +43,42 @@ body {
   font-family: 'Inter', system-ui, sans-serif;
 }
 
-/* Chart axis labels and ticks in near-black instead of the charting library's
-   light grey (series colours in legends are left as they are). */
+/* One house style for every chart and table in the analysis tabs. The
+   hand-drawn figures (src/AnalysisFigures.jsx FIG) use the same colours.
+   Chart text: dark grey ticks, near-black axis titles, light dashed grid. */
+.recharts-wrapper { font-family: 'Inter', system-ui, sans-serif; }
 .recharts-cartesian-axis-tick-value,
 .recharts-polar-angle-axis-tick-value,
-.recharts-polar-radius-axis-tick-value,
-.recharts-label {
-  fill: #262626;
+.recharts-polar-radius-axis-tick-value {
+  fill: #374151;
 }
+.recharts-label { fill: #111827; }
+.recharts-cartesian-grid line { stroke: #e5e7eb; stroke-dasharray: 3 3; }
+.recharts-cartesian-axis-line,
+.recharts-cartesian-axis-tick-line { stroke: #9ca3af; }
+.recharts-legend-item-text { color: #111827 !important; }
+.recharts-default-tooltip {
+  border-radius: 6px;
+  border-color: #d1d5db !important;
+  font-size: 12.5px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+}
+
+/* Tables: a grey header with a firm rule, light row rules, zebra rows and
+   tabular figures. Padding sits in the base layer, so a table that sets its
+   own (a dense matrix) keeps it. */
+@layer base {
+  .se-content table th,
+  .se-content table td { padding: 6px 10px; }
+}
+.se-content table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.se-content table thead th {
+  background-color: #f3f4f6;
+  color: #374151;
+  font-weight: 600;
+  border-bottom: 1px solid #d1d5db;
+  vertical-align: bottom;
+}
+.se-content table tbody td { border-bottom: 1px solid #eef0f3; }
+.se-content table tbody tr:nth-child(even) { background-color: #f9fafb; }
+.se-content table tbody tr:hover { background-color: #eef2ff; }
