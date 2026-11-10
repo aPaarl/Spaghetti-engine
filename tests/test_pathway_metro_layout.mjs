@@ -1,7 +1,7 @@
 // Tests for the metro-map layout of transition pathways.
 // Run: node tests/test_pathway_metro_layout.mjs
 import assert from "node:assert/strict";
-import { buildMetroRows, orderAsTree, tippingStage, pickMetroPathways, niceTicks, commonPrefix } from "../src/pathwayMetroLayout.js";
+import { buildMetroRows, orderAsTree, tippingStage, pickMetroPathways, niceTicks, commonPrefix, orderMetroPathways, metroSortValue } from "../src/pathwayMetroLayout.js";
 
 let pass = 0, fail = 0;
 const test = (name, fn) => { try { fn(); pass++; console.log(`ok   ${name}`); } catch (e) { fail++; console.log(`FAIL ${name}\n     ${e.message}`); } };
@@ -85,6 +85,22 @@ test("niceTicks covers the maximum from zero", () => {
   assert.equal(t[0], 0);
   assert.ok(t[t.length - 1] >= 1.23);
   assert.deepEqual(niceTicks(0), [0, 0.2, 0.4, 0.6, 0.8, 1]);
+});
+
+test("sorting by a value draws every pathway in full", () => {
+  const rows = buildMetroRows([p1, p2, p3], { sortKey: "tog" });
+  assert.deepEqual(rows.map((r) => r.id), [1, 2, 3]);
+  assert.ok(rows.every((r) => r.shared === 0 && r.parent === null));
+  assert.equal(rows[1].segments.length, 3);
+});
+
+test("sorting by intensity and by an outcome follows the chosen direction", () => {
+  assert.deepEqual(orderMetroPathways([p1, p3, p5], "cii", "asc").map((p) => p.id), [5, 3, 1]);
+  const q1 = pw(11, 0.5, [st("A", 0.4, 0.4, { F: 0.3, G: -0.1 })]);
+  const q2 = pw(12, 0.6, [st("B", 0.4, 0.4, { F: 0.1, G: 0.2 })]);
+  assert.equal(metroSortValue(q1, "outcome:G"), -0.1);
+  assert.deepEqual(orderMetroPathways([q1, q2], "outcome:F", "desc").map((p) => p.id), [11, 12]);
+  assert.deepEqual(orderMetroPathways([q1, q2], "outcome:F", "asc").map((p) => p.id), [12, 11]);
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);

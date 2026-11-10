@@ -59,12 +59,36 @@ export function tippingStage(p, eps = 1e-6) {
 // Builds the rows of the metro map. Each row lists the segments it draws
 // (from the stage where it leaves the shared part), its transfer stations,
 // its end, its tipping point, and the connector to the row it branches from.
-export function buildMetroRows(pathways, { eps = 1e-6 } = {}) {
-  const ordered = orderAsTree(pathways);
+// The value a row is sorted on: "tog" (total outcome gain), "cii"
+// (cumulative intervention intensity), or "outcome:<id>" (that outcome's
+// direction-signed change at the end of the pathway).
+export function metroSortValue(p, key) {
+  if (key === "cii") return p.cii;
+  if (key.startsWith("outcome:")) {
+    const id = key.slice(8);
+    const last = p.stages[p.stages.length - 1];
+    const o = last?.outcomes?.find((x) => x.id === id);
+    return o ? o.improvement : 0;
+  }
+  return p.tog;
+}
+
+// Orders the pathways. "tree" keeps pathways that share their first stages
+// together and draws the shared part once; any other key sorts the rows on
+// that value (dir "desc" or "asc") and draws every pathway in full.
+export function orderMetroPathways(pathways, sortKey = "tree", dir = "desc") {
+  if (sortKey === "tree") return orderAsTree(pathways);
+  const sign = dir === "asc" ? 1 : -1;
+  return [...pathways].sort((a, b) => sign * (metroSortValue(a, sortKey) - metroSortValue(b, sortKey)) || b.tog - a.tog || a.cii - b.cii);
+}
+
+export function buildMetroRows(pathways, { eps = 1e-6, sortKey = "tree", dir = "desc" } = {}) {
+  const tree = sortKey === "tree";
+  const ordered = orderMetroPathways(pathways, sortKey, dir);
   const rows = [];
   ordered.forEach((p, i) => {
     let shared = 0, parent = null;
-    for (let j = i - 1; j >= 0; j--) shared = Math.max(shared, commonPrefix(p, ordered[j]));
+    if (tree) for (let j = i - 1; j >= 0; j--) shared = Math.max(shared, commonPrefix(p, ordered[j]));
     // The parent is the nearest row above that shares those stages and is
     // itself drawn at the branching point (it did not branch off later).
     if (shared > 0) {

@@ -8945,6 +8945,16 @@ const FIGURE_PALETTES = {
   colorblind: { label: "Colorblind-safe (Okabe-Ito)", colors: ["#0072B2", "#E69F00", "#009E73", "#D55E00", "#CC79A7", "#56B4E9", "#F0E442", "#999999"] },
   grayscale: { label: "Grayscale", colors: ["#111827", "#6b7280", "#9ca3af", "#374151", "#1f2937", "#4b5563", "#d1d5db", "#78716c"] },
 };
+// Further colours for maps with many interventions, chosen to stay apart
+// from the eight of the default palette.
+const INTERVENTION_EXTRA_COLORS = ["#db2777", "#1e3a8a", "#16a34a", "#78350f", "#0ea5e9", "#525252", "#f59e0b", "#a855f7"];
+// One distinct colour per intervention: the palette first, then further
+// hues spaced by the golden angle, so no two interventions share a colour.
+function interventionColors(name, n) {
+  const base = [...(FIGURE_PALETTES[name] || FIGURE_PALETTES.default).colors];
+  if (name !== "grayscale") base.push(...INTERVENTION_EXTRA_COLORS.filter((c) => !base.includes(c)));
+  return Array.from({ length: Math.max(n, 1) }, (_, i) => (i < base.length ? base[i] : `hsl(${Math.round((200 + i * 137.508) % 360)}, 55%, ${i % 2 ? 35 : 50}%)`));
+}
 function figurePalette(name, n) {
   const colors = (FIGURE_PALETTES[name] || FIGURE_PALETTES.default).colors;
   return Array.from({ length: Math.max(n, 1) }, (_, i) => colors[i % colors.length]);
@@ -10585,6 +10595,16 @@ function ExpertBadge({ c }) {
   );
 }
 
+// A numbered step heading of the setup.
+function StepBadge({ n, label }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-neutral-900">
+      <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-slate-900 text-white text-[11px]">{n}</span>
+      {label}
+    </span>
+  );
+}
+
 function PathwayStagesText({ c, nameOf, compact = false }) {
   return (
     <span className="inline-flex flex-wrap items-center gap-x-1 gap-y-0.5">
@@ -10679,7 +10699,13 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
   const metroRef = useRef(null);
   const [metroMode, setMetroMode] = useState("top");
   const [metroLimit, setMetroLimit] = useState(12);
-  const [metroColour, setMetroColour] = useState("lever");
+  const [metroSort, setMetroSort] = useState("tree");
+  const [metroDir, setMetroDir] = useState("desc");
+  // The detailed results (effort-gain plane, selected pathway, all
+  // pathways, portfolios, invariance test) sit in one fold-out, closed by
+  // default; selecting a pathway opens it.
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [figMetro, setFigMetro] = useState({ ...DEFAULT_FIGURE_SETTINGS, preset: "double-landscape", widthMm: 174, heightMm: 100, legendPosition: "bottom" });
   const [figMetroOpen, setFigMetroOpen] = useState(false);
   const [figMetroBusy, setFigMetroBusy] = useState(false);
@@ -10730,6 +10756,14 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
 
   const scopedLevers = config.levers.filter((l) => inScope(l.id) && !outcomeIds.includes(l.id));
   const expertSequences = config.expertSequences || [];
+  // The non-default choices under "More options", named on its header so
+  // they stay visible while the section is closed.
+  const moreActive = [
+    config.strategy === "beam" ? "beam search" : config.strategy === "greedy" ? "greedy search" : null,
+    config.robustness ? "robustness test" : null,
+    config.precedence.length ? `${config.precedence.length} order constraint${config.precedence.length > 1 ? "s" : ""}` : null,
+    expertSequences.length ? `${expertSequences.length} expert sequence${expertSequences.length > 1 ? "s" : ""}` : null,
+  ].filter(Boolean);
   const setExpert = (i, q) => patch({ expertSequences: expertSequences.map((x, j) => (j === i ? { ...x, ...q } : x)) });
   const setExpertStage = (i, k, st) => setExpert(i, { stages: expertSequences[i].stages.map((x, j) => (j === k ? { ...x, ...st } : x)) });
   const addExpert = () => {
@@ -10842,8 +10876,8 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
   const metroRows = useMemo(() => {
     if (!result) return [];
     const picked = pickMetroPathways(result.candidates, { mode: metroMode, limit: metroLimit, ranked: result.summary?.ranked, selectedId });
-    return buildMetroRows(picked, { eps: result.eps });
-  }, [result, metroMode, metroLimit, selectedId]);
+    return buildMetroRows(picked, { eps: result.eps, sortKey: metroSort, dir: metroDir });
+  }, [result, metroMode, metroLimit, selectedId, metroSort, metroDir]);
   const metroLeverIds = useMemo(() => (result ? result.levers.map((l) => l.id) : []), [result]);
 
   const selected = selectedId !== null ? candById.get(selectedId) : null;
@@ -10875,8 +10909,16 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
   const trajectorySeriesOptions = useMemo(() => (result ? result.outcomes.map((o) => ({ key: o.id, label: nameOf(o.id) })) : []), [result, nameOf]);
 
   const lineColors = ["#2456d6", "#c2410c", "#7c3aed", "#0f766e", "#be123c", "#4d7c0f", "#a16207", "#0e7490"];
+  // Runs fn once the advanced results are on the page (their charts must be
+  // mounted to be exported).
+  const withAdvanced = (fn) => {
+    if (advancedOpen) { fn(); return; }
+    setAdvancedOpen(true);
+    setTimeout(fn, 300);
+  };
   const selectPathway = (id) => {
     setSelectedId(id);
+    setAdvancedOpen(true);
     setTimeout(() => document.querySelector('[data-pathway-detail]')?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
   };
 
@@ -10942,27 +10984,30 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
 
       {/* ============================ setup ============================ */}
       <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-4">
-        <h3 className="font-semibold text-sm">Set up the analysis</h3>
+        <div>
+          <h3 className="font-semibold text-sm">Set up the analysis</h3>
+          <p className="text-[12.5px] text-neutral-600 mt-0.5">Three steps: choose what should improve, which interventions may be combined, and how long a pathway may be. Then run the analysis. The defaults of everything else follow the method and rarely need changing.</p>
+        </div>
 
         <div>
           <div className="flex items-center gap-2 mb-1.5">
-            <label className="text-xs text-neutral-700 font-medium">1. Nexus outcomes</label>
+            <StepBadge n={1} label="What should improve?" />
             <select value="" onChange={(e) => addOutcome(e.target.value)} className="text-xs border border-slate-200 rounded px-2 py-1">
-              <option value="">Add an outcome…</option>
+              <option value="">+ Add an outcome</option>
               {concepts.filter((c) => !outcomeIds.includes(c.id)).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
-            <span className="text-[12.5px] text-neutral-600">The outcomes a pathway should improve, for example food security, biodiversity, and climate.</span>
+            <span className="text-[12.5px] text-neutral-600">The nexus outcomes a pathway should improve, for example food security, biodiversity and emissions.</span>
           </div>
           {config.outcomes.length === 0 ? (
-            <p className="text-xs text-neutral-600 italic">No outcomes yet.</p>
+            <p className="text-xs text-neutral-600 italic">No outcomes yet. Add at least one.</p>
           ) : (
-            <table className="w-full text-xs">
+            <table className="w-full max-w-4xl text-xs">
               <thead>
                 <tr className="text-left text-neutral-600 border-b border-slate-100">
                   <th className="py-1 font-medium pr-3">Outcome</th>
-                  <th className="py-1 font-medium pr-3" title="Which direction counts as an improvement for this outcome.">Improvement means <HelpCircle size={10} className="inline text-neutral-500" /></th>
+                  <th className="py-1 font-medium pr-3" title="Which direction counts as an improvement for this outcome.">Better when <HelpCircle size={10} className="inline text-neutral-500" /></th>
                   <th className="py-1 font-medium pr-3" title="Relative importance in the total outcome gain. 1 for every outcome weighs them equally.">Weight <HelpCircle size={10} className="inline text-neutral-500" /></th>
-                  <th className="py-1 font-medium pr-3" title="Optional. The level this outcome should reach in the desired future state (on the -1 to +1 activation scale). Pathways report how many targets they reach.">Desired level (optional) <HelpCircle size={10} className="inline text-neutral-500" /></th>
+                  <th className="py-1 font-medium pr-3" title="Optional. The level this outcome should reach in the desired future state (on the -1 to +1 activation scale). Pathways report how many targets they reach.">Target (optional) <HelpCircle size={10} className="inline text-neutral-500" /></th>
                   <th />
                 </tr>
               </thead>
@@ -10988,18 +11033,18 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
 
         <div>
           <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-            <label className="text-xs text-neutral-700 font-medium">2. Intervention levers</label>
+            <StepBadge n={2} label="Which interventions may be combined?" />
             <select value="" onChange={(e) => addLever(e.target.value)} className="text-xs border border-slate-200 rounded px-2 py-1">
-              <option value="">Add a lever…</option>
+              <option value="">+ Add an intervention</option>
               {concepts.filter((c) => !leverIds.includes(c.id) && !outcomeIds.includes(c.id)).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
             <button onClick={suggestLevers} className="text-[12.5px] px-2 py-1 rounded border border-slate-200 text-neutral-900 hover:border-slate-400" title="Adds every concept that acts on others but is not acted on by anything: the usual shape of a policy instrument. Review the suggestions before running.">Suggest levers</button>
-            <span className="text-[12.5px] text-neutral-600">The interventions that can be combined, in any order, into pathways.</span>
+            <span className="text-[12.5px] text-neutral-600">The levers that pathways combine, in any order.</span>
           </div>
           {config.levers.length === 0 ? (
-            <p className="text-xs text-neutral-600 italic">No levers yet.</p>
+            <p className="text-xs text-neutral-600 italic">No interventions yet. Add them one by one, or use Suggest levers.</p>
           ) : (
-            <table className="w-full text-xs">
+            <table className="w-full max-w-4xl text-xs">
               <thead>
                 <tr className="text-left text-neutral-600 border-b border-slate-100">
                   <th className="py-1 font-medium pr-3">Lever</th>
@@ -11028,8 +11073,8 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
         </div>
 
         <div>
-          <label className="text-xs text-neutral-700 font-medium">3. How pathways are built</label>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-1.5">
+          <StepBadge n={3} label="How long may a pathway be?" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 mt-1.5">
             <div>
               <div className="text-[12.5px] text-neutral-700 mb-0.5">Maximum number of stages</div>
               <select value={J} onChange={(e) => patch({ maxLength: parseInt(e.target.value, 10) })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5">
@@ -11047,108 +11092,122 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
                 Allow scale-up stages
               </label>
             </div>
-            <div>
-              <div className="text-[12.5px] text-neutral-700 mb-0.5" title="Every order: all orderings of the levers up to the maximum length (exact, but grows fast). Beam search: keeps only the best partial pathways at each stage. Greedy: at each stage takes the lever with the highest marginal benefit (the steepest step of its sweep).">Pathway construction <HelpCircle size={10} className="inline text-neutral-500" /></div>
-              <select value={config.strategy} onChange={(e) => patch({ strategy: e.target.value })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5">
-                <option value="exhaustive">Every order (exhaustive)</option>
-                <option value="beam">Beam search</option>
-                <option value="greedy">Greedy (highest marginal benefit)</option>
-              </select>
-              {config.strategy === "beam" && (
-                <div className="flex items-center gap-1.5 mt-1 text-[12.5px] text-neutral-900">
-                  keep
-                  <input type="number" min={1} max={200} value={config.beamWidth} onChange={(e) => patch({ beamWidth: e.target.value })} className="w-12 border border-slate-200 rounded px-1 py-0.5 font-mono" />
-                  best by
-                  <select value={config.beamCriterion} onChange={(e) => patch({ beamCriterion: e.target.value })} className="border border-slate-200 rounded px-1 py-0.5">
-                    <option value="tog">outcome gain</option>
-                    <option value="pei">efficiency</option>
-                  </select>
-                </div>
-              )}
-            </div>
-            <div>
-              <div className="text-[12.5px] text-neutral-700 mb-0.5" title="Number of intensity steps each lever is swept in. A transition point can only fall on one of these steps, so this sets its precision.">Intensity resolution <HelpCircle size={10} className="inline text-neutral-500" /></div>
-              <select value={N} onChange={(e) => patch({ resolution: parseInt(e.target.value, 10) })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5">
-                <option value={10}>10 steps (±0.1)</option>
-                <option value={20}>20 steps (±0.05)</option>
-                <option value={50}>50 steps (±0.02)</option>
-              </select>
-            </div>
-            <div>
-              <div className="text-[12.5px] text-neutral-700 mb-0.5" title="An outcome change smaller than this counts as no change: for the synergy score, trade-offs, and excluding levers that move nothing.">Flat-response threshold <HelpCircle size={10} className="inline text-neutral-500" /></div>
-              <input type="number" step={0.005} min={0} max={1} value={config.flatThreshold} onChange={(e) => patch({ flatThreshold: e.target.value })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 font-mono" />
-            </div>
-            <div>
-              <div className="text-[12.5px] text-neutral-700 mb-0.5" title="Pathways count as admissible (and are classified into archetypes) only if their total outcome gain is at least this share of the best pathway's gain, and they have no trade-offs.">Minimum gain (% of best) <HelpCircle size={10} className="inline text-neutral-500" /></div>
-              <input type="number" step={5} min={0} max={100} value={Math.round((Number(config.minGainShare) || 0) * 100)} onChange={(e) => patch({ minGainShare: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) / 100 })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 font-mono" />
-            </div>
-            <div>
-              <div className="text-[12.5px] text-neutral-700 mb-0.5" title={`Near a transition point the model settles slowly, every stage sits at one, and transition points need runs settled to ${TP_PRECISION_THRESHOLD}, so pathway runs allow more iterations than the global setting, at least ${TP_MIN_ITERATIONS}. Whether a run counts as converged follows the global threshold. All other simulation settings are the global ones (Scenarios & Simulation, Advanced options).`}>Maximum iterations per run <HelpCircle size={10} className="inline text-neutral-500" /></div>
-              <input type="number" step={100} min={TP_MIN_ITERATIONS} value={config.maxIterations} onChange={(e) => patch({ maxIterations: e.target.value })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 font-mono" />
-            </div>
-            <div className="flex items-end">
-              <label className="flex items-center gap-1.5 text-[12.5px] text-neutral-900" title="Three families of variants. Simulation settings: the whole analysis repeated with steepness halved and doubled, the other squash function, and the other update rule. Outcome weights: repeated with each outcome's weight doubled and the others at 1. Archetype thresholds: the pathways classified again under shifted decision rules (no new simulations). Reports how often the top pathways stay admissible, keep their archetype, and stay in the top 5, per family. Several times longer.">
-                <input type="checkbox" checked={!!config.robustness} onChange={(e) => patch({ robustness: e.target.checked })} />
-                Also test robustness (settings, outcome weights, archetype thresholds)
-              </label>
-            </div>
           </div>
         </div>
 
-        <div>
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-neutral-700 font-medium">4. Order constraints (optional)</label>
-            <button onClick={addPrecedence} disabled={scopedLevers.length < 2} className="text-[12.5px] px-2 py-0.5 rounded border border-slate-200 text-neutral-900 hover:border-slate-400 disabled:opacity-40">Add a constraint</button>
-            <span className="text-[12.5px] text-neutral-600">For example a legal or practical prerequisite: one lever can only follow another.</span>
-          </div>
-          {config.precedence.map((p, i) => (
-            <div key={i} className="flex items-center gap-2 mt-1.5 text-xs">
-              <select value={p.after} onChange={(e) => patch({ precedence: config.precedence.map((x, j) => (j === i ? { ...x, after: e.target.value } : x)) })} className="border border-slate-200 rounded px-1.5 py-1">
-                {scopedLevers.map((l) => <option key={l.id} value={l.id}>{nameOf(l.id)}</option>)}
-              </select>
-              <span className="text-neutral-700">can only come after</span>
-              <select value={p.before} onChange={(e) => patch({ precedence: config.precedence.map((x, j) => (j === i ? { ...x, before: e.target.value } : x)) })} className="border border-slate-200 rounded px-1.5 py-1">
-                {scopedLevers.map((l) => <option key={l.id} value={l.id}>{nameOf(l.id)}</option>)}
-              </select>
-              {p.before === p.after && <span className="text-[11.5px] text-amber-700">(same lever: ignored)</span>}
-              <button onClick={() => patch({ precedence: config.precedence.filter((_, j) => j !== i) })} className="text-neutral-600 hover:text-red-600"><X size={13} /></button>
-            </div>
-          ))}
-        </div>
-
-        <div>
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-neutral-700 font-medium">5. Expert-defined sequences (optional)</label>
-            <button onClick={addExpert} disabled={!scopedLevers.length} className="text-[12.5px] px-2 py-0.5 rounded border border-slate-200 text-neutral-900 hover:border-slate-400 disabled:opacity-40">Add a sequence</button>
-            <span className="text-[12.5px] text-neutral-600">Pathways proposed by stakeholders, for example a policy roadmap. Simulated stage by stage like the others, without the order constraints, and classified with them.</span>
-          </div>
-          {expertSequences.map((q, i) => (
-            <div key={i} className="mt-2 rounded border border-slate-200 p-2 space-y-1.5" data-expert-sequence={i}>
-              <div className="flex items-center gap-2 text-xs">
-                <input value={q.name} onChange={(e) => setExpert(i, { name: e.target.value })} placeholder={`Expert sequence ${i + 1}`} aria-label="Sequence name" className="border border-slate-200 rounded px-1.5 py-1 w-64" />
-                <button onClick={() => setExpert(i, { stages: [...q.stages, { leverId: scopedLevers[0]?.id || "", mode: "tp", u: 0.5 }] })} disabled={!scopedLevers.length || q.stages.length >= PATHWAY_EXPERT_MAX_STAGES} className="text-[12.5px] px-2 py-0.5 rounded border border-slate-200 text-neutral-900 hover:border-slate-400 disabled:opacity-40"><Plus size={11} className="inline" /> Stage</button>
-                <button onClick={() => patch({ expertSequences: expertSequences.filter((_, j) => j !== i) })} className="text-neutral-600 hover:text-red-600" title="Remove this sequence"><Trash2 size={13} /></button>
-              </div>
-              {q.stages.map((st, k) => (
-                <div key={k} className="flex items-center gap-2 text-xs pl-2">
-                  <span className="text-neutral-600 w-14">Stage {k + 1}</span>
-                  <select value={st.leverId} onChange={(e) => setExpertStage(i, k, { leverId: e.target.value })} aria-label={`Stage ${k + 1} lever`} className="border border-slate-200 rounded px-1.5 py-1">
-                    {!scopedLevers.some((l) => l.id === st.leverId) && <option value={st.leverId}>{st.leverId ? `${nameOf(st.leverId)} (not a chosen lever)` : "Choose a lever"}</option>}
-                    {scopedLevers.map((l) => <option key={l.id} value={l.id}>{nameOf(l.id)}</option>)}
+        <div className="rounded-md border border-slate-200">
+          <button onClick={() => setMoreOpen((v) => !v)} aria-expanded={moreOpen} className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs hover:bg-slate-50 rounded-md">
+            {moreOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+            <span className="font-medium text-neutral-900">More options</span>
+            <span className="text-neutral-600">search strategy, precision, thresholds, robustness, order constraints, expert sequences</span>
+            {moreActive.length > 0 && <span className="ml-auto text-[11.5px] text-cobalt-800 bg-cobalt-50 border border-cobalt-200 rounded px-1.5 py-0.5">In use: {moreActive.join(", ")}</span>}
+          </button>
+          {moreOpen && (
+            <div className="px-3 pb-3 pt-1 space-y-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div>
+                  <div className="text-[12.5px] text-neutral-700 mb-0.5" title="Every order: all orderings of the levers up to the maximum length (exact, but grows fast). Beam search: keeps only the best partial pathways at each stage. Greedy: at each stage takes the lever with the highest marginal benefit (the steepest step of its sweep).">Pathway construction <HelpCircle size={10} className="inline text-neutral-500" /></div>
+                  <select value={config.strategy} onChange={(e) => patch({ strategy: e.target.value })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5">
+                    <option value="exhaustive">Every order (exhaustive)</option>
+                    <option value="beam">Beam search</option>
+                    <option value="greedy">Greedy (highest marginal benefit)</option>
                   </select>
-                  <select value={st.mode} onChange={(e) => setExpertStage(i, k, { mode: e.target.value })} aria-label={`Stage ${k + 1} intensity`} className="border border-slate-200 rounded px-1.5 py-1">
-                    <option value="tp">up to its conditional transition point</option>
-                    <option value="fixed">to a fixed intensity</option>
-                  </select>
-                  {st.mode === "fixed" && (
-                    <input type="number" min={0} max={1} step={1 / N} value={st.u} onChange={(e) => setExpertStage(i, k, { u: e.target.value })} aria-label={`Stage ${k + 1} fixed intensity`} className="w-20 border border-slate-200 rounded px-1.5 py-1 font-mono" />
+                  {config.strategy === "beam" && (
+                    <div className="flex items-center gap-1.5 mt-1 text-[12.5px] text-neutral-900">
+                      keep
+                      <input type="number" min={1} max={200} value={config.beamWidth} onChange={(e) => patch({ beamWidth: e.target.value })} className="w-12 border border-slate-200 rounded px-1 py-0.5 font-mono" />
+                      best by
+                      <select value={config.beamCriterion} onChange={(e) => patch({ beamCriterion: e.target.value })} className="border border-slate-200 rounded px-1 py-0.5">
+                        <option value="tog">outcome gain</option>
+                        <option value="pei">efficiency</option>
+                      </select>
+                    </div>
                   )}
-                  <button onClick={() => setExpert(i, { stages: q.stages.filter((_, j) => j !== k) })} className="text-neutral-600 hover:text-red-600"><X size={13} /></button>
                 </div>
-              ))}
+                <div>
+                  <div className="text-[12.5px] text-neutral-700 mb-0.5" title="Number of intensity steps each lever is swept in. A transition point can only fall on one of these steps, so this sets its precision.">Intensity resolution <HelpCircle size={10} className="inline text-neutral-500" /></div>
+                  <select value={N} onChange={(e) => patch({ resolution: parseInt(e.target.value, 10) })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5">
+                    <option value={10}>10 steps (±0.1)</option>
+                    <option value={20}>20 steps (±0.05)</option>
+                    <option value={50}>50 steps (±0.02)</option>
+                  </select>
+                </div>
+                <div>
+                  <div className="text-[12.5px] text-neutral-700 mb-0.5" title="An outcome change smaller than this counts as no change: for the synergy score, trade-offs, and excluding levers that move nothing.">Flat-response threshold <HelpCircle size={10} className="inline text-neutral-500" /></div>
+                  <input type="number" step={0.005} min={0} max={1} value={config.flatThreshold} onChange={(e) => patch({ flatThreshold: e.target.value })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 font-mono" />
+                </div>
+                <div>
+                  <div className="text-[12.5px] text-neutral-700 mb-0.5" title="Pathways count as admissible (and are classified into archetypes) only if their total outcome gain is at least this share of the best pathway's gain, and they have no trade-offs.">Minimum gain (% of best) <HelpCircle size={10} className="inline text-neutral-500" /></div>
+                  <input type="number" step={5} min={0} max={100} value={Math.round((Number(config.minGainShare) || 0) * 100)} onChange={(e) => patch({ minGainShare: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) / 100 })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 font-mono" />
+                </div>
+                <div>
+                  <div className="text-[12.5px] text-neutral-700 mb-0.5" title={`Near a transition point the model settles slowly, every stage sits at one, and transition points need runs settled to ${TP_PRECISION_THRESHOLD}, so pathway runs allow more iterations than the global setting, at least ${TP_MIN_ITERATIONS}. Whether a run counts as converged follows the global threshold. All other simulation settings are the global ones (Scenarios & Simulation, Advanced options).`}>Maximum iterations per run <HelpCircle size={10} className="inline text-neutral-500" /></div>
+                  <input type="number" step={100} min={TP_MIN_ITERATIONS} value={config.maxIterations} onChange={(e) => patch({ maxIterations: e.target.value })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 font-mono" />
+                </div>
+                <div className="flex items-end">
+                  <label className="flex items-center gap-1.5 text-[12.5px] text-neutral-900" title="Three families of variants. Simulation settings: the whole analysis repeated with steepness halved and doubled, the other squash function, and the other update rule. Outcome weights: repeated with each outcome's weight doubled and the others at 1. Archetype thresholds: the pathways classified again under shifted decision rules (no new simulations). Reports how often the top pathways stay admissible, keep their archetype, and stay in the top 5, per family. Several times longer.">
+                    <input type="checkbox" checked={!!config.robustness} onChange={(e) => patch({ robustness: e.target.checked })} />
+                    Also test robustness (settings, outcome weights, archetype thresholds)
+                  </label>
+                </div>
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-neutral-700 font-medium">Order constraints</label>
+                  <button onClick={addPrecedence} disabled={scopedLevers.length < 2} className="text-[12.5px] px-2 py-0.5 rounded border border-slate-200 text-neutral-900 hover:border-slate-400 disabled:opacity-40">Add a constraint</button>
+                  <span className="text-[12.5px] text-neutral-600">For example a legal or practical prerequisite: one lever can only follow another.</span>
+                </div>
+                {config.precedence.map((p, i) => (
+                  <div key={i} className="flex items-center gap-2 mt-1.5 text-xs">
+                    <select value={p.after} onChange={(e) => patch({ precedence: config.precedence.map((x, j) => (j === i ? { ...x, after: e.target.value } : x)) })} className="border border-slate-200 rounded px-1.5 py-1">
+                      {scopedLevers.map((l) => <option key={l.id} value={l.id}>{nameOf(l.id)}</option>)}
+                    </select>
+                    <span className="text-neutral-700">can only come after</span>
+                    <select value={p.before} onChange={(e) => patch({ precedence: config.precedence.map((x, j) => (j === i ? { ...x, before: e.target.value } : x)) })} className="border border-slate-200 rounded px-1.5 py-1">
+                      {scopedLevers.map((l) => <option key={l.id} value={l.id}>{nameOf(l.id)}</option>)}
+                    </select>
+                    {p.before === p.after && <span className="text-[11.5px] text-amber-700">(same lever: ignored)</span>}
+                    <button onClick={() => patch({ precedence: config.precedence.filter((_, j) => j !== i) })} className="text-neutral-600 hover:text-red-600"><X size={13} /></button>
+                  </div>
+                ))}
+              </div>
+
+              <div>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-neutral-700 font-medium">Expert-defined sequences</label>
+                  <button onClick={addExpert} disabled={!scopedLevers.length} className="text-[12.5px] px-2 py-0.5 rounded border border-slate-200 text-neutral-900 hover:border-slate-400 disabled:opacity-40">Add a sequence</button>
+                  <span className="text-[12.5px] text-neutral-600">Pathways proposed by stakeholders, for example a policy roadmap. Simulated stage by stage like the others, without the order constraints, and classified with them.</span>
+                </div>
+                {expertSequences.map((q, i) => (
+                  <div key={i} className="mt-2 rounded border border-slate-200 p-2 space-y-1.5" data-expert-sequence={i}>
+                    <div className="flex items-center gap-2 text-xs">
+                      <input value={q.name} onChange={(e) => setExpert(i, { name: e.target.value })} placeholder={`Expert sequence ${i + 1}`} aria-label="Sequence name" className="border border-slate-200 rounded px-1.5 py-1 w-64" />
+                      <button onClick={() => setExpert(i, { stages: [...q.stages, { leverId: scopedLevers[0]?.id || "", mode: "tp", u: 0.5 }] })} disabled={!scopedLevers.length || q.stages.length >= PATHWAY_EXPERT_MAX_STAGES} className="text-[12.5px] px-2 py-0.5 rounded border border-slate-200 text-neutral-900 hover:border-slate-400 disabled:opacity-40"><Plus size={11} className="inline" /> Stage</button>
+                      <button onClick={() => patch({ expertSequences: expertSequences.filter((_, j) => j !== i) })} className="text-neutral-600 hover:text-red-600" title="Remove this sequence"><Trash2 size={13} /></button>
+                    </div>
+                    {q.stages.map((st, k) => (
+                      <div key={k} className="flex items-center gap-2 text-xs pl-2">
+                        <span className="text-neutral-600 w-14">Stage {k + 1}</span>
+                        <select value={st.leverId} onChange={(e) => setExpertStage(i, k, { leverId: e.target.value })} aria-label={`Stage ${k + 1} lever`} className="border border-slate-200 rounded px-1.5 py-1">
+                          {!scopedLevers.some((l) => l.id === st.leverId) && <option value={st.leverId}>{st.leverId ? `${nameOf(st.leverId)} (not a chosen lever)` : "Choose a lever"}</option>}
+                          {scopedLevers.map((l) => <option key={l.id} value={l.id}>{nameOf(l.id)}</option>)}
+                        </select>
+                        <select value={st.mode} onChange={(e) => setExpertStage(i, k, { mode: e.target.value })} aria-label={`Stage ${k + 1} intensity`} className="border border-slate-200 rounded px-1.5 py-1">
+                          <option value="tp">up to its conditional transition point</option>
+                          <option value="fixed">to a fixed intensity</option>
+                        </select>
+                        {st.mode === "fixed" && (
+                          <input type="number" min={0} max={1} step={1 / N} value={st.u} onChange={(e) => setExpertStage(i, k, { u: e.target.value })} aria-label={`Stage ${k + 1} fixed intensity`} className="w-20 border border-slate-200 rounded px-1.5 py-1 font-mono" />
+                        )}
+                        <button onClick={() => setExpert(i, { stages: q.stages.filter((_, j) => j !== k) })} className="text-neutral-600 hover:text-red-600"><X size={13} /></button>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+                {expertSequences.length > 0 && <p className="text-[11.5px] text-neutral-600 mt-1">Fixed intensities are rounded to the intensity resolution (steps of {round2(1 / N)}). A lever can appear again later in a sequence only at a higher intensity (a scale-up); intensities are never lowered. Expert pathways count toward the archetype thresholds like every other candidate pathway (Section 6.1 of the methods).</p>}
+              </div>
             </div>
-          ))}
-          {expertSequences.length > 0 && <p className="text-[11.5px] text-neutral-600 mt-1">Fixed intensities are rounded to the intensity resolution (steps of {round2(1 / N)}). A lever can appear again later in a sequence only at a higher intensity (a scale-up); intensities are never lowered. Expert pathways count toward the archetype thresholds like every other candidate pathway (Section 6.1 of the methods).</p>}
+          )}
         </div>
 
         {outOfScope.length > 0 && (
@@ -11222,6 +11281,67 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
             <p><strong>What this does not tell you.</strong> Stages are implementation phases, not periods of time, and each is assumed to last long enough for the system to settle. Implemented levers are assumed to stay in place. Results are relative comparisons between pathways in the units of the map, implications of the causal structure as drawn rather than forecasts.</p>
           </MethodPanel>
 
+          <div className="bg-white rounded-lg border border-slate-200 p-4">
+            <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
+              <h4 className="text-sm font-semibold">Pathway metro map</h4>
+              <div className="flex items-center gap-2 flex-wrap text-[12.5px]">
+                <select value={metroMode} onChange={(e) => setMetroMode(e.target.value)} className="border border-slate-200 rounded px-2 py-1 bg-white" title="Which pathways the map draws">
+                  <option value="top">Highest total outcome gain</option>
+                  <option value="admissible">Admissible pathways only</option>
+                  <option value="frontier">Efficient frontier</option>
+                  <option value="archetypes">Top 3 of each archetype</option>
+                </select>
+                {metroMode !== "archetypes" && (
+                  <select value={metroLimit} onChange={(e) => setMetroLimit(Number(e.target.value))} className="border border-slate-200 rounded px-2 py-1 bg-white" title="How many pathways">
+                    {[6, 8, 12, 16, 20, 30].map((n) => <option key={n} value={n}>{n} pathways</option>)}
+                  </select>
+                )}
+                <select value={metroSort} onChange={(e) => { const v = e.target.value; setMetroSort(v); setMetroDir(v === "cii" ? "asc" : "desc"); }} className="border border-slate-200 rounded px-2 py-1 bg-white" title="How the rows are ordered">
+                  <option value="tree">Sort: shared stages together</option>
+                  <option value="tog">Sort by total outcome gain</option>
+                  <option value="cii">Sort by intensity (CII)</option>
+                  {result.outcomes.map((o) => <option key={o.id} value={`outcome:${o.id}`}>Sort by {nameOf(o.id)}</option>)}
+                </select>
+                {metroSort !== "tree" && (
+                  <button onClick={() => setMetroDir((d) => (d === "desc" ? "asc" : "desc"))} className="border border-slate-200 rounded px-2 py-1 bg-white hover:border-slate-400" title="Reverse the order">
+                    {metroDir === "desc" ? "Highest first" : "Lowest first"}
+                  </button>
+                )}
+                <Btn variant="outline" onClick={() => setFigMetroOpen((v) => !v)}><SlidersHorizontal size={13} />{figMetroOpen ? "Hide figure options" : "Customize & export"}</Btn>
+              </div>
+            </div>
+            <p className="text-[12.5px] text-neutral-600 mb-2">The pathways drawn as metro lines, after the metro maps of adaptation pathways. Each row is one pathway on the axis of cumulative intervention intensity, starting from Business-as-Usual at 0. Every intervention has its own colour. A solid line is the intervention that opens a pathway; a dashed line is an intervention added to it, in that intervention's colour. A white station marks where the next intervention is added, and a black dot marks where the pathway ends. With "shared stages together", pathways that share their first stages branch off with a dashed transfer line (↳ in the label), so the shared part is drawn once; any other sort draws every pathway in full. A red bar marks the tipping point, the first stage after which an outcome is worse than in Business-as-Usual, and the line fades beyond it. The columns on the right give the total outcome gain and, per outcome, the change at the end of the pathway against Business-as-Usual (positive is an improvement). Click a row to open that pathway in the advanced results.</p>
+            {metroRows.length === 0 ? (
+              <p className="text-xs text-neutral-600 italic">No pathways to draw for this choice.</p>
+            ) : (
+              <PathwayMetroMap
+                containerRef={metroRef}
+                rows={metroRows} leverIds={metroLeverIds} outcomes={result.outcomes} nameOf={nameOf}
+                fig={figMetro} colors={interventionColors(figMetro.palette, metroLeverIds.length)}
+                selectedId={selectedId} onSelect={selectPathway} eps={result.eps}
+                className="w-full"
+                style={figMetroOpen
+                  ? { width: mmToPx(figMetro.widthMm, 96), height: mmToPx(figMetro.heightMm, 96), maxWidth: "100%" }
+                  : { height: Math.max(220, metroRows.length * 30 + 140) }}
+              />
+            )}
+            {figMetroOpen && (
+              <FigurePanel
+                settings={figMetro} onChange={setFigMetro}
+                exporting={figMetroBusy}
+                onExport={async () => {
+                  setFigMetroBusy(true);
+                  await exportFigure(metroRef.current, "transition-pathways-metro-map.png", figMetro, {
+                    title: figMetro.title || "Transition Pathways: Metro Map",
+                    subtitle: pathwayContextLine,
+                  });
+                  setFigMetroBusy(false);
+                }}
+              />
+            )}
+          </div>
+
+
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {PATHWAY_ARCHETYPES.map((a) => {
               const top = s.ranked[a.key][0];
@@ -11284,136 +11404,6 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
           )}
 
           <div className="bg-white rounded-lg border border-slate-200 p-4">
-            <div className="flex items-center justify-between mb-1">
-              <h4 className="text-sm font-semibold">Effort-gain plane</h4>
-              <Btn variant="outline" onClick={() => setFigPlaneOpen((v) => !v)}><SlidersHorizontal size={13} />{figPlaneOpen ? "Hide figure options" : "Customize & export"}</Btn>
-            </div>
-            <p className="text-[12.5px] text-neutral-600 mb-2">Every pathway by the effort it needs (cumulative intervention intensity) and what it achieves (total outcome gain), coloured by primary archetype. The dashed line is the efficient frontier: no other pathway achieves more with less. The selected pathway is ringed and labelled directly on the chart, so it stays identifiable once the image is saved. Click a point to open that pathway below.</p>
-            <div ref={planeRef} data-chart="pathway-plane" className="w-full h-96" style={figPlaneOpen ? { width: mmToPx(figPlane.widthMm, 96), height: mmToPx(figPlane.heightMm, 96), maxWidth: "100%" } : undefined}>
-              <ResponsiveContainer>
-                <ScatterChart margin={{ top: 10, right: 24, bottom: 24, left: 16 }}>
-                  {figPlane.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
-                  <XAxis type="number" dataKey="x" name="CII" tick={{ fontSize: figPlane.tickFontSize }} tickFormatter={(v) => fmtDec(v, figPlane.decimals)} label={{ value: figPlane.xLabel || "Cumulative intervention intensity (effort)", position: "insideBottom", offset: -12, fontSize: figPlane.axisFontSize }} />
-                  {/* Zoomed to the data: in a saturating map the pathways' gains
-                      can differ only in the first decimal, which an axis from 0
-                      would flatten into a single line. */}
-                  <YAxis type="number" dataKey="y" name="TOG" domain={plane.yDomain} ticks={plane.yTicks} tickFormatter={(v) => fmtDec(v, figPlane.decimals)} tick={{ fontSize: figPlane.tickFontSize }} label={{ value: figPlane.yLabel || "Total outcome gain", angle: -90, position: "insideLeft", fontSize: figPlane.axisFontSize }} />
-                  <ZAxis range={[36 * figPlane.markerSize / 3, 36 * figPlane.markerSize / 3]} />
-                  <RTooltip cursor={{ strokeDasharray: "3 3" }} content={({ active, payload }) => {
-                    const c = active && payload?.[0] ? candById.get(payload[0].payload.id) : null;
-                    return c ? (
-                      <div className="bg-white border border-slate-200 rounded shadow-sm p-2 text-[12.5px] max-w-xs">
-                        <div className="font-semibold mb-0.5"><PathwayStagesText c={c} nameOf={nameOf} compact /></div>
-                        <div>TOG {fmtNum(c.tog)}, CII {fmtNum(c.cii)}, PEI {fmtNum(c.pei)}</div>
-                        <div className="text-neutral-700">{pathwayStatus(c)}</div>
-                      </div>
-                    ) : null;
-                  }} />
-                  {figPlane.legendPosition !== "hidden" && (
-                    <Legend
-                      wrapperStyle={{ fontSize: figPlane.legendFontSize, lineHeight: "17px" }}
-                      layout={figPlane.legendPosition === "left" || figPlane.legendPosition === "right" ? "vertical" : "horizontal"}
-                      verticalAlign={figPlane.legendPosition === "left" || figPlane.legendPosition === "right" ? "middle" : figPlane.legendPosition}
-                      align={figPlane.legendPosition === "left" || figPlane.legendPosition === "right" ? figPlane.legendPosition : "center"}
-                      height={figPlane.legendPosition === "top" || figPlane.legendPosition === "bottom" ? 42 : undefined}
-                    />
-                  )}
-                  {figPlane.title && <text x="50%" y={14} textAnchor="middle" fontSize={figPlane.titleFontSize} fontWeight={600} fill="#0f172a">{figPlane.title}</text>}
-                  <Scatter name="Other converged pathways" data={plane.other} fill="#cbd5e1" fillOpacity={figPlane.opacity} onClick={(p) => selectPathway(p?.payload?.id ?? p?.id)} isAnimationActive={false} />
-                  <Scatter name="Intermediate" data={plane.intermediate} fill="#94a3b8" fillOpacity={figPlane.opacity} onClick={(p) => selectPathway(p?.payload?.id ?? p?.id)} isAnimationActive={false} />
-                  {plane.series.map((a, i) => (
-                    <Scatter key={a.key} name={a.label} data={a.data} fill={figPlane.palette === "default" ? a.color : figurePalette(figPlane.palette, PATHWAY_ARCHETYPES.length)[i]} fillOpacity={figPlane.opacity} onClick={(p) => selectPathway(p?.payload?.id ?? p?.id)} isAnimationActive={false} />
-                  ))}
-                  <Scatter name="Efficient frontier" data={plane.frontier} fill="none" line={{ stroke: "#334155", strokeDasharray: "5 4", strokeWidth: figPlane.lineWidth }} shape={() => null} legendType="plainline" isAnimationActive={false} />
-                  {selected && (
-                    <Scatter
-                      name="Selected" data={[{ x: round3(selected.cii), y: round3(selected.tog), id: selected.id }]}
-                      fill="none" legendType="none" isAnimationActive={false}
-                      shape={(p) => (
-                        <g>
-                          <circle cx={p.cx} cy={p.cy} r={9} fill="none" stroke="#0f172a" strokeWidth={2} />
-                          <text x={p.cx} y={p.cy - 14} textAnchor="middle" fontSize={figPlane.tickFontSize} fontWeight={600} fill="#0f172a" stroke="#ffffff" strokeWidth={3} style={{ paintOrder: "stroke" }}>
-                            {selectedLabel}
-                          </text>
-                        </g>
-                      )}
-                    />
-                  )}
-                </ScatterChart>
-              </ResponsiveContainer>
-            </div>
-            {figPlaneOpen && (
-              <FigurePanel
-                settings={figPlane} onChange={setFigPlane}
-                maxPoints={planeMaxPoints} onMaxPointsChange={setPlaneMaxPoints} maxPointsCap={Math.max(result.candidates.length, 1)}
-                maxPointsLabel="Show only the top N unclassified pathways (by total outcome gain)"
-                exporting={figPlaneBusy}
-                onExport={async () => {
-                  setFigPlaneBusy(true);
-                  await exportFigure(planeRef.current, "transition-pathways-effort-gain.png", figPlane, {
-                    title: figPlane.title || "Transition Pathways: Effort-Gain Plane",
-                    subtitle: `${pathwayContextLine} · ${s.counts.admissible} of ${s.counts.total} pathways admissible`,
-                  });
-                  setFigPlaneBusy(false);
-                }}
-              />
-            )}
-          </div>
-
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
-            <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
-              <h4 className="text-sm font-semibold">Pathway metro map</h4>
-              <div className="flex items-center gap-2 flex-wrap text-[12.5px]">
-                <select value={metroMode} onChange={(e) => setMetroMode(e.target.value)} className="border border-slate-200 rounded px-2 py-1 bg-white" title="Which pathways the map draws">
-                  <option value="top">Highest total outcome gain</option>
-                  <option value="admissible">Admissible pathways only</option>
-                  <option value="frontier">Efficient frontier</option>
-                  <option value="archetypes">Top 3 of each archetype</option>
-                </select>
-                {metroMode !== "archetypes" && (
-                  <select value={metroLimit} onChange={(e) => setMetroLimit(Number(e.target.value))} className="border border-slate-200 rounded px-2 py-1 bg-white" title="How many pathways">
-                    {[6, 8, 12, 16, 20, 30].map((n) => <option key={n} value={n}>{n} pathways</option>)}
-                  </select>
-                )}
-                <select value={metroColour} onChange={(e) => setMetroColour(e.target.value)} className="border border-slate-200 rounded px-2 py-1 bg-white" title="How the lines are coloured">
-                  <option value="lever">Colour by lever of each stage</option>
-                  <option value="opening">Colour by opening lever</option>
-                </select>
-                <Btn variant="outline" onClick={() => setFigMetroOpen((v) => !v)}><SlidersHorizontal size={13} />{figMetroOpen ? "Hide figure options" : "Customize & export"}</Btn>
-              </div>
-            </div>
-            <p className="text-[12.5px] text-neutral-600 mb-2">The pathways drawn as metro lines, after the metro maps of adaptation pathways. Each row is one pathway on the axis of cumulative intervention intensity, starting from Business-as-Usual at 0. A white station marks where the next lever is added, and a black dot marks where the pathway ends. Pathways that share their first stages branch off with a vertical transfer line (marked ↳ in the label), so the shared part is drawn once. A red bar marks the tipping point: the first stage after which an outcome is worse than in Business-as-Usual; the line is dashed beyond it. The columns on the right give the total outcome gain and, per outcome, the change at the end of the pathway against Business-as-Usual (positive is an improvement). Click a row to open that pathway below.</p>
-            {metroRows.length === 0 ? (
-              <p className="text-xs text-neutral-600 italic">No pathways to draw for this choice.</p>
-            ) : (
-              <PathwayMetroMap
-                containerRef={metroRef}
-                rows={metroRows} leverIds={metroLeverIds} outcomes={result.outcomes} nameOf={nameOf}
-                fig={figMetro} colors={figMetro.palette === "default" ? lineColors : figurePalette(figMetro.palette, Math.max(1, metroLeverIds.length))}
-                colourBy={metroColour} selectedId={selectedId} onSelect={selectPathway} eps={result.eps}
-                className="w-full"
-                style={figMetroOpen
-                  ? { width: mmToPx(figMetro.widthMm, 96), height: mmToPx(figMetro.heightMm, 96), maxWidth: "100%" }
-                  : { height: Math.max(220, metroRows.length * 30 + 140) }}
-              />
-            )}
-            {figMetroOpen && (
-              <FigurePanel
-                settings={figMetro} onChange={setFigMetro}
-                exporting={figMetroBusy}
-                onExport={async () => {
-                  setFigMetroBusy(true);
-                  await exportFigure(metroRef.current, "transition-pathways-metro-map.png", figMetro, {
-                    title: figMetro.title || "Transition Pathways: Metro Map",
-                    subtitle: pathwayContextLine,
-                  });
-                  setFigMetroBusy(false);
-                }}
-              />
-            )}
-          </div>
-
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
             <h4 className="text-sm font-semibold mb-2">Rankings by archetype</h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {PATHWAY_ARCHETYPES.map((a) => (
@@ -11442,311 +11432,366 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
             </div>
           </div>
 
-          {selected && trajectory && (
-            <div data-pathway-detail className="bg-white rounded-lg border border-slate-200 p-4 space-y-3 scroll-mt-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h4 className="text-sm font-semibold">Selected pathway</h4>
-                  <div className="text-xs mt-1"><PathwayStagesText c={selected} nameOf={nameOf} /></div>
-                  <div className="mt-1.5"><ArchetypeBadges c={selected} />{selected.frontier && <span className="ml-1 text-[11.5px] px-1.5 py-0.5 rounded-full border border-slate-300 text-neutral-900">On the efficient frontier</span>}</div>
-                </div>
-                <Btn variant="outline" onClick={exportStagesCSV}><Download size={13} />Stages (CSV)</Btn>
+          <div className="bg-white rounded-lg border border-slate-200" data-pathway-advanced>
+            <button onClick={() => setAdvancedOpen((v) => !v)} aria-expanded={advancedOpen} className="w-full flex items-center gap-2 px-4 py-3 text-left rounded-lg hover:bg-slate-50">
+              {advancedOpen ? <ChevronDown size={15} className="text-neutral-700 shrink-0" /> : <ChevronRight size={15} className="text-neutral-700 shrink-0" />}
+              <SlidersHorizontal size={15} className="text-cobalt-700 shrink-0" />
+              <span className="text-sm font-semibold text-neutral-900">Advanced results</span>
+              <span className="text-xs text-neutral-600">Effort-gain plane, selected pathway, all pathways, implementation portfolios, invariance test</span>
+              <span className="ml-auto shrink-0 text-[12.5px] font-medium text-cobalt-700 border border-cobalt-200 bg-cobalt-50 rounded px-1.5 py-0.5">{advancedOpen ? "Hide" : "Show"}</span>
+            </button>
+            {advancedOpen && (
+              <div className="px-4 pb-4 pt-1 space-y-5">
+            <div className="bg-white rounded-lg border border-slate-200 p-4">
+              <div className="flex items-center justify-between mb-1">
+                <h4 className="text-sm font-semibold">Effort-gain plane</h4>
+                <Btn variant="outline" onClick={() => setFigPlaneOpen((v) => !v)}><SlidersHorizontal size={13} />{figPlaneOpen ? "Hide figure options" : "Customize & export"}</Btn>
               </div>
-              <div className="grid grid-cols-3 md:grid-cols-8 gap-2">
-                {[["TOG", selected.tog, PATHWAY_METRIC_HELP.tog], ["CII", selected.cii, PATHWAY_METRIC_HELP.cii], ["PEI", selected.pei, PATHWAY_METRIC_HELP.pei], ["Avg TP", selected.avgTp, PATHWAY_METRIC_HELP.avgTp],
-                  ["SS", selected.ss, PATHWAY_METRIC_HELP.ss], ["EBI", selected.ebi, PATHWAY_METRIC_HELP.ebi], ["IG", selected.ig, PATHWAY_METRIC_HELP.ig], ["TP shift", selected.meanShift, PATHWAY_METRIC_HELP.shift]].map(([k, v, h]) => (
-                  <div key={k} className="border border-slate-200 rounded p-2" title={h}>
-                    <div className="text-[11.5px] text-neutral-600">{k}</div>
-                    <div className="text-sm font-mono">{k === "SS" ? `${v} of ${result.outcomes.length}` : k === "IG" || k === "TP shift" ? fmtSigned(v) : fmtNum(v)}</div>
-                  </div>
-                ))}
+              <p className="text-[12.5px] text-neutral-600 mb-2">Every pathway by the effort it needs (cumulative intervention intensity) and what it achieves (total outcome gain), coloured by primary archetype. The dashed line is the efficient frontier: no other pathway achieves more with less. The selected pathway is ringed and labelled directly on the chart, so it stays identifiable once the image is saved. Click a point to open that pathway below.</p>
+              <div ref={planeRef} data-chart="pathway-plane" className="w-full h-96" style={figPlaneOpen ? { width: mmToPx(figPlane.widthMm, 96), height: mmToPx(figPlane.heightMm, 96), maxWidth: "100%" } : undefined}>
+                <ResponsiveContainer>
+                  <ScatterChart margin={{ top: 10, right: 24, bottom: 24, left: 16 }}>
+                    {figPlane.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
+                    <XAxis type="number" dataKey="x" name="CII" tick={{ fontSize: figPlane.tickFontSize }} tickFormatter={(v) => fmtDec(v, figPlane.decimals)} label={{ value: figPlane.xLabel || "Cumulative intervention intensity (effort)", position: "insideBottom", offset: -12, fontSize: figPlane.axisFontSize }} />
+                    {/* Zoomed to the data: in a saturating map the pathways' gains
+                        can differ only in the first decimal, which an axis from 0
+                        would flatten into a single line. */}
+                    <YAxis type="number" dataKey="y" name="TOG" domain={plane.yDomain} ticks={plane.yTicks} tickFormatter={(v) => fmtDec(v, figPlane.decimals)} tick={{ fontSize: figPlane.tickFontSize }} label={{ value: figPlane.yLabel || "Total outcome gain", angle: -90, position: "insideLeft", fontSize: figPlane.axisFontSize }} />
+                    <ZAxis range={[36 * figPlane.markerSize / 3, 36 * figPlane.markerSize / 3]} />
+                    <RTooltip cursor={{ strokeDasharray: "3 3" }} content={({ active, payload }) => {
+                      const c = active && payload?.[0] ? candById.get(payload[0].payload.id) : null;
+                      return c ? (
+                        <div className="bg-white border border-slate-200 rounded shadow-sm p-2 text-[12.5px] max-w-xs">
+                          <div className="font-semibold mb-0.5"><PathwayStagesText c={c} nameOf={nameOf} compact /></div>
+                          <div>TOG {fmtNum(c.tog)}, CII {fmtNum(c.cii)}, PEI {fmtNum(c.pei)}</div>
+                          <div className="text-neutral-700">{pathwayStatus(c)}</div>
+                        </div>
+                      ) : null;
+                    }} />
+                    {figPlane.legendPosition !== "hidden" && (
+                      <Legend
+                        wrapperStyle={{ fontSize: figPlane.legendFontSize, lineHeight: "17px" }}
+                        layout={figPlane.legendPosition === "left" || figPlane.legendPosition === "right" ? "vertical" : "horizontal"}
+                        verticalAlign={figPlane.legendPosition === "left" || figPlane.legendPosition === "right" ? "middle" : figPlane.legendPosition}
+                        align={figPlane.legendPosition === "left" || figPlane.legendPosition === "right" ? figPlane.legendPosition : "center"}
+                        height={figPlane.legendPosition === "top" || figPlane.legendPosition === "bottom" ? 42 : undefined}
+                      />
+                    )}
+                    {figPlane.title && <text x="50%" y={14} textAnchor="middle" fontSize={figPlane.titleFontSize} fontWeight={600} fill="#0f172a">{figPlane.title}</text>}
+                    <Scatter name="Other converged pathways" data={plane.other} fill="#cbd5e1" fillOpacity={figPlane.opacity} onClick={(p) => selectPathway(p?.payload?.id ?? p?.id)} isAnimationActive={false} />
+                    <Scatter name="Intermediate" data={plane.intermediate} fill="#94a3b8" fillOpacity={figPlane.opacity} onClick={(p) => selectPathway(p?.payload?.id ?? p?.id)} isAnimationActive={false} />
+                    {plane.series.map((a, i) => (
+                      <Scatter key={a.key} name={a.label} data={a.data} fill={figPlane.palette === "default" ? a.color : figurePalette(figPlane.palette, PATHWAY_ARCHETYPES.length)[i]} fillOpacity={figPlane.opacity} onClick={(p) => selectPathway(p?.payload?.id ?? p?.id)} isAnimationActive={false} />
+                    ))}
+                    <Scatter name="Efficient frontier" data={plane.frontier} fill="none" line={{ stroke: "#334155", strokeDasharray: "5 4", strokeWidth: figPlane.lineWidth }} shape={() => null} legendType="plainline" isAnimationActive={false} />
+                    {selected && (
+                      <Scatter
+                        name="Selected" data={[{ x: round3(selected.cii), y: round3(selected.tog), id: selected.id }]}
+                        fill="none" legendType="none" isAnimationActive={false}
+                        shape={(p) => (
+                          <g>
+                            <circle cx={p.cx} cy={p.cy} r={9} fill="none" stroke="#0f172a" strokeWidth={2} />
+                            <text x={p.cx} y={p.cy - 14} textAnchor="middle" fontSize={figPlane.tickFontSize} fontWeight={600} fill="#0f172a" stroke="#ffffff" strokeWidth={3} style={{ paintOrder: "stroke" }}>
+                              {selectedLabel}
+                            </text>
+                          </g>
+                        )}
+                      />
+                    )}
+                  </ScatterChart>
+                </ResponsiveContainer>
               </div>
-              {selected.targetsSet > 0 && <p className="text-xs text-neutral-900">Reaches {selected.targetsMet} of {selected.targetsSet} desired outcome levels.</p>}
-              {!selected.converged && <p className="text-xs text-amber-700">At least one stage of this pathway did not converge within {result.settingsUsed.maxIterations} iterations; its end state is not a settled equilibrium.</p>}
+              {figPlaneOpen && (
+                <FigurePanel
+                  settings={figPlane} onChange={setFigPlane}
+                  maxPoints={planeMaxPoints} onMaxPointsChange={setPlaneMaxPoints} maxPointsCap={Math.max(result.candidates.length, 1)}
+                  maxPointsLabel="Show only the top N unclassified pathways (by total outcome gain)"
+                  exporting={figPlaneBusy}
+                  onExport={async () => {
+                    setFigPlaneBusy(true);
+                    await exportFigure(planeRef.current, "transition-pathways-effort-gain.png", figPlane, {
+                      title: figPlane.title || "Transition Pathways: Effort-Gain Plane",
+                      subtitle: `${pathwayContextLine} · ${s.counts.admissible} of ${s.counts.total} pathways admissible`,
+                    });
+                    setFigPlaneBusy(false);
+                  }}
+                />
+              )}
+            </div>
 
+            {selected && trajectory && (
+              <div data-pathway-detail className="bg-white rounded-lg border border-slate-200 p-4 space-y-3 scroll-mt-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h4 className="text-sm font-semibold">Selected pathway</h4>
+                    <div className="text-xs mt-1"><PathwayStagesText c={selected} nameOf={nameOf} /></div>
+                    <div className="mt-1.5"><ArchetypeBadges c={selected} />{selected.frontier && <span className="ml-1 text-[11.5px] px-1.5 py-0.5 rounded-full border border-slate-300 text-neutral-900">On the efficient frontier</span>}</div>
+                  </div>
+                  <Btn variant="outline" onClick={exportStagesCSV}><Download size={13} />Stages (CSV)</Btn>
+                </div>
+                <div className="grid grid-cols-3 md:grid-cols-8 gap-2">
+                  {[["TOG", selected.tog, PATHWAY_METRIC_HELP.tog], ["CII", selected.cii, PATHWAY_METRIC_HELP.cii], ["PEI", selected.pei, PATHWAY_METRIC_HELP.pei], ["Avg TP", selected.avgTp, PATHWAY_METRIC_HELP.avgTp],
+                    ["SS", selected.ss, PATHWAY_METRIC_HELP.ss], ["EBI", selected.ebi, PATHWAY_METRIC_HELP.ebi], ["IG", selected.ig, PATHWAY_METRIC_HELP.ig], ["TP shift", selected.meanShift, PATHWAY_METRIC_HELP.shift]].map(([k, v, h]) => (
+                    <div key={k} className="border border-slate-200 rounded p-2" title={h}>
+                      <div className="text-[11.5px] text-neutral-600">{k}</div>
+                      <div className="text-sm font-mono">{k === "SS" ? `${v} of ${result.outcomes.length}` : k === "IG" || k === "TP shift" ? fmtSigned(v) : fmtNum(v)}</div>
+                    </div>
+                  ))}
+                </div>
+                {selected.targetsSet > 0 && <p className="text-xs text-neutral-900">Reaches {selected.targetsMet} of {selected.targetsSet} desired outcome levels.</p>}
+                {!selected.converged && <p className="text-xs text-amber-700">At least one stage of this pathway did not converge within {result.settingsUsed.maxIterations} iterations; its end state is not a settled equilibrium.</p>}
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-left text-neutral-600 border-b border-slate-100">
+                        <th className="py-1 font-medium pr-3">Stage</th>
+                        <th className="py-1 font-medium pr-3">Lever</th>
+                        <th className="py-1 font-medium pr-3" title="The lever's transition point on its own, from Business-as-Usual.">TP alone</th>
+                        <th className="py-1 font-medium pr-3" title="The lever's transition point in the state this pathway has reached.">TP here</th>
+                        <th className="py-1 font-medium pr-3" title="Negative: earlier stages bring the lever's peak return forward (enabling). Positive: they push it later.">Shift</th>
+                        <th className="py-1 font-medium pr-3">Intensity</th>
+                        <th className="py-1 font-medium pr-3" title="Outcome gain added by this stage.">Stage gain</th>
+                        <th className="py-1 font-medium pr-3">Outcome gain after</th>
+                        <th className="py-1 font-medium pr-3" title="Stage gain per unit of effort spent in this stage.">Efficiency</th>
+                        {result.outcomes.map((o) => (
+                          <th key={o.id} className="py-1 font-medium pr-3" title="The value this outcome reaches at the end of the stage: a reference level to monitor before moving on to the next stage.">{nameOf(o.id)}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="border-b border-slate-50 text-neutral-600">
+                        <td className="py-1 pr-3">BAU</td><td className="py-1 pr-3" colSpan={8}>Business-as-Usual equilibrium</td>
+                        {result.outcomes.map((o) => <td key={o.id} className="py-1 pr-3 font-mono">{fmtNum(result.bauOutcomes[o.id])}</td>)}
+                      </tr>
+                      {selected.stages.map((st, i) => {
+                        const dG = st.gainAfter - st.gainBefore;
+                        const du = st.u - st.uPrev;
+                        return (
+                          <tr key={i} className="border-b border-slate-50">
+                            <td className="py-1 pr-3">{i + 1}</td>
+                            <td className="py-1 pr-3">{nameOf(st.leverId)}{st.scaleUp && <span className="text-[11.5px] text-neutral-600"> (scale-up)</span>}{!st.converged && <span className="text-[11.5px] text-amber-700"> (not converged)</span>}</td>
+                            <td className="py-1 pr-3 font-mono">{fmtNum(st.tauIso)}</td>
+                            <td className="py-1 pr-3 font-mono">{fmtNum(st.tauCond)}</td>
+                            <td className={`py-1 pr-3 font-mono ${st.shift < 0 ? "text-cobalt-700" : st.shift > 0 ? "text-orange-700" : ""}`}>{st.shift === null ? "" : fmtSigned(st.shift)}</td>
+                            <td className="py-1 pr-3 font-mono">{st.scaleUp ? `${round2(st.uPrev)} to ` : ""}{round2(st.u)}</td>
+                            <td className={`py-1 pr-3 font-mono ${dG < -1e-6 ? "text-orange-700" : ""}`} title={dG < -1e-6 ? "This stage lowers the total outcome gain: from this state, the lever at this intensity worsens the outcomes." : undefined}>{fmtSigned(dG)}</td>
+                            <td className="py-1 pr-3 font-mono">{fmtNum(st.gainAfter)}</td>
+                            <td className="py-1 pr-3 font-mono">{du > 0 ? fmtNum(dG / (st.effort * du)) : "n/a"}</td>
+                            {st.outcomes.map((o) => <td key={o.id} className="py-1 pr-3 font-mono">{fmtNum(o.value)}</td>)}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="text-xs font-medium text-neutral-900">Outcome trajectory</div>
+                      <Btn variant="outline" onClick={() => setFigTrajectoryOpen((v) => !v)}><SlidersHorizontal size={13} />{figTrajectoryOpen ? "Hide figure options" : "Customize & export"}</Btn>
+                    </div>
+                    <p className="text-[11.5px] text-neutral-600 mb-1">Improvement of each outcome relative to Business-as-Usual after every stage (up is better for every outcome), and the total outcome gain.</p>
+                    <div ref={trajectoryRef} className="h-60" style={figTrajectoryOpen ? { width: mmToPx(figTrajectory.widthMm, 96), height: mmToPx(figTrajectory.heightMm, 96), maxWidth: "100%" } : undefined}>
+                      <ResponsiveContainer>
+                        <LineChart data={trajectory.rows} margin={{ top: 16, right: 10, bottom: 5, left: 0 }}>
+                          {figTrajectory.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
+                          <XAxis dataKey="stage" tick={{ fontSize: figTrajectory.tickFontSize }} label={figTrajectory.xLabel ? { value: figTrajectory.xLabel, position: "insideBottom", offset: -2, fontSize: figTrajectory.axisFontSize } : undefined} />
+                          <YAxis tick={{ fontSize: figTrajectory.tickFontSize }} tickFormatter={(v) => fmtDec(v, figTrajectory.decimals)} label={{ value: figTrajectory.yLabel || "vs. BAU", angle: -90, position: "insideLeft", fontSize: figTrajectory.axisFontSize }} />
+                          <RTooltip />
+                          {figTrajectory.legendPosition !== "hidden" && (
+                            <Legend
+                              wrapperStyle={{ fontSize: figTrajectory.legendFontSize }}
+                              layout={figTrajectory.legendPosition === "left" || figTrajectory.legendPosition === "right" ? "vertical" : "horizontal"}
+                              verticalAlign={figTrajectory.legendPosition === "left" || figTrajectory.legendPosition === "right" ? "middle" : figTrajectory.legendPosition}
+                              align={figTrajectory.legendPosition === "left" || figTrajectory.legendPosition === "right" ? figTrajectory.legendPosition : "center"}
+                            />
+                          )}
+                          {figTrajectory.title && <text x="50%" y={14} textAnchor="middle" fontSize={figTrajectory.titleFontSize} fontWeight={600} fill="#0f172a">{figTrajectory.title}</text>}
+                          <ReferenceLine y={0} stroke="#94a3b8" />
+                          {trajectoryOutcomeRows.map((o, i) => (
+                            <Line key={o.id} type="linear" dataKey={o.id} name={o.name} stroke={figurePalette(figTrajectory.palette, trajectoryOutcomeRows.length)[i]} strokeWidth={figTrajectory.lineWidth} strokeOpacity={figTrajectory.opacity} dot={figTrajectory.markerSize > 0 ? { r: figTrajectory.markerSize } : false} isAnimationActive={false} />
+                          ))}
+                          <Line type="linear" dataKey="total" name="Total outcome gain" stroke="#0f172a" strokeDasharray="5 4" strokeWidth={figTrajectory.lineWidth} dot={figTrajectory.markerSize > 0 ? { r: figTrajectory.markerSize } : false} isAnimationActive={false}>
+                            <LabelList dataKey="total" position="top" formatter={(v) => fmtDec(v, figTrajectory.decimals)} style={{ fontSize: figTrajectory.tickFontSize, fill: "#0f172a", fontWeight: 600 }} />
+                          </Line>
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                    {figTrajectoryOpen && (
+                      <FigurePanel
+                        settings={figTrajectory} onChange={setFigTrajectory}
+                        seriesOptions={trajectorySeriesOptions} hiddenKeys={hiddenTrajectoryOutcomes} onToggleSeries={toggleHiddenTrajectoryOutcome}
+                        sortOptions={TRAJECTORY_ORDER_OPTIONS} sortValue={trajectoryOrder} onSortChange={setTrajectoryOrder}
+                        exporting={figTrajectoryBusy}
+                        onExport={async () => {
+                          setFigTrajectoryBusy(true);
+                          await exportFigure(trajectoryRef.current, "transition-pathway-trajectory.png", figTrajectory, {
+                            title: figTrajectory.title || `Outcome trajectory: ${selectedLabel}`,
+                            subtitle: pathwayContextLine,
+                          });
+                          setFigTrajectoryBusy(false);
+                        }}
+                      />
+                    )}
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="text-xs font-medium text-neutral-900">Benefit accrual (EBI {fmtNum(selected.ebi)})</div>
+                      <Btn variant="outline" onClick={() => setFigAccrualOpen((v) => !v)} disabled={trajectory.accrual.length <= 1}><SlidersHorizontal size={13} />{figAccrualOpen ? "Hide figure options" : "Customize & export"}</Btn>
+                    </div>
+                    <p className="text-[11.5px] text-neutral-600 mb-1">Share of the final gain realized against share of the effort spent. The shaded area is the Early Benefit Index itself; above the dashed diagonal, benefits arrive ahead of effort.</p>
+                    <div ref={accrualRef} className="h-60" style={figAccrualOpen ? { width: mmToPx(figAccrual.widthMm, 96), height: mmToPx(figAccrual.heightMm, 96), maxWidth: "100%" } : undefined}>
+                      {trajectory.accrual.length > 1 ? (
+                        <ResponsiveContainer>
+                          <AreaChart data={trajectory.accrual} margin={{ top: 16, right: 10, bottom: 18, left: 0 }}>
+                            {figAccrual.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
+                            <XAxis type="number" dataKey="x" domain={[0, 1]} tick={{ fontSize: figAccrual.tickFontSize }} tickFormatter={(v) => fmtDec(v, figAccrual.decimals)} label={{ value: figAccrual.xLabel || "Share of effort", position: "insideBottom", offset: -8, fontSize: figAccrual.axisFontSize }} />
+                            <YAxis type="number" domain={[(m) => Math.min(0, m), (m) => Math.max(1, m)]} tick={{ fontSize: figAccrual.tickFontSize }} tickFormatter={(v) => fmtDec(v, figAccrual.decimals)} label={{ value: figAccrual.yLabel || "Share of gain", angle: -90, position: "insideLeft", fontSize: figAccrual.axisFontSize }} />
+                            <RTooltip formatter={(v) => fmtDec(v, figAccrual.decimals)} labelFormatter={(v) => `effort ${fmtDec(v, figAccrual.decimals)}`} />
+                            {figAccrual.legendPosition !== "hidden" && <Legend wrapperStyle={{ fontSize: figAccrual.legendFontSize }} verticalAlign={figAccrual.legendPosition === "left" || figAccrual.legendPosition === "right" ? "middle" : figAccrual.legendPosition} align={figAccrual.legendPosition === "left" || figAccrual.legendPosition === "right" ? figAccrual.legendPosition : "center"} />}
+                            {figAccrual.title && <text x="50%" y={14} textAnchor="middle" fontSize={figAccrual.titleFontSize} fontWeight={600} fill="#0f172a">{figAccrual.title}</text>}
+                            <ReferenceLine segment={[{ x: 0, y: 0 }, { x: 1, y: 1 }]} stroke="#94a3b8" strokeDasharray="4 4" />
+                            <Area type="linear" dataKey="y" name="Share of gain" stroke={figurePalette(figAccrual.palette, 1)[0]} strokeWidth={figAccrual.lineWidth} fill={figurePalette(figAccrual.palette, 1)[0]} fillOpacity={0.22 * figAccrual.opacity} dot={figAccrual.markerSize > 0 ? { r: figAccrual.markerSize } : false} isAnimationActive={false} />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      ) : <p className="text-[12.5px] text-neutral-600 italic">Not defined for a pathway without a positive gain and effort.</p>}
+                    </div>
+                    {figAccrualOpen && trajectory.accrual.length > 1 && (
+                      <FigurePanel
+                        settings={figAccrual} onChange={setFigAccrual}
+                        exporting={figAccrualBusy}
+                        onExport={async () => {
+                          setFigAccrualBusy(true);
+                          await exportFigure(accrualRef.current, "transition-pathway-benefit-accrual.png", figAccrual, {
+                            title: figAccrual.title || `Benefit accrual: ${selectedLabel}`,
+                            subtitle: `Early Benefit Index ${fmtNum(selected.ebi)}: share of the final gain realized against share of effort spent`,
+                          });
+                          setFigAccrualBusy(false);
+                        }}
+                      />
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="bg-white rounded-lg border border-slate-200 p-4">
+              <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+                <h4 className="text-sm font-semibold">All pathways</h4>
+                <div className="flex items-center gap-2">
+                  <select value={filter} onChange={(e) => { setFilter(e.target.value); setShowCount(50); }} className="text-xs border border-slate-200 rounded px-2 py-1">
+                    <option value="all">All ({s.counts.total})</option>
+                    <option value="admissible">Admissible ({s.counts.admissible})</option>
+                    <option value="frontier">Efficient frontier ({result.candidates.filter((c) => c.frontier).length})</option>
+                    {PATHWAY_ARCHETYPES.map((a) => <option key={a.key} value={a.key}>{a.label} ({s.counts[a.key]})</option>)}
+                    <option value="conditional">Conditional, with trade-offs ({s.counts.conditional})</option>
+                    <option value="other">Not admissible ({s.counts.total - s.counts.admissible - s.counts.conditional})</option>
+                    {result.candidates.some((c) => c.expertNames?.length) && <option value="expert">Expert-defined ({result.candidates.filter((c) => c.expertNames?.length).length})</option>}
+                  </select>
+                  <Btn variant="outline" onClick={exportPathwaysCSV}><Download size={13} />Export CSV</Btn>
+                </div>
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="text-left text-neutral-600 border-b border-slate-100">
-                      <th className="py-1 font-medium pr-3">Stage</th>
-                      <th className="py-1 font-medium pr-3">Lever</th>
-                      <th className="py-1 font-medium pr-3" title="The lever's transition point on its own, from Business-as-Usual.">TP alone</th>
-                      <th className="py-1 font-medium pr-3" title="The lever's transition point in the state this pathway has reached.">TP here</th>
-                      <th className="py-1 font-medium pr-3" title="Negative: earlier stages bring the lever's peak return forward (enabling). Positive: they push it later.">Shift</th>
-                      <th className="py-1 font-medium pr-3">Intensity</th>
-                      <th className="py-1 font-medium pr-3" title="Outcome gain added by this stage.">Stage gain</th>
-                      <th className="py-1 font-medium pr-3">Outcome gain after</th>
-                      <th className="py-1 font-medium pr-3" title="Stage gain per unit of effort spent in this stage.">Efficiency</th>
-                      {result.outcomes.map((o) => (
-                        <th key={o.id} className="py-1 font-medium pr-3" title="The value this outcome reaches at the end of the stage: a reference level to monitor before moving on to the next stage.">{nameOf(o.id)}</th>
-                      ))}
+                      {PATHWAY_TABLE_COLUMNS.map((col) => <SortHeader key={col.key} col={col} sortKey={sortKey} sortDir={sortDir} onSort={onSort} />)}
                     </tr>
                   </thead>
                   <tbody>
-                    <tr className="border-b border-slate-50 text-neutral-600">
-                      <td className="py-1 pr-3">BAU</td><td className="py-1 pr-3" colSpan={8}>Business-as-Usual equilibrium</td>
-                      {result.outcomes.map((o) => <td key={o.id} className="py-1 pr-3 font-mono">{fmtNum(result.bauOutcomes[o.id])}</td>)}
-                    </tr>
-                    {selected.stages.map((st, i) => {
-                      const dG = st.gainAfter - st.gainBefore;
-                      const du = st.u - st.uPrev;
-                      return (
-                        <tr key={i} className="border-b border-slate-50">
-                          <td className="py-1 pr-3">{i + 1}</td>
-                          <td className="py-1 pr-3">{nameOf(st.leverId)}{st.scaleUp && <span className="text-[11.5px] text-neutral-600"> (scale-up)</span>}{!st.converged && <span className="text-[11.5px] text-amber-700"> (not converged)</span>}</td>
-                          <td className="py-1 pr-3 font-mono">{fmtNum(st.tauIso)}</td>
-                          <td className="py-1 pr-3 font-mono">{fmtNum(st.tauCond)}</td>
-                          <td className={`py-1 pr-3 font-mono ${st.shift < 0 ? "text-cobalt-700" : st.shift > 0 ? "text-orange-700" : ""}`}>{st.shift === null ? "" : fmtSigned(st.shift)}</td>
-                          <td className="py-1 pr-3 font-mono">{st.scaleUp ? `${round2(st.uPrev)} to ` : ""}{round2(st.u)}</td>
-                          <td className={`py-1 pr-3 font-mono ${dG < -1e-6 ? "text-orange-700" : ""}`} title={dG < -1e-6 ? "This stage lowers the total outcome gain: from this state, the lever at this intensity worsens the outcomes." : undefined}>{fmtSigned(dG)}</td>
-                          <td className="py-1 pr-3 font-mono">{fmtNum(st.gainAfter)}</td>
-                          <td className="py-1 pr-3 font-mono">{du > 0 ? fmtNum(dG / (st.effort * du)) : "n/a"}</td>
-                          {st.outcomes.map((o) => <td key={o.id} className="py-1 pr-3 font-mono">{fmtNum(o.value)}</td>)}
-                        </tr>
-                      );
-                    })}
+                    {sorted.slice(0, showCount).map((r) => (
+                      <tr key={r.id} onClick={() => selectPathway(r.id)} className={`border-b border-slate-50 cursor-pointer hover:bg-slate-50 ${selectedId === r.id ? "bg-cobalt-50/60" : ""}`}>
+                        <td className="py-1 pr-3"><PathwayStagesText c={r.c} nameOf={nameOf} compact />{r.c.expertNames?.length > 0 && <ExpertBadge c={r.c} />}</td>
+                        <td className="py-1 pr-3 font-mono">{r.length}</td>
+                        <td className="py-1 pr-3 font-mono">{fmtNum(r.tog)}</td>
+                        <td className="py-1 pr-3 font-mono">{fmtNum(r.cii)}</td>
+                        <td className="py-1 pr-3 font-mono">{fmtNum(r.pei)}</td>
+                        <td className="py-1 pr-3 font-mono">{fmtNum(r.avgTp)}</td>
+                        <td className="py-1 pr-3 font-mono">{r.ss}</td>
+                        <td className="py-1 pr-3 font-mono">{fmtNum(r.ebi)}</td>
+                        <td className="py-1 pr-3 font-mono">{fmtSigned(r.ig)}</td>
+                        <td className="py-1 pr-3 font-mono">{fmtSigned(r.meanShift)}</td>
+                        <td className="py-1 pr-3"><ArchetypeBadges c={r.c} /></td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
+              {sorted.length > showCount && (
+                <button onClick={() => setShowCount((n) => n + 100)} className="mt-2 text-xs text-cobalt-700 hover:underline">Show 100 more ({sorted.length - showCount} not shown)</button>
+              )}
+            </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="text-xs font-medium text-neutral-900">Outcome trajectory</div>
-                    <Btn variant="outline" onClick={() => setFigTrajectoryOpen((v) => !v)}><SlidersHorizontal size={13} />{figTrajectoryOpen ? "Hide figure options" : "Customize & export"}</Btn>
-                  </div>
-                  <p className="text-[11.5px] text-neutral-600 mb-1">Improvement of each outcome relative to Business-as-Usual after every stage (up is better for every outcome), and the total outcome gain.</p>
-                  <div ref={trajectoryRef} className="h-60" style={figTrajectoryOpen ? { width: mmToPx(figTrajectory.widthMm, 96), height: mmToPx(figTrajectory.heightMm, 96), maxWidth: "100%" } : undefined}>
-                    <ResponsiveContainer>
-                      <LineChart data={trajectory.rows} margin={{ top: 16, right: 10, bottom: 5, left: 0 }}>
-                        {figTrajectory.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
-                        <XAxis dataKey="stage" tick={{ fontSize: figTrajectory.tickFontSize }} label={figTrajectory.xLabel ? { value: figTrajectory.xLabel, position: "insideBottom", offset: -2, fontSize: figTrajectory.axisFontSize } : undefined} />
-                        <YAxis tick={{ fontSize: figTrajectory.tickFontSize }} tickFormatter={(v) => fmtDec(v, figTrajectory.decimals)} label={{ value: figTrajectory.yLabel || "vs. BAU", angle: -90, position: "insideLeft", fontSize: figTrajectory.axisFontSize }} />
-                        <RTooltip />
-                        {figTrajectory.legendPosition !== "hidden" && (
-                          <Legend
-                            wrapperStyle={{ fontSize: figTrajectory.legendFontSize }}
-                            layout={figTrajectory.legendPosition === "left" || figTrajectory.legendPosition === "right" ? "vertical" : "horizontal"}
-                            verticalAlign={figTrajectory.legendPosition === "left" || figTrajectory.legendPosition === "right" ? "middle" : figTrajectory.legendPosition}
-                            align={figTrajectory.legendPosition === "left" || figTrajectory.legendPosition === "right" ? figTrajectory.legendPosition : "center"}
-                          />
-                        )}
-                        {figTrajectory.title && <text x="50%" y={14} textAnchor="middle" fontSize={figTrajectory.titleFontSize} fontWeight={600} fill="#0f172a">{figTrajectory.title}</text>}
-                        <ReferenceLine y={0} stroke="#94a3b8" />
-                        {trajectoryOutcomeRows.map((o, i) => (
-                          <Line key={o.id} type="linear" dataKey={o.id} name={o.name} stroke={figurePalette(figTrajectory.palette, trajectoryOutcomeRows.length)[i]} strokeWidth={figTrajectory.lineWidth} strokeOpacity={figTrajectory.opacity} dot={figTrajectory.markerSize > 0 ? { r: figTrajectory.markerSize } : false} isAnimationActive={false} />
-                        ))}
-                        <Line type="linear" dataKey="total" name="Total outcome gain" stroke="#0f172a" strokeDasharray="5 4" strokeWidth={figTrajectory.lineWidth} dot={figTrajectory.markerSize > 0 ? { r: figTrajectory.markerSize } : false} isAnimationActive={false}>
-                          <LabelList dataKey="total" position="top" formatter={(v) => fmtDec(v, figTrajectory.decimals)} style={{ fontSize: figTrajectory.tickFontSize, fill: "#0f172a", fontWeight: 600 }} />
-                        </Line>
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                  {figTrajectoryOpen && (
-                    <FigurePanel
-                      settings={figTrajectory} onChange={setFigTrajectory}
-                      seriesOptions={trajectorySeriesOptions} hiddenKeys={hiddenTrajectoryOutcomes} onToggleSeries={toggleHiddenTrajectoryOutcome}
-                      sortOptions={TRAJECTORY_ORDER_OPTIONS} sortValue={trajectoryOrder} onSortChange={setTrajectoryOrder}
-                      exporting={figTrajectoryBusy}
-                      onExport={async () => {
-                        setFigTrajectoryBusy(true);
-                        await exportFigure(trajectoryRef.current, "transition-pathway-trajectory.png", figTrajectory, {
-                          title: figTrajectory.title || `Outcome trajectory: ${selectedLabel}`,
-                          subtitle: pathwayContextLine,
-                        });
-                        setFigTrajectoryBusy(false);
-                      }}
-                    />
-                  )}
-                </div>
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="text-xs font-medium text-neutral-900">Benefit accrual (EBI {fmtNum(selected.ebi)})</div>
-                    <Btn variant="outline" onClick={() => setFigAccrualOpen((v) => !v)} disabled={trajectory.accrual.length <= 1}><SlidersHorizontal size={13} />{figAccrualOpen ? "Hide figure options" : "Customize & export"}</Btn>
-                  </div>
-                  <p className="text-[11.5px] text-neutral-600 mb-1">Share of the final gain realized against share of the effort spent. The shaded area is the Early Benefit Index itself; above the dashed diagonal, benefits arrive ahead of effort.</p>
-                  <div ref={accrualRef} className="h-60" style={figAccrualOpen ? { width: mmToPx(figAccrual.widthMm, 96), height: mmToPx(figAccrual.heightMm, 96), maxWidth: "100%" } : undefined}>
-                    {trajectory.accrual.length > 1 ? (
-                      <ResponsiveContainer>
-                        <AreaChart data={trajectory.accrual} margin={{ top: 16, right: 10, bottom: 18, left: 0 }}>
-                          {figAccrual.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
-                          <XAxis type="number" dataKey="x" domain={[0, 1]} tick={{ fontSize: figAccrual.tickFontSize }} tickFormatter={(v) => fmtDec(v, figAccrual.decimals)} label={{ value: figAccrual.xLabel || "Share of effort", position: "insideBottom", offset: -8, fontSize: figAccrual.axisFontSize }} />
-                          <YAxis type="number" domain={[(m) => Math.min(0, m), (m) => Math.max(1, m)]} tick={{ fontSize: figAccrual.tickFontSize }} tickFormatter={(v) => fmtDec(v, figAccrual.decimals)} label={{ value: figAccrual.yLabel || "Share of gain", angle: -90, position: "insideLeft", fontSize: figAccrual.axisFontSize }} />
-                          <RTooltip formatter={(v) => fmtDec(v, figAccrual.decimals)} labelFormatter={(v) => `effort ${fmtDec(v, figAccrual.decimals)}`} />
-                          {figAccrual.legendPosition !== "hidden" && <Legend wrapperStyle={{ fontSize: figAccrual.legendFontSize }} verticalAlign={figAccrual.legendPosition === "left" || figAccrual.legendPosition === "right" ? "middle" : figAccrual.legendPosition} align={figAccrual.legendPosition === "left" || figAccrual.legendPosition === "right" ? figAccrual.legendPosition : "center"} />}
-                          {figAccrual.title && <text x="50%" y={14} textAnchor="middle" fontSize={figAccrual.titleFontSize} fontWeight={600} fill="#0f172a">{figAccrual.title}</text>}
-                          <ReferenceLine segment={[{ x: 0, y: 0 }, { x: 1, y: 1 }]} stroke="#94a3b8" strokeDasharray="4 4" />
-                          <Area type="linear" dataKey="y" name="Share of gain" stroke={figurePalette(figAccrual.palette, 1)[0]} strokeWidth={figAccrual.lineWidth} fill={figurePalette(figAccrual.palette, 1)[0]} fillOpacity={0.22 * figAccrual.opacity} dot={figAccrual.markerSize > 0 ? { r: figAccrual.markerSize } : false} isAnimationActive={false} />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    ) : <p className="text-[12.5px] text-neutral-600 italic">Not defined for a pathway without a positive gain and effort.</p>}
-                  </div>
-                  {figAccrualOpen && trajectory.accrual.length > 1 && (
-                    <FigurePanel
-                      settings={figAccrual} onChange={setFigAccrual}
-                      exporting={figAccrualBusy}
-                      onExport={async () => {
-                        setFigAccrualBusy(true);
-                        await exportFigure(accrualRef.current, "transition-pathway-benefit-accrual.png", figAccrual, {
-                          title: figAccrual.title || `Benefit accrual: ${selectedLabel}`,
-                          subtitle: `Early Benefit Index ${fmtNum(selected.ebi)}: share of the final gain realized against share of effort spent`,
-                        });
-                        setFigAccrualBusy(false);
-                      }}
-                    />
-                  )}
-                </div>
+            <div className="bg-white rounded-lg border border-slate-200 p-4">
+              <div className="flex items-center justify-between mb-1">
+                <h4 className="text-sm font-semibold">Implementation portfolios</h4>
+                <Btn variant="outline" onClick={exportPortfoliosCSV}><Download size={13} />Export CSV</Btn>
               </div>
-            </div>
-          )}
-
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
-            <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
-              <h4 className="text-sm font-semibold">All pathways</h4>
-              <div className="flex items-center gap-2">
-                <select value={filter} onChange={(e) => { setFilter(e.target.value); setShowCount(50); }} className="text-xs border border-slate-200 rounded px-2 py-1">
-                  <option value="all">All ({s.counts.total})</option>
-                  <option value="admissible">Admissible ({s.counts.admissible})</option>
-                  <option value="frontier">Efficient frontier ({result.candidates.filter((c) => c.frontier).length})</option>
-                  {PATHWAY_ARCHETYPES.map((a) => <option key={a.key} value={a.key}>{a.label} ({s.counts[a.key]})</option>)}
-                  <option value="conditional">Conditional, with trade-offs ({s.counts.conditional})</option>
-                  <option value="other">Not admissible ({s.counts.total - s.counts.admissible - s.counts.conditional})</option>
-                  {result.candidates.some((c) => c.expertNames?.length) && <option value="expert">Expert-defined ({result.candidates.filter((c) => c.expertNames?.length).length})</option>}
-                </select>
-                <Btn variant="outline" onClick={exportPathwaysCSV}><Download size={13} />Export CSV</Btn>
+              <p className="text-[12.5px] text-neutral-600 mb-2">Every pathway starts with one of these opening moves. <strong className="text-neutral-900">Regret</strong> is how much total outcome gain an opening gives up compared with the best pathway of all (0: the best outcome stays within reach). The best gain, and the pathways counted per opening, are taken over the pathways that converged: the {s.counts.nonConverged} that did not have no defined end state and are left out. <strong className="text-neutral-900">Top pathways opened</strong> counts how many of the top {PATHWAY_TOP_N} pathways of each archetype start this way; a low-regret opening that opens many of them is a no-regret first move.</p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-left text-neutral-600 border-b border-slate-100">
+                      <th className="py-1 font-medium pr-3">Opening</th>
+                      <th className="py-1 font-medium pr-3">Regret</th>
+                      <th className="py-1 font-medium pr-3">Top pathways opened</th>
+                      {PATHWAY_ARCHETYPES.map((a) => <th key={a.key} className="py-1 font-medium pr-3">Best {a.label} continuation</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...result.portfolios.firstMoves, ...result.portfolios.openings].map((f, i) => (
+                      <tr key={f.key} className={`border-b border-slate-50 ${i === result.portfolios.firstMoves.length ? "border-t-2 border-t-slate-200" : ""}`}>
+                        <td className="py-1 pr-3"><PathwayStagesText c={{ stages: f.stages, length: f.stages.length }} nameOf={nameOf} compact /></td>
+                        <td className={`py-1 pr-3 font-mono ${f.regret <= 1e-6 ? "text-cobalt-700 font-semibold" : ""}`}>{fmtNum(f.regret)}</td>
+                        <td className="py-1 pr-3 font-mono">{f.opens}</td>
+                        {PATHWAY_ARCHETYPES.map((a) => {
+                          const c = f.bestBy[a.key] !== null ? candById.get(f.bestBy[a.key]) : null;
+                          return (
+                            <td key={a.key} className="py-1 pr-3">
+                              {c ? <button onClick={() => selectPathway(c.id)} className="text-left hover:text-cobalt-800"><PathwayStagesText c={{ ...c, stages: c.stages.slice(f.stages.length), length: c.length - f.stages.length }} nameOf={nameOf} compact />{c.length === f.stages.length && <span className="text-neutral-600">(stop here)</span>}</button> : <span className="text-neutral-500">none</span>}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
+              {result.portfolios.openings.length > 0 && <p className="text-[11.5px] text-neutral-600 mt-1">Below the line: the two-stage openings shared by the most top-ranked pathways.</p>}
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-left text-neutral-600 border-b border-slate-100">
-                    {PATHWAY_TABLE_COLUMNS.map((col) => <SortHeader key={col.key} col={col} sortKey={sortKey} sortDir={sortDir} onSort={onSort} />)}
-                  </tr>
-                </thead>
-                <tbody>
-                  {sorted.slice(0, showCount).map((r) => (
-                    <tr key={r.id} onClick={() => selectPathway(r.id)} className={`border-b border-slate-50 cursor-pointer hover:bg-slate-50 ${selectedId === r.id ? "bg-cobalt-50/60" : ""}`}>
-                      <td className="py-1 pr-3"><PathwayStagesText c={r.c} nameOf={nameOf} compact />{r.c.expertNames?.length > 0 && <ExpertBadge c={r.c} />}</td>
-                      <td className="py-1 pr-3 font-mono">{r.length}</td>
-                      <td className="py-1 pr-3 font-mono">{fmtNum(r.tog)}</td>
-                      <td className="py-1 pr-3 font-mono">{fmtNum(r.cii)}</td>
-                      <td className="py-1 pr-3 font-mono">{fmtNum(r.pei)}</td>
-                      <td className="py-1 pr-3 font-mono">{fmtNum(r.avgTp)}</td>
-                      <td className="py-1 pr-3 font-mono">{r.ss}</td>
-                      <td className="py-1 pr-3 font-mono">{fmtNum(r.ebi)}</td>
-                      <td className="py-1 pr-3 font-mono">{fmtSigned(r.ig)}</td>
-                      <td className="py-1 pr-3 font-mono">{fmtSigned(r.meanShift)}</td>
-                      <td className="py-1 pr-3"><ArchetypeBadges c={r.c} /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {sorted.length > showCount && (
-              <button onClick={() => setShowCount((n) => n + 100)} className="mt-2 text-xs text-cobalt-700 hover:underline">Show 100 more ({sorted.length - showCount} not shown)</button>
-            )}
-          </div>
 
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
-            <div className="flex items-center justify-between mb-1">
-              <h4 className="text-sm font-semibold">Implementation portfolios</h4>
-              <Btn variant="outline" onClick={exportPortfoliosCSV}><Download size={13} />Export CSV</Btn>
-            </div>
-            <p className="text-[12.5px] text-neutral-600 mb-2">Every pathway starts with one of these opening moves. <strong className="text-neutral-900">Regret</strong> is how much total outcome gain an opening gives up compared with the best pathway of all (0: the best outcome stays within reach). The best gain, and the pathways counted per opening, are taken over the pathways that converged: the {s.counts.nonConverged} that did not have no defined end state and are left out. <strong className="text-neutral-900">Top pathways opened</strong> counts how many of the top {PATHWAY_TOP_N} pathways of each archetype start this way; a low-regret opening that opens many of them is a no-regret first move.</p>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-left text-neutral-600 border-b border-slate-100">
-                    <th className="py-1 font-medium pr-3">Opening</th>
-                    <th className="py-1 font-medium pr-3">Regret</th>
-                    <th className="py-1 font-medium pr-3">Top pathways opened</th>
-                    {PATHWAY_ARCHETYPES.map((a) => <th key={a.key} className="py-1 font-medium pr-3">Best {a.label} continuation</th>)}
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...result.portfolios.firstMoves, ...result.portfolios.openings].map((f, i) => (
-                    <tr key={f.key} className={`border-b border-slate-50 ${i === result.portfolios.firstMoves.length ? "border-t-2 border-t-slate-200" : ""}`}>
-                      <td className="py-1 pr-3"><PathwayStagesText c={{ stages: f.stages, length: f.stages.length }} nameOf={nameOf} compact /></td>
-                      <td className={`py-1 pr-3 font-mono ${f.regret <= 1e-6 ? "text-cobalt-700 font-semibold" : ""}`}>{fmtNum(f.regret)}</td>
-                      <td className="py-1 pr-3 font-mono">{f.opens}</td>
-                      {PATHWAY_ARCHETYPES.map((a) => {
-                        const c = f.bestBy[a.key] !== null ? candById.get(f.bestBy[a.key]) : null;
-                        return (
-                          <td key={a.key} className="py-1 pr-3">
-                            {c ? <button onClick={() => selectPathway(c.id)} className="text-left hover:text-cobalt-800"><PathwayStagesText c={{ ...c, stages: c.stages.slice(f.stages.length), length: c.length - f.stages.length }} nameOf={nameOf} compact />{c.length === f.stages.length && <span className="text-neutral-600">(stop here)</span>}</button> : <span className="text-neutral-500">none</span>}
-                          </td>
-                        );
-                      })}
+            <div className="bg-white rounded-lg border border-slate-200 p-4">
+              <h4 className="text-sm font-semibold mb-1">Does the order decide the end state? (invariance test)</h4>
+              <p className="text-[12.5px] text-neutral-600 mb-2">For the lever sets of the top pathways, every order of the same levers at the same final intensities was simulated stage by stage. If the end states differ by more than {PATHWAY_INVARIANCE_TOLERANCE}, the model has more than one equilibrium for these levers, and the order of implementation decides where the system ends up (path dependence). Smaller differences come from where each run stops settling.</p>
+              {result.invariance.tested === 0 ? (
+                <p className="text-xs text-neutral-600 italic">No top pathway combines two or more levers, so there was nothing to test.</p>
+              ) : (
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-left text-neutral-600 border-b border-slate-100">
+                      <th className="py-1 font-medium pr-3">Levers (final intensity)</th>
+                      <th className="py-1 font-medium pr-3">Orders tested</th>
+                      <th className="py-1 font-medium pr-3">Largest difference between end states</th>
+                      <th className="py-1 font-medium pr-3">Result</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {result.invariance.rows.map((r, i) => (
+                      <tr key={i} className="border-b border-slate-50">
+                        <td className="py-1 pr-3">{r.ids.map((id) => `${nameOf(id)} (${round2(r.final[id])})`).join(", ")}</td>
+                        <td className="py-1 pr-3 font-mono">{r.perms}</td>
+                        <td className="py-1 pr-3 font-mono">{fmtNum(r.maxDiff, 3)}</td>
+                        <td className="py-1 pr-3">{!r.allConverged ? <span className="text-neutral-700">Not all orders converged: undecided</span> : r.pathDependent ? <span className="text-amber-700 font-medium">Path dependent: the order matters</span> : <span className="text-cobalt-700">Same end state in every order</span>}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
-            {result.portfolios.openings.length > 0 && <p className="text-[11.5px] text-neutral-600 mt-1">Below the line: the two-stage openings shared by the most top-ranked pathways.</p>}
-          </div>
 
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
-            <div className="flex items-center justify-between mb-1">
-              <h4 className="text-sm font-semibold">Lever profiles (each lever on its own, from Business-as-Usual)</h4>
-              <Btn variant="outline" onClick={exportLeversCSV}><Download size={13} />Export CSV</Btn>
-            </div>
-            <p className="text-[12.5px] text-neutral-600 mb-2">Step 1 of the method: the building blocks. Levers that move no outcome, or never improve the outcome gain, are left out of the pathways.</p>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-left text-neutral-600 border-b border-slate-100">
-                    <th className="py-1 font-medium pr-3">Lever</th>
-                    <th className="py-1 font-medium pr-3">TP</th>
-                    <th className="py-1 font-medium pr-3">Response type</th>
-                    <th className="py-1 font-medium pr-3" title="Outcome gain with the lever at full intensity, on its own.">Gain at full intensity</th>
-                    <th className="py-1 font-medium pr-3">Synergy</th>
-                    {result.outcomes.map((o) => <th key={o.id} className="py-1 font-medium pr-3" title="Improvement at full intensity, and the outcome's own transition point in brackets.">{nameOf(o.id)}</th>)}
-                    <th className="py-1 font-medium pr-3">In pathways</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {result.iso.map((l) => (
-                    <tr key={l.id} className="border-b border-slate-50">
-                      <td className="py-1 pr-3">{nameOf(l.id)}{l.decrease && <span className="text-[11.5px] text-neutral-600"> (decrease)</span>}</td>
-                      <td className="py-1 pr-3 font-mono">{fmtNum(l.tau)}</td>
-                      <td className="py-1 pr-3"><span title={RESPONSE_TYPE_HELP[l.responseType] || l.reason} className={`text-[11.5px] px-1.5 py-0.5 rounded-full border ${RESPONSE_TYPE_STYLE[l.responseType] || "bg-slate-100 text-neutral-700 border-slate-200"}`}>{l.responseType}</span></td>
-                      <td className="py-1 pr-3 font-mono">{fmtSigned(l.gainAtFull)}</td>
-                      <td className="py-1 pr-3"><span className={`text-[11.5px] px-1.5 py-0.5 rounded-full border ${SYNERGY_STYLE[l.synergy.type]}`}>{l.synergy.type}</span></td>
-                      {l.outcomeRows.map((r) => <td key={r.id} className="py-1 pr-3 font-mono">{fmtSigned(r.effect)} <span className="text-neutral-600">({fmtNum(r.tp)})</span></td>)}
-                      <td className="py-1 pr-3">{l.included ? <Check size={13} className="text-cobalt-700" /> : <span className="text-[11.5px] text-amber-700" title={l.reason}>No: {l.reason.split(":")[0]}</span>}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
-            <h4 className="text-sm font-semibold mb-1">Does the order decide the end state? (invariance test)</h4>
-            <p className="text-[12.5px] text-neutral-600 mb-2">For the lever sets of the top pathways, every order of the same levers at the same final intensities was simulated stage by stage. If the end states differ by more than {PATHWAY_INVARIANCE_TOLERANCE}, the model has more than one equilibrium for these levers, and the order of implementation decides where the system ends up (path dependence). Smaller differences come from where each run stops settling.</p>
-            {result.invariance.tested === 0 ? (
-              <p className="text-xs text-neutral-600 italic">No top pathway combines two or more levers, so there was nothing to test.</p>
-            ) : (
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-left text-neutral-600 border-b border-slate-100">
-                    <th className="py-1 font-medium pr-3">Levers (final intensity)</th>
-                    <th className="py-1 font-medium pr-3">Orders tested</th>
-                    <th className="py-1 font-medium pr-3">Largest difference between end states</th>
-                    <th className="py-1 font-medium pr-3">Result</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {result.invariance.rows.map((r, i) => (
-                    <tr key={i} className="border-b border-slate-50">
-                      <td className="py-1 pr-3">{r.ids.map((id) => `${nameOf(id)} (${round2(r.final[id])})`).join(", ")}</td>
-                      <td className="py-1 pr-3 font-mono">{r.perms}</td>
-                      <td className="py-1 pr-3 font-mono">{fmtNum(r.maxDiff, 3)}</td>
-                      <td className="py-1 pr-3">{!r.allConverged ? <span className="text-neutral-700">Not all orders converged: undecided</span> : r.pathDependent ? <span className="text-amber-700 font-medium">Path dependent: the order matters</span> : <span className="text-cobalt-700">Same end state in every order</span>}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              </div>
             )}
           </div>
 
@@ -11816,10 +11861,10 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
               <Btn variant="outline" onClick={exportStagesCSV} disabled={!selected}><Download size={13} />Selected pathway stages (CSV)</Btn>
               <Btn variant="outline" onClick={exportLeversCSV}><Download size={13} />Lever profiles (CSV)</Btn>
               <Btn variant="outline" onClick={exportPortfoliosCSV}><Download size={13} />Portfolios (CSV)</Btn>
-              <Btn variant="outline" onClick={() => exportFigure(planeRef.current, "transition-pathways-effort-gain.png", figPlane, { title: figPlane.title || "Transition Pathways: Effort-Gain Plane", subtitle: `${pathwayContextLine} · ${s.counts.admissible} of ${s.counts.total} pathways admissible` })}><Download size={13} />Effort-gain plane ({figPlane.format.toUpperCase()})</Btn>
+              <Btn variant="outline" onClick={() => withAdvanced(() => exportFigure(planeRef.current, "transition-pathways-effort-gain.png", figPlane, { title: figPlane.title || "Transition Pathways: Effort-Gain Plane", subtitle: `${pathwayContextLine} · ${s.counts.admissible} of ${s.counts.total} pathways admissible` }))}><Download size={13} />Effort-gain plane ({figPlane.format.toUpperCase()})</Btn>
               <Btn variant="outline" onClick={() => exportFigure(metroRef.current, "transition-pathways-metro-map.png", figMetro, { title: figMetro.title || "Transition Pathways: Metro Map", subtitle: pathwayContextLine })} disabled={!metroRows.length}><Download size={13} />Metro map ({figMetro.format.toUpperCase()})</Btn>
-              <Btn variant="outline" onClick={() => exportFigure(trajectoryRef.current, "transition-pathway-trajectory.png", figTrajectory, { title: figTrajectory.title || `Outcome trajectory: ${selectedLabel}`, subtitle: pathwayContextLine })} disabled={!selected}><Download size={13} />Selected trajectory ({figTrajectory.format.toUpperCase()})</Btn>
-              <Btn variant="outline" onClick={() => exportFigure(accrualRef.current, "transition-pathway-benefit-accrual.png", figAccrual, { title: figAccrual.title || `Benefit accrual: ${selectedLabel}`, subtitle: `Early Benefit Index ${fmtNum(selected?.ebi)}` })} disabled={!selected || !trajectory || trajectory.accrual.length <= 1}><Download size={13} />Selected benefit accrual ({figAccrual.format.toUpperCase()})</Btn>
+              <Btn variant="outline" onClick={() => withAdvanced(() => exportFigure(trajectoryRef.current, "transition-pathway-trajectory.png", figTrajectory, { title: figTrajectory.title || `Outcome trajectory: ${selectedLabel}`, subtitle: pathwayContextLine }))} disabled={!selected}><Download size={13} />Selected trajectory ({figTrajectory.format.toUpperCase()})</Btn>
+              <Btn variant="outline" onClick={() => withAdvanced(() => exportFigure(accrualRef.current, "transition-pathway-benefit-accrual.png", figAccrual, { title: figAccrual.title || `Benefit accrual: ${selectedLabel}`, subtitle: `Early Benefit Index ${fmtNum(selected?.ebi)}` }))} disabled={!selected || !trajectory || trajectory.accrual.length <= 1}><Download size={13} />Selected benefit accrual ({figAccrual.format.toUpperCase()})</Btn>
             </div>
             <p className="text-[11.5px] text-neutral-600 mt-2">The Export Analysis Workbook in the header also includes these results (pathways, rankings, stages of the top pathways, lever profiles, portfolios, and the invariance and robustness tests).</p>
           </div>

@@ -14,6 +14,25 @@ const fit = (text, px, fontSize) => {
   return text.length <= n ? text : `${text.slice(0, Math.max(1, n - 1))}…`;
 };
 
+// Splits a name into lines that fit a column, at word boundaries.
+function wrapWords(text, px, fontSize, maxLines = 4) {
+  const n = Math.max(3, Math.floor(px / charW(fontSize)));
+  const lines = [];
+  let cur = "";
+  text.split(/\s+/).forEach((w) => {
+    if (!cur) cur = w;
+    else if ((cur + " " + w).length <= n) cur += " " + w;
+    else { lines.push(cur); cur = w; }
+  });
+  if (cur) lines.push(cur);
+  if (lines.length > maxLines) {
+    const kept = lines.slice(0, maxLines);
+    kept[maxLines - 1] = fit(lines.slice(maxLines - 1).join(" "), px, fontSize);
+    return kept;
+  }
+  return lines.map((l) => fit(l, px, fontSize));
+}
+
 function useBoxSize(ref) {
   const [size, setSize] = useState({ width: 0, height: 0 });
   useEffect(() => {
@@ -44,7 +63,7 @@ function legendLayout(items, width, fontSize) {
 }
 
 export default function PathwayMetroMap({
-  rows, leverIds, outcomes, nameOf, fig, colors, colourBy = "lever",
+  rows, leverIds, outcomes, nameOf, fig, colors,
   selectedId = null, onSelect, eps = 1e-6, containerRef, style, className,
 }) {
   const ownRef = useRef(null);
@@ -61,11 +80,12 @@ export default function PathwayMetroMap({
     // Legend: one line colour per lever used, then the symbols.
     const used = leverIds.filter((id) => rows.some((rw) => rw.pathway.stages.some((s) => s.leverId === id)));
     const legendItems = [
-      ...used.map((id) => ({ kind: "line", color: colorOf(id), label: colourBy === "opening" ? `Opens with ${nameOf(id)}` : nameOf(id) })),
-      { kind: "station", label: "Transfer station: next lever added" },
+      ...used.map((id) => ({ kind: "line", color: colorOf(id), label: nameOf(id) })),
+      { kind: "combined", label: "Dashed: intervention added to a combined pathway" },
+      { kind: "station", label: "Transfer station: next intervention added" },
       { kind: "end", label: "End of pathway" },
       { kind: "tip", label: "Tipping point: an outcome falls below Business-as-Usual" },
-    ].filter((it) => colourBy !== "opening" || it.kind !== "line" || rows.some((rw) => colorOf(rw.pathway.stages[0].leverId) === it.color));
+    ];
     const showLegend = fig.legendPosition !== "hidden";
     const leg = showLegend ? legendLayout(legendItems, W - 8, legFs) : { placed: [], height: 0 };
     const legendTop = fig.legendPosition === "top";
@@ -73,10 +93,14 @@ export default function PathwayMetroMap({
 
     // Columns: labels on the left, the map in the middle, and on the right the
     // total outcome gain and every outcome's end state against Business-as-Usual.
-    const labelW = Math.min(Math.max(120, W * 0.3), 260);
-    const colW = Math.max(38, Math.min(62, (W * 0.3) / (outcomes.length + 1)));
+    const labelW = Math.min(Math.max(120, W * 0.3), 320);
+    const colW = Math.max(52, Math.min(96, (W * 0.34) / (outcomes.length + 1)));
     const colsW = colW * (outcomes.length + 1);
-    const headerH = tick + 14;
+    // Outcome names are spelled in full, wrapped over up to four lines.
+    const headerLines = outcomes.map((o) => wrapWords(nameOf(o.id), colW - 6, tick));
+    const nHeader = Math.max(1, ...headerLines.map((l) => l.length));
+    const lineH = tick + 2;
+    const headerH = nHeader * lineH + 10;
     const axisH = tick + axisFs + 22;
     const top = titleH + (legendTop ? leg.height + 6 : 0) + headerH;
     const bottom = H - axisH - (!legendTop && showLegend ? leg.height + 8 : 0);
@@ -89,7 +113,8 @@ export default function PathwayMetroMap({
     const yOf = (i) => top + (i + 0.5) * rowH;
     const maxAbs = Math.max(eps, ...rows.flatMap((rw) => outcomes.map((o) => Math.abs(rw.outcomes[o.id] ?? 0))));
     const maxTog = Math.max(eps, ...rows.map((rw) => Math.abs(rw.tog)));
-    const rowColor = (rw, seg) => colorOf(colourBy === "opening" ? rw.pathway.stages[0].leverId : seg.leverId);
+    const rowColor = (rw, seg) => colorOf(seg.leverId);
+    const dash = `${lw * 2} ${lw * 1.3}`;
     const cellFill = (v, scale) => {
       if (!(Math.abs(v) > eps)) return "#f1f5f9";
       const a = 0.15 + 0.6 * Math.min(1, Math.abs(v) / scale);
@@ -102,14 +127,17 @@ export default function PathwayMetroMap({
         {fig.title && <text x={W / 2} y={fig.titleFontSize} textAnchor="middle" fontSize={fig.titleFontSize} fontWeight={600} fill={INK}>{fig.title}</text>}
 
         {/* Column headers */}
-        <text x={labelW} y={top - 6} textAnchor="end" fontSize={tick} fontWeight={600} fill={MUTED}>Pathway</text>
+        <text x={4} y={top - 6} textAnchor="start" fontSize={tick} fontWeight={600} fill={MUTED}>Pathway</text>
         <text x={x1 + 18 + colW / 2} y={top - 6} textAnchor="middle" fontSize={tick} fontWeight={600} fill={INK}><title>Total outcome gain</title>TOG</text>
-        {outcomes.map((o, j) => (
-          <text key={o.id} x={x1 + 18 + colW * (j + 1.5)} y={top - 6} textAnchor="middle" fontSize={tick} fontWeight={600} fill={INK}>
-            <title>{`${nameOf(o.id)}: change at the end of the pathway against Business-as-Usual (${o.d === -1 ? "lower" : "higher"} is better; positive is an improvement)`}</title>
-            {fit(nameOf(o.id), colW - 4, tick)}
-          </text>
-        ))}
+        {outcomes.map((o, j) => {
+          const lines = headerLines[j];
+          return (
+            <text key={o.id} x={x1 + 18 + colW * (j + 1.5)} y={top - 6 - (lines.length - 1) * lineH} textAnchor="middle" fontSize={tick} fontWeight={600} fill={INK}>
+              <title>{`${nameOf(o.id)}: change at the end of the pathway against Business-as-Usual (${o.d === -1 ? "lower" : "higher"} is better; positive is an improvement)`}</title>
+              {lines.map((l, k) => <tspan key={k} x={x1 + 18 + colW * (j + 1.5)} dy={k === 0 ? 0 : lineH}>{l}</tspan>)}
+            </text>
+          );
+        })}
 
         {/* Grid and axis */}
         {ticks.map((t) => (
@@ -159,15 +187,16 @@ export default function PathwayMetroMap({
         })}
         {rows.map((rw, i) => rw.parent !== null && (
           <line key={`tr-${rw.id}`} x1={sx(rw.branchX)} x2={sx(rw.branchX)} y1={yOf(rw.parent)} y2={yOf(i)}
-            stroke={rw.segments[0] ? rowColor(rw, rw.segments[0]) : "#94a3b8"} strokeWidth={Math.max(1.2, lw * 0.55)} />
+            stroke={rw.segments[0] ? rowColor(rw, rw.segments[0]) : "#94a3b8"} strokeWidth={Math.max(1.2, lw * 0.55)} strokeDasharray={`${lw * 1.2} ${lw}`} />
         ))}
         {rows.map((rw, i) => {
           const y = yOf(i);
           return (
             <g key={`ln-${rw.id}`}>
               {rw.segments.map((seg) => (
-                <line key={seg.stage} x1={sx(seg.x0)} x2={sx(seg.x1)} y1={y} y2={y} stroke={rowColor(rw, seg)} strokeWidth={lw} strokeLinecap="round"
-                  strokeDasharray={seg.afterTipping ? `${lw * 1.5} ${lw * 1.2}` : undefined} strokeOpacity={fig.opacity} />
+                <line key={seg.stage} x1={sx(seg.x0)} x2={sx(seg.x1)} y1={y} y2={y} stroke={rowColor(rw, seg)} strokeWidth={lw}
+                  strokeLinecap={seg.stage > 0 ? "butt" : "round"} strokeDasharray={seg.stage > 0 ? dash : undefined}
+                  strokeOpacity={(seg.afterTipping ? 0.35 : 1) * fig.opacity} />
               ))}
               {rw.tipping && (
                 <line x1={sx(rw.tipping.x)} x2={sx(rw.tipping.x)} y1={y - Math.min(rowH * 0.42, 9)} y2={y + Math.min(rowH * 0.42, 9)} stroke={TIP} strokeWidth={Math.max(2.5, lw * 0.8)} />
@@ -209,7 +238,8 @@ export default function PathwayMetroMap({
                   {it.kind === "line" && <line x1={0} x2={22} y1={cy} y2={cy} stroke={it.color} strokeWidth={lw} strokeLinecap="round" />}
                   {it.kind === "station" && <><line x1={0} x2={22} y1={cy} y2={cy} stroke="#94a3b8" strokeWidth={lw} /><circle cx={11} cy={cy} r={r} fill="#ffffff" stroke={INK} strokeWidth={1.4} /></>}
                   {it.kind === "end" && <><line x1={0} x2={11} y1={cy} y2={cy} stroke="#94a3b8" strokeWidth={lw} /><circle cx={11} cy={cy} r={r} fill={INK} /></>}
-                  {it.kind === "tip" && <><line x1={0} x2={11} y1={cy} y2={cy} stroke="#94a3b8" strokeWidth={lw} /><line x1={11} x2={22} y1={cy} y2={cy} stroke="#94a3b8" strokeWidth={lw} strokeDasharray={`${lw * 1.5} ${lw * 1.2}`} /><line x1={11} x2={11} y1={cy - 6} y2={cy + 6} stroke={TIP} strokeWidth={2.5} /></>}
+                  {it.kind === "combined" && <line x1={0} x2={22} y1={cy} y2={cy} stroke="#64748b" strokeWidth={lw} strokeDasharray={`${lw * 2} ${lw * 1.3}`} />}
+                  {it.kind === "tip" && <><line x1={0} x2={11} y1={cy} y2={cy} stroke="#94a3b8" strokeWidth={lw} /><line x1={11} x2={22} y1={cy} y2={cy} stroke="#94a3b8" strokeOpacity={0.35} strokeWidth={lw} /><line x1={11} x2={11} y1={cy - 6} y2={cy + 6} stroke={TIP} strokeWidth={2.5} /></>}
                   <text x={27} y={cy + legFs * 0.35} fontSize={legFs} fill={INK}>{it.label}</text>
                 </g>
               );
