@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import PathwayMetroMap from "./PathwayMetroMap.jsx";
+import ScenarioComparisonFigure from "./ScenarioComparisonFigure.jsx";
 import { buildMetroRows, pickMetroPathways } from "./pathwayMetroLayout.js";
 import {
   Plus, Trash2, Play, RotateCcw, Download, Upload, GitCompare,
@@ -11,7 +12,7 @@ import {
 } from "lucide-react";
 import {
   LineChart, Line, BarChart, Bar, Cell, LabelList, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
-  Legend, ResponsiveContainer, ReferenceLine, Brush, ScatterChart, Scatter, ZAxis, ComposedChart, ReferenceArea,
+  Legend, ResponsiveContainer, ReferenceLine, Brush, ScatterChart, Scatter, ZAxis, ComposedChart, ReferenceArea, Customized,
 } from "recharts";
 import {
   ReactFlow, ReactFlowProvider, Background, Controls, MiniMap,
@@ -1950,6 +1951,18 @@ const CATEGORY_PASTELS = [
   { bg: "#fae8ff", border: "#f0abfc" }, // fuchsia
 ];
 const CATEGORY_UNSET_STYLE = { bg: "#f1f5f9", border: "#cbd5e1" }; // uncategorized — slate
+
+// A strong colour per module for charts (bars and swatches), from the same
+// slot as the module's pastel on the map, so a module has the same hue
+// everywhere.
+const CATEGORY_STRONG = ["#3f7d3a", "#3b6fb6", "#7c5cc4", "#c9862b", "#0f8a7e", "#c2477f", "#4f5bd5", "#d9692a", "#6f9a1e", "#a84fc0"];
+function moduleStrongColor(category) {
+  if (category === "No module") return "#64748b";
+  const key = moduleKey(category);
+  if (key === UNCATEGORIZED_MODULE) return "#64748b";
+  const slot = categoryColorSlot.has(key) ? categoryColorSlot.get(key) : hashString(key);
+  return CATEGORY_STRONG[Math.abs(slot) % CATEGORY_STRONG.length];
+}
 
 function hashString(s) {
   let h = 0;
@@ -5438,29 +5451,6 @@ function InfluenceMetricsTab({ concepts, edges, settings, onHighlight, multiScal
 
   return (
     <div className="space-y-5">
-      <FoldableBox
-        storageKey="se.fold.metricsMethod"
-        title="How these metrics are computed"
-        summary="These metrics describe the structure of your map: which concepts drive the system, which absorb change, and which sit at its centre. Sort the table below by any column to rank the concepts on that measure, and click a row to select that concept."
-      >
-          <div className="space-y-3 text-xs text-neutral-900">
-            <p className="text-neutral-700">Sort the table below by any column to rank the concepts on that measure, and click a row to select that concept (open the Network tab to see it).</p>
-            <div className="space-y-2">
-              <p><strong>Indegree, Outdegree, Centrality, Net Influence, and Role are purely structural</strong>: computed directly from the relationship weights you've drawn, with no simulation involved. Indegree is the sum of the absolute weights of a concept's incoming relationships; outdegree is the same for outgoing relationships; centrality is indegree + outdegree; net influence is outdegree minus indegree. Role is assigned from those numbers: <strong>Isolated</strong> has zero centrality (no relationships at all); <strong>Hub</strong> is in the top quartile of centrality among all concepts and has at least one relationship in each direction; <strong>Driver</strong> (not already a Hub) has outdegree more than 1.2&times; its indegree; <strong>Receiver</strong> (not already a Hub) has indegree more than 1.2&times; its outdegree; everything else is a <strong>Connector</strong>.</p>
-              <p><strong>Driver score and Receiver score</strong> are the shares of a concept's total connection weight that are outgoing and incoming: outdegree / centrality and indegree / centrality. They always add up to 1, so they show a concept's balance between sending and receiving influence independently of how strongly connected it is overall.</p>
-              <p><strong>Betweenness</strong> is the share of shortest directed routes between every other pair of concepts that pass through this one (Brandes' method, normalised to 0 to 1). It ignores weights, because weights express strength of influence rather than distance, so it measures position alone: a high value marks a broker that links otherwise distant parts of the system.</p>
-              <p>Because these come straight from the relationships, they update the instant you edit one and never require running a simulation. That also means they say nothing about how the model actually <em>behaves</em> once causal effects propagate through it, which is what Influence and Sensitivity scores are for.</p>
-            </div>
-            <div className="pt-2 border-t border-slate-100 space-y-2">
-              <p><strong>Influence and Sensitivity scores are perturbation-based</strong>: for each concept in turn, the model is set to all zeros, that one concept is locked at full activation (+1) for the whole run, and the simulation runs to equilibrium under the current squash function, &lambda;, update rule, and convergence settings (Scenarios &amp; Simulation's Advanced options). Every other concept always starts at exactly 0 here, regardless of what's set on the Model editor tab, so these scores measure the network's structure in isolation, not whatever initial values happen to be configured elsewhere.</p>
-              <p><strong>Influence</strong> is the average absolute movement a concept <em>causes</em> in every other concept once its own driven run settles. <strong>Sensitivity</strong> is the average absolute movement a concept <em>undergoes</em>, across all of the other concepts' individual driven runs. A concept with high influence is one whose activation, if it changed, would ripple widely through the rest of the system; a concept with high sensitivity is one that tends to move regardless of which other concept is driving the change.</p>
-              <p className="text-neutral-600">Computing these takes one full simulation run per concept ({concepts.length} run{concepts.length === 1 ? "" : "s"} for the current model). These are the same numbers used to compute the category metrics' "Mean influence"/"Mean sensitivity" below, and are recomputed automatically whenever a concept, relationship, or Advanced option changes.</p>
-            </div>
-            <div className="pt-2 border-t border-slate-100">
-              <p><strong>Ranking.</strong> The # column is each concept's rank on the numeric column the table is sorted by, where #1 is the highest value; reversing the order flips the list but keeps the ranks. Concepts with exactly the same value share a rank, so two concepts tied for first are both #1 and the next one is #3. Sorting by a text column (concept, module, role) only orders the rows.</p>
-            </div>
-          </div>
-      </FoldableBox>
 
       <div className="bg-white rounded-lg border border-slate-200 p-4">
         <div className="flex items-baseline gap-3 flex-wrap mb-3">
@@ -5512,71 +5502,7 @@ function InfluenceMetricsTab({ concepts, edges, settings, onHighlight, multiScal
         </div>
       </div>
 
-      <div className="bg-white rounded-lg border border-slate-200 p-4">
-        <h3 className="font-semibold text-sm mb-3">System overview</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div>
-            <div className="text-xs text-neutral-600 mb-1">Network size</div>
-            <div className="text-sm">{stats.concepts} concepts</div>
-            <div className="text-sm">{stats.relationships} relationships</div>
-          </div>
-          <div title={SYSTEM_STAT_HELP.density}>
-            <div className="text-xs text-neutral-600 mb-1 flex items-center gap-1">Density <HelpCircle size={10} className="text-neutral-500" /></div>
-            <div className="text-sm font-mono">{stats.density}%</div>
-            <div className="text-[12.5px] text-neutral-600">{stats.actualConnections} of {stats.possibleConnections} possible</div>
-          </div>
-          <div title={SYSTEM_STAT_HELP.avgDegree}>
-            <div className="text-xs text-neutral-600 mb-1 flex items-center gap-1">Connectivity <HelpCircle size={10} className="text-neutral-500" /></div>
-            <div className="text-sm font-mono">avg {stats.avgDegree}</div>
-            <div className="text-[12.5px] text-neutral-600">max {stats.maxDegree}, min {stats.minDegree}</div>
-          </div>
-          <div title={SYSTEM_STAT_HELP.loops}>
-            <div className="text-xs text-neutral-600 mb-1 flex items-center gap-1">Feedback structure <HelpCircle size={10} className="text-neutral-500" /></div>
-            <div className="text-sm font-mono">{stats.loops.total} loop{stats.loops.total === 1 ? "" : "s"}</div>
-            <div className="text-[12.5px] text-neutral-600">{stats.loops.reinforcing} reinforcing, {stats.loops.balancing} balancing{stats.loops.capped ? " (showing first 300 found)" : ""}</div>
-          </div>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4 pt-4 border-t border-slate-100">
-          <div title={SYSTEM_STAT_HELP.complexity}>
-            <div className="text-xs text-neutral-600 mb-1 flex items-center gap-1">Complexity score <HelpCircle size={10} className="text-neutral-500" /></div>
-            <div className="text-sm font-mono">{Number.isFinite(stats.complexity) ? stats.complexity : "N/A"}</div>
-          </div>
-          <div title={SYSTEM_STAT_HELP.connectivity}>
-            <div className="text-xs text-neutral-600 mb-1 flex items-center gap-1">Connectivity score <HelpCircle size={10} className="text-neutral-500" /></div>
-            <div className="text-sm font-mono">{stats.connectivity}</div>
-          </div>
-          <div title={SYSTEM_STAT_HELP.centralization}>
-            <div className="text-xs text-neutral-600 mb-1 flex items-center gap-1">Centralization score <HelpCircle size={10} className="text-neutral-500" /></div>
-            <div className="text-sm font-mono">{stats.centralization}%</div>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 pt-4 border-t border-slate-100">
-          <div title={SYSTEM_STAT_HELP.clustering}>
-            <div className="text-xs text-neutral-600 mb-1 flex items-center gap-1">Clustering coefficient <HelpCircle size={10} className="text-neutral-500" /></div>
-            <div className="text-sm font-mono">{stats.clusteringEligible ? stats.clustering : "n/a"}</div>
-            <div className="text-[12.5px] text-neutral-600">mean over {stats.clusteringEligible} concept{stats.clusteringEligible === 1 ? "" : "s"} with 2+ neighbours</div>
-          </div>
-          <div title={SYSTEM_STAT_HELP.modularity}>
-            <div className="text-xs text-neutral-600 mb-1 flex items-center gap-1">Modularity (Q) <HelpCircle size={10} className="text-neutral-500" /></div>
-            <div className="text-sm font-mono">{stats.modularity === null ? "n/a" : stats.modularity}</div>
-            <div className="text-[12.5px] text-neutral-600">{stats.modularity === null ? (stats.moduleCount < 2 ? "needs 2+ modules in scope" : "no relationships") : `of the ${stats.moduleCount}-module partition`}</div>
-          </div>
-          <div title={SYSTEM_STAT_HELP.interfaceEdges}>
-            <div className="text-xs text-neutral-600 mb-1 flex items-center gap-1">Interface relationships <HelpCircle size={10} className="text-neutral-500" /></div>
-            <div className="text-sm font-mono">{stats.interfaceEdges}</div>
-            <div className="text-[12.5px] text-neutral-600">{stats.interfaceShare}% of relationships cross modules</div>
-          </div>
-          <div title={SYSTEM_STAT_HELP.betweenness}>
-            <div className="text-xs text-neutral-600 mb-1 flex items-center gap-1">Top broker (betweenness) <HelpCircle size={10} className="text-neutral-500" /></div>
-            {(() => {
-              const top = [...metrics].sort((a, b) => b.betweenness - a.betweenness)[0];
-              return top && top.betweenness > 0
-                ? <><div className="text-sm truncate" title={top.name}>{top.name}</div><div className="text-[12.5px] text-neutral-600 font-mono">{top.betweenness}</div></>
-                : <div className="text-sm text-neutral-600">none</div>;
-            })()}
-          </div>
-        </div>
-      </div>
+      <SystemOverview stats={stats} metrics={metrics} />
 
       <FoldableBox storageKey="se.fold.influenceAdvanced" icon={SlidersHorizontal} title="Advanced results" summary="Multi-scale analysis (leverage points by scale, hierarchical ranking) and network metrics by category.">
         <div className="space-y-4">
@@ -5700,6 +5626,30 @@ function InfluenceMetricsTab({ concepts, edges, settings, onHighlight, multiScal
         </div>
       </FoldableBox>
 
+      <FoldableBox
+        storageKey="se.fold.metricsMethod"
+        title="How these metrics are computed"
+        summary="These metrics describe the structure of your map: which concepts drive the system, which absorb change, and which sit at its centre. Sort the table below by any column to rank the concepts on that measure, and click a row to select that concept."
+      >
+          <div className="space-y-3 text-xs text-neutral-900">
+            <p className="text-neutral-700">Sort the table below by any column to rank the concepts on that measure, and click a row to select that concept (open the Network tab to see it).</p>
+            <div className="space-y-2">
+              <p><strong>Indegree, Outdegree, Centrality, Net Influence, and Role are purely structural</strong>: computed directly from the relationship weights you've drawn, with no simulation involved. Indegree is the sum of the absolute weights of a concept's incoming relationships; outdegree is the same for outgoing relationships; centrality is indegree + outdegree; net influence is outdegree minus indegree. Role is assigned from those numbers: <strong>Isolated</strong> has zero centrality (no relationships at all); <strong>Hub</strong> is in the top quartile of centrality among all concepts and has at least one relationship in each direction; <strong>Driver</strong> (not already a Hub) has outdegree more than 1.2&times; its indegree; <strong>Receiver</strong> (not already a Hub) has indegree more than 1.2&times; its outdegree; everything else is a <strong>Connector</strong>.</p>
+              <p><strong>Driver score and Receiver score</strong> are the shares of a concept's total connection weight that are outgoing and incoming: outdegree / centrality and indegree / centrality. They always add up to 1, so they show a concept's balance between sending and receiving influence independently of how strongly connected it is overall.</p>
+              <p><strong>Betweenness</strong> is the share of shortest directed routes between every other pair of concepts that pass through this one (Brandes' method, normalised to 0 to 1). It ignores weights, because weights express strength of influence rather than distance, so it measures position alone: a high value marks a broker that links otherwise distant parts of the system.</p>
+              <p>Because these come straight from the relationships, they update the instant you edit one and never require running a simulation. That also means they say nothing about how the model actually <em>behaves</em> once causal effects propagate through it, which is what Influence and Sensitivity scores are for.</p>
+            </div>
+            <div className="pt-2 border-t border-slate-100 space-y-2">
+              <p><strong>Influence and Sensitivity scores are perturbation-based</strong>: for each concept in turn, the model is set to all zeros, that one concept is locked at full activation (+1) for the whole run, and the simulation runs to equilibrium under the current squash function, &lambda;, update rule, and convergence settings (Scenarios &amp; Simulation's Advanced options). Every other concept always starts at exactly 0 here, regardless of what's set on the Model editor tab, so these scores measure the network's structure in isolation, not whatever initial values happen to be configured elsewhere.</p>
+              <p><strong>Influence</strong> is the average absolute movement a concept <em>causes</em> in every other concept once its own driven run settles. <strong>Sensitivity</strong> is the average absolute movement a concept <em>undergoes</em>, across all of the other concepts' individual driven runs. A concept with high influence is one whose activation, if it changed, would ripple widely through the rest of the system; a concept with high sensitivity is one that tends to move regardless of which other concept is driving the change.</p>
+              <p className="text-neutral-600">Computing these takes one full simulation run per concept ({concepts.length} run{concepts.length === 1 ? "" : "s"} for the current model). These are the same numbers used to compute the category metrics' "Mean influence"/"Mean sensitivity" below, and are recomputed automatically whenever a concept, relationship, or Advanced option changes.</p>
+            </div>
+            <div className="pt-2 border-t border-slate-100">
+              <p><strong>Ranking.</strong> The # column is each concept's rank on the numeric column the table is sorted by, where #1 is the highest value; reversing the order flips the list but keeps the ranks. Concepts with exactly the same value share a rank, so two concepts tied for first are both #1 and the next one is #3. Sorting by a text column (concept, module, role) only orders the rows.</p>
+            </div>
+          </div>
+      </FoldableBox>
+
       <MethodPanel foldable
         stats={[
           { label: "Concepts / relationships", value: `${concepts.length} / ${edges.length}` },
@@ -5725,6 +5675,62 @@ function InfluenceMetricsTab({ concepts, edges, settings, onHighlight, multiScal
 // ============================================================================
 // Multi-scale reporting (Influence Metrics tab + Network inspector)
 // ============================================================================
+// The Influence Metrics tab's system overview: the network's headline
+// numbers as tiles, each with a small visual where a share or a balance is
+// easier to see than to read.
+function SystemOverview({ stats, metrics }) {
+  const Bar = ({ pct, color = "#2456d6" }) => (
+    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden mt-1.5"><div className="h-full rounded-full" style={{ width: `${Math.max(0, Math.min(100, pct))}%`, background: color }} /></div>
+  );
+  const Tile = ({ label, help, value, unit, note, children }) => (
+    <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3" title={help}>
+      <div className="text-[11.5px] uppercase tracking-wide text-neutral-600 flex items-center gap-1">{label}{help && <HelpCircle size={10} className="text-neutral-400" />}</div>
+      <div className="mt-1 flex items-baseline gap-1"><span className="text-2xl font-semibold text-neutral-900 leading-none">{value}</span>{unit && <span className="text-xs text-neutral-600">{unit}</span>}</div>
+      {children}
+      {note && <div className="text-[12px] text-neutral-600 mt-1.5 leading-snug">{note}</div>}
+    </div>
+  );
+  const top = [...metrics].sort((a, b) => b.betweenness - a.betweenness)[0];
+  const loops = stats.loops;
+  const rPct = loops.total ? (100 * loops.reinforcing) / loops.total : 0;
+  return (
+    <div className="bg-white rounded-lg border border-slate-200 p-4" data-system-overview>
+      <h3 className="font-semibold text-sm">System overview</h3>
+      <p className="text-[12.5px] text-neutral-600 mb-3">The map as a whole: how big and dense it is, how much feedback it holds, and how its modules hang together. Hover a tile for what it means.</p>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Tile label="Network size" value={stats.concepts} unit="concepts" note={`${stats.relationships} relationships`} />
+        <Tile label="Density" help={SYSTEM_STAT_HELP.density} value={stats.density} unit="%" note={`${stats.actualConnections} of ${stats.possibleConnections} possible links`}>
+          <Bar pct={stats.density} />
+        </Tile>
+        <Tile label="Connections per concept" help={SYSTEM_STAT_HELP.avgDegree} value={stats.avgDegree} unit="on average" note={`from ${stats.minDegree} to ${stats.maxDegree}`} />
+        <Tile label="Feedback loops" help={SYSTEM_STAT_HELP.loops} value={loops.total} note={loops.total ? `${loops.reinforcing} reinforcing, ${loops.balancing} balancing${loops.capped ? " (first 300 found)" : ""}` : "no loops"}>
+          {loops.total > 0 && (
+            <div className="h-1.5 rounded-full overflow-hidden mt-1.5 flex bg-slate-100">
+              <div style={{ width: `${rPct}%`, background: "#16a34a" }} />
+              <div style={{ width: `${100 - rPct}%`, background: "#ea580c" }} />
+            </div>
+          )}
+        </Tile>
+        <Tile label="Links across modules" help={SYSTEM_STAT_HELP.interfaceEdges} value={stats.interfaceShare} unit="%" note={`${stats.interfaceEdges} interface relationships`}>
+          <Bar pct={stats.interfaceShare} color="#7c3aed" />
+        </Tile>
+        <Tile label="Modularity (Q)" help={SYSTEM_STAT_HELP.modularity} value={stats.modularity === null ? "n/a" : stats.modularity}
+          note={stats.modularity === null ? (stats.moduleCount < 2 ? "needs 2 or more modules" : "no relationships") : `${stats.moduleCount} modules; higher means more self-contained`} />
+        <Tile label="Centralisation" help={SYSTEM_STAT_HELP.centralization} value={stats.centralization} unit="%" note="how much the map hinges on a few concepts">
+          <Bar pct={stats.centralization} color="#0f766e" />
+        </Tile>
+        <Tile label="Top broker" help={SYSTEM_STAT_HELP.betweenness} value={top && top.betweenness > 0 ? <span className="text-base">{top.name}</span> : "none"}
+          note={top && top.betweenness > 0 ? `betweenness ${top.betweenness}` : "no concept sits between others"} />
+      </div>
+      <div className="flex flex-wrap gap-x-6 gap-y-1 mt-3 text-[12px] text-neutral-600">
+        <span title={SYSTEM_STAT_HELP.clustering}>Clustering coefficient: <span className="font-mono text-neutral-900">{stats.clusteringEligible ? stats.clustering : "n/a"}</span></span>
+        <span title={SYSTEM_STAT_HELP.complexity}>Complexity score: <span className="font-mono text-neutral-900">{Number.isFinite(stats.complexity) ? stats.complexity : "n/a"}</span></span>
+        <span title={SYSTEM_STAT_HELP.connectivity}>Connectivity score: <span className="font-mono text-neutral-900">{stats.connectivity}</span></span>
+      </div>
+    </div>
+  );
+}
+
 function ModuleChip({ category, label }) {
   const st = categoryStyle(category);
   return (
@@ -7481,7 +7487,10 @@ function BaselineEquilibriumTab({
 
   // Publication-figure controls for the convergence plot.
   const convergenceRef = useRef(null);
-  const [figConvergence, setFigConvergence] = useState(TRAJECTORY_FIGURE_DEFAULTS);
+  const [figConvergence, setFigConvergence] = useState({ ...TRAJECTORY_FIGURE_DEFAULTS, legendPosition: "hidden" });
+  // How many of the concepts that move most are coloured and named in the
+  // convergence plot (0 = all of them, coloured).
+  const [convergenceFocus, setConvergenceFocus] = useState(8);
   const [figConvergenceOpen, setFigConvergenceOpen] = useState(false);
   const [figConvergenceBusy, setFigConvergenceBusy] = useState(false);
   const [hiddenConvergenceIds, setHiddenConvergenceIds] = useState(() => new Set());
@@ -7503,6 +7512,20 @@ function BaselineEquilibriumTab({
     return rows;
   }, [concepts, hiddenConvergenceIds, convergenceOrder, result]);
   const convergenceSeriesOptions = useMemo(() => concepts.map((c) => ({ key: c.id, label: c.name })), [concepts]);
+  // The concepts that travel furthest from their starting value: coloured and
+  // labelled in the convergence plot, the rest drawn in grey.
+  const highlightList = useMemo(() => {
+    if (!result) return [];
+    const start = result.series[0]?.values || {};
+    const moved = convergenceRows.map((c) => ({ id: c.id, d: Math.abs((result.final[c.id] ?? 0) - (start[c.id] ?? 0)) }))
+      .sort((a, b) => b.d - a.d);
+    return (convergenceFocus ? moved.slice(0, convergenceFocus) : moved).map((m) => m.id);
+  }, [result, convergenceRows, convergenceFocus]);
+  const highlightIds = useMemo(() => new Set(highlightList), [highlightList]);
+  const labelRoom = useMemo(() => {
+    const names = highlightList.map((id) => concepts.find((c) => c.id === id)?.name || "");
+    return Math.min(230, 22 + Math.max(0, ...names.map((n) => n.length)) * 6);
+  }, [highlightList, concepts]);
 
   return (
     <div className="space-y-5">
@@ -7687,49 +7710,31 @@ function BaselineEquilibriumTab({
             </div>
           ))}
 
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
-            <h4 className="text-sm font-semibold mb-3">Equilibrium diagnostics</h4>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div>
-                <div className="text-xs text-neutral-600 mb-1">Initial state type</div>
-                <div className="text-sm font-mono">{initialStateType}</div>
-              </div>
-              <div>
-                <div className="text-xs text-neutral-600 mb-1">Converged</div>
-                <div className={`text-sm font-mono ${result.converged ? "text-cobalt-700" : "text-amber-700"}`}>{result.converged ? "Yes" : "No"}</div>
-              </div>
-              <div>
-                <div className="text-xs text-neutral-600 mb-1">Iterations to convergence</div>
-                <div className="text-sm font-mono">{result.converged ? result.iterationsRun : result.diverged ? `stopped at ${result.iterationsRun} (runaway)` : `capped at ${result.iterationsRun}`}</div>
-              </div>
-              <div>
-                <div className="text-xs text-neutral-600 mb-1">Maximum residual change</div>
-                <div className="text-sm font-mono">{finalMaxDelta}</div>
-              </div>
+          <div className="bg-white rounded-lg border border-slate-200 p-4" data-baseline-summary>
+            <div className="flex items-start gap-3 flex-wrap">
+              <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border ${result.converged ? "bg-green-50 text-green-800 border-green-200" : "bg-amber-50 text-amber-800 border-amber-200"}`}>
+                {result.converged ? <CheckCircle2 size={13} /> : <Info size={13} />}
+                {result.converged ? `Settled after ${result.iterationsRun} iterations` : result.diverged ? `Runaway: stopped at ${result.iterationsRun} iterations` : `Not settled after ${result.iterationsRun} iterations`}
+              </span>
+              <span className={`text-xs font-semibold ${stabilityColor}`}>{stability.status}</span>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 pt-4 border-t border-slate-100">
-              <div title="A converged run is, by this engine's definition, a detected fixed point; the two are the same condition here.">
-                <div className="text-xs text-neutral-600 mb-1 flex items-center gap-1">Fixed point detected <HelpCircle size={10} className="text-neutral-500" /></div>
-                <div className={`text-sm font-mono ${fixedPointDetected ? "text-cobalt-700" : "text-amber-700"}`}>{fixedPointDetected ? "Yes" : "No"}</div>
-              </div>
-              <div className="col-span-3">
-                <div className="text-xs text-neutral-600 mb-1">Stability</div>
-                <div className={`text-sm font-semibold ${stabilityColor}`}>{stability.status}</div>
-              </div>
-            </div>
-            <p className="text-xs text-neutral-700 mt-3">{stability.detail}</p>
-            <p className="text-xs text-neutral-900 mt-2 bg-slate-50 border border-slate-100 rounded p-2">{equilibriumExplanation}</p>
+            <p className="text-sm text-neutral-900 mt-2 leading-relaxed">{equilibriumExplanation}</p>
           </div>
 
           <div className="bg-white rounded-lg border border-slate-200 p-4" data-chart="baseline-convergence">
             <div className="flex items-center justify-between mb-1">
-              <h4 className="text-sm font-semibold">Convergence plot</h4>
+              <h4 className="text-sm font-semibold">How the model settles</h4>
               <Btn variant="outline" onClick={() => setFigConvergenceOpen((v) => !v)}><SlidersHorizontal size={13} />{figConvergenceOpen ? "Hide figure options" : "Customize & export"}</Btn>
             </div>
-            <p className="text-xs text-neutral-600 mb-2">Every concept's activation at each iteration, from its initial value through to convergence (or the iteration cap). Use this to check whether the model settles into a stable equilibrium, oscillates, or diverges.</p>
-            <div ref={convergenceRef} className="w-full h-72" style={figConvergenceOpen ? { width: mmToPx(figConvergence.widthMm, 96), height: mmToPx(figConvergence.heightMm, 96), maxWidth: "100%" } : undefined}>
+            <div className="flex items-center gap-3 flex-wrap mb-2">
+              <p className="text-xs text-neutral-600 flex-1 min-w-[16rem]">Each line is one concept, from its starting value (iteration 0) until the run settles. The concepts that move most are coloured and named at the end of their line; the others are grey.</p>
+              <select value={convergenceFocus} onChange={(e) => setConvergenceFocus(Number(e.target.value))} className="text-xs border border-slate-200 rounded px-2 py-1 bg-white" title="How many concepts to colour and name">
+                {[5, 8, 12, 0].map((n) => <option key={n} value={n}>{n ? `Highlight ${n} concepts that move most` : "Colour every concept"}</option>)}
+              </select>
+            </div>
+            <div ref={convergenceRef} className="w-full h-96" style={figConvergenceOpen ? { width: mmToPx(figConvergence.widthMm, 96), height: mmToPx(figConvergence.heightMm, 96), maxWidth: "100%" } : undefined}>
               <ResponsiveContainer>
-                <LineChart data={result.series.map((pt) => ({ iteration: pt.iteration, ...pt.values }))}>
+                <LineChart data={result.series.map((pt) => ({ iteration: pt.iteration, ...pt.values }))} margin={{ top: 10, right: labelRoom, bottom: 18, left: 0 }}>
                   {figConvergence.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
                   <XAxis dataKey="iteration" tick={{ fontSize: figConvergence.tickFontSize }} label={{ value: figConvergence.xLabel || "Iteration", position: "insideBottom", offset: -5, fontSize: figConvergence.axisFontSize }} />
                   <YAxis domain={effectiveSquash === "linear" || result.diverged ? ["auto", "auto"] : [-1, 1]} tick={{ fontSize: figConvergence.tickFontSize }} tickFormatter={(v) => fmtDec(v, figConvergence.decimals)} label={{ value: figConvergence.yLabel || "Activation", angle: -90, position: "insideLeft", fontSize: figConvergence.axisFontSize }} />
@@ -7744,9 +7749,46 @@ function BaselineEquilibriumTab({
                   )}
                   {figConvergence.title && <text x="50%" y={14} textAnchor="middle" fontSize={figConvergence.titleFontSize} fontWeight={600} fill="#0f172a">{figConvergence.title}</text>}
                   <ReferenceLine y={0} stroke="#cbd5e1" />
-                  {convergenceRows.map((c, i) => (
-                    <Line key={c.id} type="monotone" dataKey={c.id} name={c.name} stroke={figurePalette(figConvergence.palette, convergenceRows.length)[i]} strokeWidth={figConvergence.lineWidth} strokeOpacity={figConvergence.opacity} dot={figConvergence.markerSize > 0 ? { r: figConvergence.markerSize } : false} />
-                  ))}
+                  {[...convergenceRows].sort((a, b) => (highlightIds.has(a.id) ? 1 : 0) - (highlightIds.has(b.id) ? 1 : 0)).map((c) => {
+                    const hi = highlightIds.has(c.id);
+                    const color = hi ? figurePalette(figConvergence.palette, Math.max(1, highlightList.length))[highlightList.indexOf(c.id)] : "#cbd5e1";
+                    return (
+                      <Line key={c.id} type="monotone" dataKey={c.id} name={c.name} stroke={color} strokeWidth={hi ? figConvergence.lineWidth + 0.5 : 1} strokeOpacity={hi ? figConvergence.opacity : 0.8}
+                        dot={false} isAnimationActive={false} legendType={hi ? "line" : "none"} />
+                    );
+                  })}
+                  <Customized component={(props) => {
+                    // End-of-line names, nudged apart so that lines which
+                    // settle close together keep readable labels.
+                    const yAxis = Object.values(props.yAxisMap || {})[0];
+                    const off = props.offset;
+                    if (!yAxis?.scale || !off) return null;
+                    const fs = figConvergence.tickFontSize;
+                    const gapPx = fs + 2;
+                    const pal = figurePalette(figConvergence.palette, Math.max(1, highlightList.length));
+                    const last = result.series[result.series.length - 1]?.values || {};
+                    const items = highlightList
+                      .filter((id) => convergenceRows.some((c) => c.id === id) && Number.isFinite(last[id]))
+                      .map((id) => ({ id, name: concepts.find((c) => c.id === id)?.name || "", color: pal[highlightList.indexOf(id)], y0: yAxis.scale(last[id]) }))
+                      .sort((a, b) => a.y0 - b.y0);
+                    const lo = off.top + fs / 2, hi = off.top + off.height + fs;
+                    items.forEach((it, i) => { it.y = Math.max(it.y0, i ? items[i - 1].y + gapPx : lo); });
+                    for (let i = items.length - 1; i >= 0; i--) {
+                      const cap = i === items.length - 1 ? hi : items[i + 1].y - gapPx;
+                      items[i].y = Math.max(lo, Math.min(items[i].y, cap));
+                    }
+                    const x = off.left + off.width;
+                    return (
+                      <g>
+                        {items.map((it) => (
+                          <g key={it.id}>
+                            {Math.abs(it.y - it.y0) > 1 && <path d={`M${x + 1},${it.y0} L${x + 6},${it.y0} L${x + 10},${it.y}`} fill="none" stroke={it.color} strokeWidth={0.8} />}
+                            <text x={x + 12} y={it.y + fs * 0.35} fontSize={fs} fill={it.color} fontWeight={600}>{it.name}</text>
+                          </g>
+                        ))}
+                      </g>
+                    );
+                  }} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -7768,57 +7810,89 @@ function BaselineEquilibriumTab({
             )}
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            <div className="bg-white rounded-lg border border-slate-200 p-4">
-              <h4 className="text-sm font-semibold mb-2">Final steady state</h4>
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-left text-neutral-600 border-b border-slate-100">
-                    <th className="py-1 font-medium">Concept</th>
-                    <th className="py-1 font-medium">Steady state</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {concepts.map((c) => (
-                    <tr key={c.id} className="border-b border-slate-50">
-                      <td className="py-1">{c.name}</td>
-                      <td className="py-1 font-mono">{round2(result.final[c.id] ?? 0)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="bg-white rounded-lg border border-slate-200 p-4">
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="text-sm font-semibold">Convergence table</h4>
-                <Btn variant="outline" onClick={exportConvergenceCSV}><Download size={13} />Export CSV</Btn>
-              </div>
-              <div className="overflow-auto max-h-64">
-                <table className="w-full text-xs">
-                  <thead className="sticky top-0 bg-white">
-                    <tr className="text-left text-neutral-600 border-b border-slate-100">
-                      <th className="py-1 pr-2 font-medium">Iteration</th>
-                      {concepts.map((c) => <th key={c.id} className="py-1 pr-2 font-medium">{c.name}</th>)}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {result.series.map((pt) => (
-                      <tr key={pt.iteration} className="border-b border-slate-50">
-                        <td className="py-1 pr-2 font-mono">{pt.iteration}</td>
-                        {concepts.map((c) => <td key={c.id} className="py-1 pr-2 font-mono">{round2(pt.values[c.id] ?? 0)}</td>)}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+          <div className="bg-white rounded-lg border border-slate-200 p-4">
+            <h4 className="text-sm font-semibold mb-1">Where each concept settles</h4>
+            <p className="text-[12.5px] text-neutral-600 mb-3">The steady state of every concept on the -1 to +1 scale, largest first. Green is above 0, orange below.</p>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-1">
+              {[...concepts].sort((a, b) => Math.abs(result.final[b.id] ?? 0) - Math.abs(result.final[a.id] ?? 0)).map((c) => {
+                const v = result.final[c.id] ?? 0;
+                const w = Math.min(1, Math.abs(v)) * 50;
+                return (
+                  <div key={c.id} className="flex items-center gap-2 text-xs" title={`${c.name}: ${round2(v)}`}>
+                    <span className="w-40 truncate text-neutral-900">{c.name}</span>
+                    <div className="relative flex-1 h-3 bg-slate-50 rounded">
+                      <div className="absolute top-0 bottom-0 left-1/2 w-px bg-slate-300" />
+                      <div className={`absolute top-0.5 bottom-0.5 rounded ${v >= 0 ? "bg-green-500" : "bg-orange-500"}`} style={v >= 0 ? { left: "50%", width: `${w}%` } : { right: "50%", width: `${w}%` }} />
+                    </div>
+                    <span className="w-12 text-right font-mono text-neutral-700">{fmtSignedTp(v)}</span>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
           <div className="bg-white rounded-lg border border-slate-200 p-4">
             <details>
-              <summary className="text-sm font-semibold cursor-pointer flex items-center gap-1.5"><FlaskConical size={14} className="text-cobalt-700" />Advanced Diagnostics</summary>
+              <summary className="text-sm font-semibold cursor-pointer flex items-center gap-1.5"><FlaskConical size={14} className="text-cobalt-700" />Advanced diagnostics <span className="text-xs font-normal text-neutral-600">equilibrium diagnostics, convergence table, and the raw vectors and weight matrix</span></summary>
               <div className="mt-3 space-y-4">
+              <div className="bg-white rounded-lg border border-slate-200 p-4">
+                <h4 className="text-sm font-semibold mb-3">Equilibrium diagnostics</h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                    <div className="text-xs text-neutral-600 mb-1">Initial state type</div>
+                    <div className="text-sm font-mono">{initialStateType}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-neutral-600 mb-1">Converged</div>
+                    <div className={`text-sm font-mono ${result.converged ? "text-cobalt-700" : "text-amber-700"}`}>{result.converged ? "Yes" : "No"}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-neutral-600 mb-1">Iterations to convergence</div>
+                    <div className="text-sm font-mono">{result.converged ? result.iterationsRun : result.diverged ? `stopped at ${result.iterationsRun} (runaway)` : `capped at ${result.iterationsRun}`}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-neutral-600 mb-1">Maximum residual change</div>
+                    <div className="text-sm font-mono">{finalMaxDelta}</div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 pt-4 border-t border-slate-100">
+                  <div title="A converged run is, by this engine's definition, a detected fixed point; the two are the same condition here.">
+                    <div className="text-xs text-neutral-600 mb-1 flex items-center gap-1">Fixed point detected <HelpCircle size={10} className="text-neutral-500" /></div>
+                    <div className={`text-sm font-mono ${fixedPointDetected ? "text-cobalt-700" : "text-amber-700"}`}>{fixedPointDetected ? "Yes" : "No"}</div>
+                  </div>
+                  <div className="col-span-3">
+                    <div className="text-xs text-neutral-600 mb-1">Stability</div>
+                    <div className={`text-sm font-semibold ${stabilityColor}`}>{stability.status}</div>
+                  </div>
+                </div>
+                <p className="text-xs text-neutral-700 mt-3">{stability.detail}</p>
+                <p className="text-xs text-neutral-900 mt-2 bg-slate-50 border border-slate-100 rounded p-2">{equilibriumExplanation}</p>
+              </div>
+                <div className="bg-white rounded-lg border border-slate-200 p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-sm font-semibold">Convergence table</h4>
+                    <Btn variant="outline" onClick={exportConvergenceCSV}><Download size={13} />Export CSV</Btn>
+                  </div>
+                  <div className="overflow-auto max-h-64">
+                    <table className="w-full text-xs">
+                      <thead className="sticky top-0 bg-white">
+                        <tr className="text-left text-neutral-600 border-b border-slate-100">
+                          <th className="py-1 pr-2 font-medium">Iteration</th>
+                          {concepts.map((c) => <th key={c.id} className="py-1 pr-2 font-medium">{c.name}</th>)}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {result.series.map((pt) => (
+                          <tr key={pt.iteration} className="border-b border-slate-50">
+                            <td className="py-1 pr-2 font-mono">{pt.iteration}</td>
+                            {concepts.map((c) => <td key={c.id} className="py-1 pr-2 font-mono">{round2(pt.values[c.id] ?? 0)}</td>)}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
                 <p className="text-xs text-neutral-700">Raw mathematical objects behind this run, for verifying the engine matches FCM theory directly: the initial vector A(0), the weight matrix W (row = target, column = source, so W[row][col] is the weight of the relationship column to row), the first few iteration vectors, the final equilibrium A*, and the convergence delta.</p>
 
                 <div>
@@ -7861,7 +7935,7 @@ function BaselineEquilibriumTab({
                         A({pt.iteration}) = [{concepts.map((c) => round2(pt.values[c.id] ?? 0)).join(", ")}]
                       </div>
                     ))}
-                    {result.series.length > 6 && <div className="text-neutral-600">... {result.series.length - 6} more (see Convergence table above)</div>}
+                    {result.series.length > 6 && <div className="text-neutral-600">... {result.series.length - 6} more (see the convergence table above)</div>}
                   </div>
                 </div>
 
@@ -12499,6 +12573,17 @@ function SpaghettiEngineApp() {
   const [showMatrixPanel, setShowMatrixPanel] = useState(false);
   const [showInitialValueHelp, setShowInitialValueHelp] = useState(false);
   const [showScenarioHelp, setShowScenarioHelp] = useState(false);
+  // Scenario tab: the concept filter and fine-tune switch of the editor, and
+  // the small-multiples comparison figure's options and figure settings.
+  const [scenarioFilter, setScenarioFilter] = useState("");
+  const [scenarioFineTune, setScenarioFineTune] = useState(false);
+  const [scenarioFigMode, setScenarioFigMode] = useState("delta");
+  const [scenarioFigSort, setScenarioFigSort] = useState("module");
+  const [scenarioFigHideDrivers, setScenarioFigHideDrivers] = useState(false);
+  const scenarioPanelsRef = useRef(null);
+  const [figScenarioPanels, setFigScenarioPanels] = useState({ ...DEFAULT_FIGURE_SETTINGS, preset: "double-landscape", widthMm: 174, heightMm: 120, legendPosition: "bottom", tickFontSize: 11 });
+  const [figScenarioPanelsOpen, setFigScenarioPanelsOpen] = useState(false);
+  const [figScenarioPanelsBusy, setFigScenarioPanelsBusy] = useState(false);
   const [matrixError, setMatrixError] = useState(null);
   const [matrixSuccess, setMatrixSuccess] = useState(null);
   const fileInputRef = useRef(null);
@@ -12825,6 +12910,33 @@ function SpaghettiEngineApp() {
     });
     return names;
   }, [comparedIds, scenarios]);
+  // The small-multiples comparison: one panel per compared scenario, a
+  // cell per concept with the change against the baseline (or the steady
+  // state), and the scenario's drivers flagged so they are drawn hatched.
+  const scenarioFigure = useMemo(() => {
+    const base = results.baseline?.final || {};
+    const ids = comparedIds.filter((id) => results[id]);
+    const panels = ids.map((id) => {
+      const sc = scenarios.find((x) => x.id === id);
+      const cells = {};
+      aConcepts.forEach((c) => {
+        const fin = results[id].final[c.id] ?? 0;
+        const driver = sc?.lockedConcepts?.[c.id] !== undefined;
+        cells[c.id] = { driver, value: driver || scenarioFigMode === "level" ? fin : fin - (base[c.id] ?? 0) };
+      });
+      return { id, name: comparisonNames[id], cells };
+    });
+    let rows = aConcepts.map((c) => ({ id: c.id, name: c.name, module: (c.category || "").trim() || "No module" }));
+    if (scenarioFigHideDrivers) rows = rows.filter((r) => !panels.some((p) => p.cells[r.id]?.driver));
+    const effect = (r) => Math.max(0, ...panels.map((p) => (p.cells[r.id]?.driver ? 0 : Math.abs(p.cells[r.id]?.value ?? 0))));
+    if (scenarioFigSort === "name") rows.sort((a, b) => a.name.localeCompare(b.name));
+    else if (scenarioFigSort === "effect") rows.sort((a, b) => effect(b) - effect(a));
+    else {
+      const order = [...new Set(aConcepts.map((c) => (c.category || "").trim() || "No module"))];
+      rows.sort((a, b) => order.indexOf(a.module) - order.indexOf(b.module));
+    }
+    return { rows, panels };
+  }, [results, comparedIds, scenarios, aConcepts, comparisonNames, scenarioFigMode, scenarioFigSort, scenarioFigHideDrivers]);
   const notYetRun = comparedIds.filter((id) => !results[id]);
 
   // ==== import / export ======================================================
@@ -13576,285 +13688,280 @@ function SpaghettiEngineApp() {
               )}
             </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-5">
-            <div className="bg-white rounded-lg border border-slate-200 p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold text-sm">Scenarios</h3>
-              </div>
-              <div className="flex gap-1.5 mb-3 flex-wrap">
-                <Btn variant="outline" onClick={() => addScenario("intervention")}><Plus size={13} />New</Btn>
-                <Btn variant="outline" onClick={() => duplicateScenario(activeScenarioId)}>Duplicate</Btn>
-              </div>
-              <div className="space-y-1.5">
-                {scenarios.map((s) => (
-                  <div key={s.id} className={`rounded-md border p-2 cursor-pointer ${activeScenarioId === s.id ? "border-cobalt-600 bg-cobalt-50" : "border-slate-200"}`} onClick={() => setActiveScenarioId(s.id)}>
-                    <div className="flex items-center justify-between">
-                      <input
-                        value={s.name}
-                        onChange={(e) => updateScenario(s.id, { name: e.target.value })}
-                        onClick={(e) => e.stopPropagation()}
-                        className="text-sm bg-transparent font-medium flex-1 focus:outline-none"
-                      />
-                      {s.id === "baseline" ? (
-                        <span className="text-[11.5px] text-neutral-600 whitespace-nowrap" title="The baseline is always included in the comparison; tick compare on the scenarios you want to set against it.">
-                          always compared
-                        </span>
-                      ) : (
-                        <label className="flex items-center gap-1 text-[11.5px] text-neutral-700" onClick={(e) => e.stopPropagation()}>
-                          <input type="checkbox" checked={compareIds.includes(s.id)} onChange={() => toggleCompare(s.id)} /> compare
-                        </label>
-                      )}
-                      {s.id !== "baseline" && (
-                        <button onClick={(e) => { e.stopPropagation(); removeScenario(s.id); }} className="text-neutral-500 hover:text-red-500 ml-1"><Trash2 size={12} /></button>
-                      )}
-                    </div>
-                    <select
-                      value={s.type} onClick={(e) => e.stopPropagation()}
-                      onChange={(e) => updateScenario(s.id, { type: e.target.value })}
-                      className="text-[11.5px] text-neutral-700 mt-1 bg-transparent"
-                    >
-                      <option value="baseline">baseline</option>
-                      <option value="intervention">intervention</option>
-                      <option value="shock">shock</option>
-                      <option value="policy_bundle">policy bundle</option>
-                    </select>
-                    <input
-                      value={s.description || ""}
-                      placeholder="Short description (used in the exported workbook)"
-                      onChange={(e) => updateScenario(s.id, { description: e.target.value })}
-                      onClick={(e) => e.stopPropagation()}
-                      className="w-full mt-1 text-[12.5px] bg-transparent text-neutral-700 placeholder:text-neutral-400 focus:outline-none border-b border-transparent focus:border-slate-200"
-                    />
-                  </div>
-                ))}
+            {/* ======== one block: choose, edit and run scenarios ======== */}
+            <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-4" data-scenario-setup>
+              <div>
+                <StepBadge n={1} label="Choose a scenario to edit" />
+                <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                  {scenarios.map((s) => (
+                    <button key={s.id} onClick={() => setActiveScenarioId(s.id)}
+                      className={`text-xs px-2.5 py-1.5 rounded-full border ${activeScenarioId === s.id ? "border-cobalt-700 bg-cobalt-50 text-cobalt-900 font-semibold" : "border-slate-200 text-neutral-900 hover:border-slate-400"}`}>
+                      {s.name || "Unnamed scenario"}{s.id === "baseline" ? " (no change)" : ""}
+                    </button>
+                  ))}
+                  <Btn variant="outline" onClick={() => addScenario("intervention")}><Plus size={13} />New scenario</Btn>
+                  {activeScenarioId !== "baseline" && <Btn variant="ghost" onClick={() => duplicateScenario(activeScenarioId)}>Duplicate</Btn>}
+                </div>
               </div>
 
-              <div className={`mt-4 pt-3 border-t border-slate-100 ${basic ? "hidden" : ""}`}>
-                <details>
-                  <summary className="text-xs font-medium text-neutral-700 cursor-pointer">Advanced options</summary>
-                  <p className="text-[12.5px] text-neutral-600 mt-2 mb-1">
-                    These govern how every simulation in this app runs (Scenarios &amp; Simulation, Sensitivity Analysis, Transition Point Analysis, and the structural Influence/Sensitivity scores on the Influence Metrics tab), and are recorded exactly as set here in anything you export. Hover <HelpCircle size={10} className="inline text-neutral-500" /> on any setting for what it does.
-                  </p>
-                  <div className="mt-2 space-y-2">
-                    <label className="text-xs text-neutral-700 flex justify-between items-center">
-                      <span className="flex items-center gap-1" title="The simulation stops after this many iterations even if it hasn't converged. Higher values let a slowly-converging or oscillating model keep running longer before being cut off, at the cost of a slower run.">Max iterations <HelpCircle size={10} className="text-neutral-500" /></span>
-                      <input type="number" value={settings.maxIterations} onChange={(e) => setSettings((s) => ({ ...s, maxIterations: parseInt(e.target.value) || 100 }))} className="w-16 border border-slate-200 rounded px-1 text-xs" />
-                    </label>
-                    <label className="text-xs text-neutral-700 flex justify-between items-center">
-                      <span className="flex items-center gap-1" title="The run is considered converged, and stops, once the largest change in any concept's activation from one iteration to the next drops below this value. A smaller threshold demands a more precise, closer-to-exact equilibrium before stopping.">Convergence threshold <HelpCircle size={10} className="text-neutral-500" /></span>
-                      <input type="number" step={0.0001} value={settings.convergenceThreshold} onChange={(e) => setSettings((s) => ({ ...s, convergenceThreshold: parseFloat(e.target.value) || 0.001 }))} className="w-16 border border-slate-200 rounded px-1 text-xs" />
-                    </label>
-                    <label className="text-xs text-neutral-700 flex justify-between items-center">
-                      <span className="flex items-center gap-1" title="Synchronous: every concept updates at once, each computed purely from the PREVIOUS iteration's values; the standard FCM update, and the only mode that gives a reproducible result for a given model. Asynchronous: concepts update one at a time in a randomly shuffled order each iteration, each seeing already-updated values from earlier in that same pass, so results can differ between runs of the identical model.">Update mode <HelpCircle size={10} className="text-neutral-500" /></span>
-                      <select value={settings.mode} onChange={(e) => setSettings((s) => ({ ...s, mode: e.target.value }))} className="text-xs border border-slate-200 rounded px-1">
-                        <option value="synchronous">synchronous</option>
-                        <option value="asynchronous">asynchronous</option>
+              {activeScenario && (
+                <div className="rounded-md border border-slate-200 p-3 space-y-3">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <input value={activeScenario.name} onChange={(e) => updateScenario(activeScenario.id, { name: e.target.value })} aria-label="Scenario name"
+                      className="text-sm font-semibold border border-slate-200 rounded px-2 py-1 flex-1 min-w-[12rem] focus:outline-none focus:ring-1 focus:ring-cobalt-500" />
+                    {activeScenario.id !== "baseline" && (
+                      <select value={activeScenario.type} onChange={(e) => updateScenario(activeScenario.id, { type: e.target.value })} className="text-xs border border-slate-200 rounded px-2 py-1.5" title="What kind of scenario this is (used in the exported workbook)">
+                        <option value="intervention">Intervention</option>
+                        <option value="shock">Shock</option>
+                        <option value="policy_bundle">Policy bundle</option>
                       </select>
-                    </label>
-                    <label className="text-xs text-neutral-700 flex justify-between items-center">
-                      <span className="flex items-center gap-1" title="Relative (adds to current state): A(t+1) = squash(A(t) + W·A(t)); each concept's new value builds on top of where it currently is, the standard FCM formulation this app uses by default. Absolute (from inputs only): A(t+1) = squash(W·A(t)); each concept's new value comes purely from incoming influences, discarding its own previous value entirely (the original Kosko FCM rule).">Update rule <HelpCircle size={10} className="text-neutral-500" /></span>
-                      <select value={settings.updateRule} onChange={(e) => setSettings((s) => ({ ...s, updateRule: e.target.value }))} className="text-xs border border-slate-200 rounded px-1">
-                        <option value="relative">Relative (adds to current state)</option>
-                        <option value="absolute">Absolute (from inputs only)</option>
-                      </select>
-                    </label>
-                    <label className="text-xs text-neutral-700 flex justify-between items-center">
-                      <span className="flex items-center gap-1" title="Maps a concept's total incoming influence onto the -1..+1 activation scale. Hyperbolic tangent: smooth and symmetric, tanh(x), with gain 1 at zero. Sigmoid: smooth and symmetric, 2/(1+e^-λx)-1, but with gain 0.5 at zero, half as responsive to weak signals as tanh, so the same weights can settle at a different, sometimes zero, equilibrium under each. Trivalent (step): a hard threshold that snaps straight to -1, 0, or +1 with no smooth transition. None (linear): no squashing at all, so the model runs on the raw dynamics of its weight matrix, A(t+1) = A(t) + W·A(t); activation is no longer held inside -1 to +1, and a model whose feedback amplifies itself runs away (the run is stopped and marked as diverged once a concept passes ±1000).">Squashing function <HelpCircle size={10} className="text-neutral-500" /></span>
-                      <select value={settings.squashFunction} onChange={(e) => setSettings((s) => ({ ...s, squashFunction: e.target.value }))} className="text-xs border border-slate-200 rounded px-1">
-                        <option value="tanh">Hyperbolic tangent</option>
-                        <option value="sigmoid">Sigmoid</option>
-                        <option value="trivalent">Trivalent (step)</option>
-                        <option value="linear">None (linear, unbounded)</option>
-                      </select>
-                    </label>
-                    {settings.squashFunction !== "trivalent" && settings.squashFunction !== "linear" && (
-                      <label className="text-xs text-neutral-700 flex justify-between items-center">
-                        <span className="flex items-center gap-1" title="Multiplies a concept's total incoming influence before it's passed through the squashing function, controlling how sharply activation responds. Higher values make the model behave more like a step function (fast transitions between -1 and +1 for a given change in influence); lower values make it respond more gradually to the same influence. Not shown for Trivalent (already a hard step regardless of this) or for None (linear), which has no curve to steepen.">λ (steepness) <HelpCircle size={10} className="text-neutral-500" /></span>
-                        <input
-                          type="number" step={0.1} min={0.1} max={10} value={settings.lambda}
-                          onChange={(e) => setSettings((s) => ({ ...s, lambda: parseFloat(e.target.value) || 1 }))}
-                          className="w-16 border border-slate-200 rounded px-1 text-xs"
-                        />
-                      </label>
+                    )}
+                    {activeScenario.id !== "baseline" && (
+                      <button onClick={() => removeScenario(activeScenario.id)} className="text-xs text-neutral-600 hover:text-red-600 inline-flex items-center gap-1"><Trash2 size={13} />Delete</button>
                     )}
                   </div>
-                </details>
-              </div>
+                  <input value={activeScenario.description || ""} onChange={(e) => updateScenario(activeScenario.id, { description: e.target.value })} placeholder="Short description, for example: subsidy for nature-inclusive farming"
+                    className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-cobalt-500" />
 
-              <div className="flex gap-2 mt-4">
-                <Btn variant="accent" onClick={runAll}><Play size={14} />Run simulation</Btn>
-                <Btn variant="ghost" onClick={resetActivation}><RotateCcw size={14} />Reset</Btn>
+                  {activeScenario.id === "baseline" ? (
+                    <p className="text-xs text-neutral-700">The baseline is the model as it is, with nothing changed. Every scenario is compared with it. Choose or create another scenario to set what it changes.</p>
+                  ) : (
+                    <div>
+                      <StepBadge n={2} label="What does this scenario change?" />
+                      <p className="text-[12.5px] text-neutral-600 mt-1 mb-2">Push a concept up or down: it is held at +1 or -1 for the whole run. Leave the rest on "no change".</p>
+                      {(() => {
+                        const drivers = aConcepts.filter((c) => activeScenario.lockedConcepts?.[c.id] !== undefined || activeScenario.initialOverrides?.[c.id] !== undefined);
+                        return drivers.length > 0 ? (
+                          <div className="flex flex-wrap gap-1.5 mb-2">
+                            {drivers.map((c) => {
+                              const v = activeScenario.lockedConcepts?.[c.id] ?? activeScenario.initialOverrides?.[c.id];
+                              return (
+                                <span key={c.id} className={`text-xs px-2 py-0.5 rounded-full border ${v >= 0 ? "border-green-300 bg-green-50 text-green-900" : "border-orange-300 bg-orange-50 text-orange-900"}`}>
+                                  {v >= 0 ? "▲" : "▼"} {c.name} {Math.abs(v) !== 1 ? round2(v) : ""}{activeScenario.lockedConcepts?.[c.id] === undefined ? " (start value)" : ""}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        ) : <p className="text-xs text-neutral-600 italic mb-2">Nothing changed yet.</p>;
+                      })()}
+                      <div className="flex items-center gap-2 mb-2">
+                        <input value={scenarioFilter} onChange={(e) => setScenarioFilter(e.target.value)} placeholder="Find a concept…" className="text-xs border border-slate-200 rounded px-2 py-1 w-56" />
+                        <label className="text-xs text-neutral-700 flex items-center gap-1.5"><input type="checkbox" checked={scenarioFineTune} onChange={(e) => setScenarioFineTune(e.target.checked)} />Fine-tune (custom values and locks)</label>
+                      </div>
+                      {!scenarioFineTune ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-x-4 gap-y-1 max-h-80 overflow-auto pr-1">
+                          {aConcepts.filter((c) => !scenarioFilter || c.name.toLowerCase().includes(scenarioFilter.toLowerCase())).map((c) => {
+                            const lk = activeScenario.lockedConcepts?.[c.id];
+                            const ov = activeScenario.initialOverrides?.[c.id];
+                            const up = lk === 1 && ov === 1, down = lk === -1 && ov === -1;
+                            const custom = !up && !down && (lk !== undefined || ov !== undefined);
+                            const seg = (on, onClick, label, cls) => <button onClick={onClick} className={`text-[11.5px] px-2 py-0.5 ${on ? cls : "bg-white text-neutral-700 hover:bg-slate-50"}`}>{label}</button>;
+                            return (
+                              <div key={c.id} className="flex items-center gap-2 py-0.5">
+                                <span className="text-xs flex-1 truncate" title={c.name}>{c.name}</span>
+                                {custom ? <span className="text-[11.5px] text-cobalt-800">custom</span> : (
+                                  <div className="inline-flex border border-slate-200 rounded overflow-hidden shrink-0">
+                                    {seg(down, () => setDriver(activeScenario.id, c.id, -1), "▼ down", "bg-orange-500 text-white")}
+                                    {seg(!up && !down, () => { if (up) setDriver(activeScenario.id, c.id, 1); if (down) setDriver(activeScenario.id, c.id, -1); }, "no change", "bg-slate-200 text-neutral-900")}
+                                    {seg(up, () => setDriver(activeScenario.id, c.id, 1), "▲ up", "bg-green-600 text-white")}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-2">
+                          {aConcepts.map((c) => {
+                            const ov = activeScenario?.initialOverrides?.[c.id];
+                            const locked = activeScenario?.lockedConcepts?.[c.id] !== undefined;
+                            const isIncreaseDriver = locked && activeScenario?.lockedConcepts?.[c.id] === 1 && ov === 1;
+                            const isDecreaseDriver = locked && activeScenario?.lockedConcepts?.[c.id] === -1 && ov === -1;
+                            return (
+                              <div key={c.id} className="border border-slate-200 rounded p-2 flex items-center gap-1.5">
+                                <span className="text-xs flex-1 truncate">{c.name}</span>
+                                <button
+                                  onClick={() => setDriver(activeScenario.id, c.id, 1)}
+                                  title="Driver: increase (locked at +1)"
+                                  className={`text-[11.5px] w-5 h-5 rounded border leading-none ${isIncreaseDriver ? "border-cobalt-700 bg-cobalt-50 text-cobalt-800" : "border-slate-200 text-neutral-600 hover:border-slate-400"}`}
+                                >▲</button>
+                                <button
+                                  onClick={() => setDriver(activeScenario.id, c.id, -1)}
+                                  title="Driver: decrease (locked at −1)"
+                                  className={`text-[11.5px] w-5 h-5 rounded border leading-none ${isDecreaseDriver ? "border-rose-600 bg-rose-50 text-rose-700" : "border-slate-200 text-neutral-600 hover:border-slate-400"}`}
+                                >▼</button>
+                                <input
+                                  type="number" step={0.05} min={-1} max={1}
+                                  placeholder={String(c.initialValue)}
+                                  value={ov ?? ""}
+                                  onChange={(e) => e.target.value === "" ? clearOverride(activeScenario.id, c.id) : setOverride(activeScenario.id, c.id, clamp(parseFloat(e.target.value)))}
+                                  className="w-14 text-xs border border-slate-200 rounded px-1 py-0.5"
+                                />
+                                <button onClick={() => toggleLock(activeScenario.id, c.id, ov ?? c.initialValue)} title="Lock this value for the whole run" className={locked ? "text-cobalt-700" : "text-neutral-500 hover:text-neutral-900"}>
+                                  {locked ? <Lock size={13} /> : <Unlock size={13} />}
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="pt-3 border-t border-slate-100">
+                <StepBadge n={3} label="Compare and run" />
+                <div className="flex items-center gap-3 flex-wrap mt-2">
+                  <span className="text-xs text-neutral-700">Compare with the baseline:</span>
+                  {scenarios.filter((s) => s.id !== "baseline").map((s) => (
+                    <label key={s.id} className="text-xs flex items-center gap-1 text-neutral-900"><input type="checkbox" checked={compareIds.includes(s.id)} onChange={() => toggleCompare(s.id)} />{s.name}</label>
+                  ))}
+                  {scenarios.length <= 1 && <span className="text-xs text-neutral-600 italic">Create a scenario first.</span>}
+                </div>
+                <div className="flex gap-2 mt-3">
+                  <Btn variant="accent" onClick={runAll}><Play size={14} />Run simulation</Btn>
+                  <Btn variant="ghost" onClick={resetActivation}><RotateCcw size={14} />Reset</Btn>
+                </div>
+                <div className={`mt-3 ${basic ? "hidden" : ""}`}>
+                  <details>
+                    <summary className="text-xs font-medium text-neutral-700 cursor-pointer">Advanced options</summary>
+                    <p className="text-[12.5px] text-neutral-600 mt-2 mb-1">
+                      These govern how every simulation in this app runs (Scenarios &amp; Simulation, Sensitivity Analysis, Transition Point Analysis, and the structural Influence/Sensitivity scores on the Influence Metrics tab), and are recorded exactly as set here in anything you export. Hover <HelpCircle size={10} className="inline text-neutral-500" /> on any setting for what it does.
+                    </p>
+                    <div className="mt-2 space-y-2">
+                      <label className="text-xs text-neutral-700 flex justify-between items-center">
+                        <span className="flex items-center gap-1" title="The simulation stops after this many iterations even if it hasn't converged. Higher values let a slowly-converging or oscillating model keep running longer before being cut off, at the cost of a slower run.">Max iterations <HelpCircle size={10} className="text-neutral-500" /></span>
+                        <input type="number" value={settings.maxIterations} onChange={(e) => setSettings((s) => ({ ...s, maxIterations: parseInt(e.target.value) || 100 }))} className="w-16 border border-slate-200 rounded px-1 text-xs" />
+                      </label>
+                      <label className="text-xs text-neutral-700 flex justify-between items-center">
+                        <span className="flex items-center gap-1" title="The run is considered converged, and stops, once the largest change in any concept's activation from one iteration to the next drops below this value. A smaller threshold demands a more precise, closer-to-exact equilibrium before stopping.">Convergence threshold <HelpCircle size={10} className="text-neutral-500" /></span>
+                        <input type="number" step={0.0001} value={settings.convergenceThreshold} onChange={(e) => setSettings((s) => ({ ...s, convergenceThreshold: parseFloat(e.target.value) || 0.001 }))} className="w-16 border border-slate-200 rounded px-1 text-xs" />
+                      </label>
+                      <label className="text-xs text-neutral-700 flex justify-between items-center">
+                        <span className="flex items-center gap-1" title="Synchronous: every concept updates at once, each computed purely from the PREVIOUS iteration's values; the standard FCM update, and the only mode that gives a reproducible result for a given model. Asynchronous: concepts update one at a time in a randomly shuffled order each iteration, each seeing already-updated values from earlier in that same pass, so results can differ between runs of the identical model.">Update mode <HelpCircle size={10} className="text-neutral-500" /></span>
+                        <select value={settings.mode} onChange={(e) => setSettings((s) => ({ ...s, mode: e.target.value }))} className="text-xs border border-slate-200 rounded px-1">
+                          <option value="synchronous">synchronous</option>
+                          <option value="asynchronous">asynchronous</option>
+                        </select>
+                      </label>
+                      <label className="text-xs text-neutral-700 flex justify-between items-center">
+                        <span className="flex items-center gap-1" title="Relative (adds to current state): A(t+1) = squash(A(t) + W·A(t)); each concept's new value builds on top of where it currently is, the standard FCM formulation this app uses by default. Absolute (from inputs only): A(t+1) = squash(W·A(t)); each concept's new value comes purely from incoming influences, discarding its own previous value entirely (the original Kosko FCM rule).">Update rule <HelpCircle size={10} className="text-neutral-500" /></span>
+                        <select value={settings.updateRule} onChange={(e) => setSettings((s) => ({ ...s, updateRule: e.target.value }))} className="text-xs border border-slate-200 rounded px-1">
+                          <option value="relative">Relative (adds to current state)</option>
+                          <option value="absolute">Absolute (from inputs only)</option>
+                        </select>
+                      </label>
+                      <label className="text-xs text-neutral-700 flex justify-between items-center">
+                        <span className="flex items-center gap-1" title="Maps a concept's total incoming influence onto the -1..+1 activation scale. Hyperbolic tangent: smooth and symmetric, tanh(x), with gain 1 at zero. Sigmoid: smooth and symmetric, 2/(1+e^-λx)-1, but with gain 0.5 at zero, half as responsive to weak signals as tanh, so the same weights can settle at a different, sometimes zero, equilibrium under each. Trivalent (step): a hard threshold that snaps straight to -1, 0, or +1 with no smooth transition. None (linear): no squashing at all, so the model runs on the raw dynamics of its weight matrix, A(t+1) = A(t) + W·A(t); activation is no longer held inside -1 to +1, and a model whose feedback amplifies itself runs away (the run is stopped and marked as diverged once a concept passes ±1000).">Squashing function <HelpCircle size={10} className="text-neutral-500" /></span>
+                        <select value={settings.squashFunction} onChange={(e) => setSettings((s) => ({ ...s, squashFunction: e.target.value }))} className="text-xs border border-slate-200 rounded px-1">
+                          <option value="tanh">Hyperbolic tangent</option>
+                          <option value="sigmoid">Sigmoid</option>
+                          <option value="trivalent">Trivalent (step)</option>
+                          <option value="linear">None (linear, unbounded)</option>
+                        </select>
+                      </label>
+                      {settings.squashFunction !== "trivalent" && settings.squashFunction !== "linear" && (
+                        <label className="text-xs text-neutral-700 flex justify-between items-center">
+                          <span className="flex items-center gap-1" title="Multiplies a concept's total incoming influence before it's passed through the squashing function, controlling how sharply activation responds. Higher values make the model behave more like a step function (fast transitions between -1 and +1 for a given change in influence); lower values make it respond more gradually to the same influence. Not shown for Trivalent (already a hard step regardless of this) or for None (linear), which has no curve to steepen.">λ (steepness) <HelpCircle size={10} className="text-neutral-500" /></span>
+                          <input
+                            type="number" step={0.1} min={0.1} max={10} value={settings.lambda}
+                            onChange={(e) => setSettings((s) => ({ ...s, lambda: parseFloat(e.target.value) || 1 }))}
+                            className="w-16 border border-slate-200 rounded px-1 text-xs"
+                          />
+                        </label>
+                      )}
+                    </div>
+                  </details>
+                </div>
               </div>
             </div>
 
-            <div className="space-y-5">
-              {/* editing overrides for the active scenario */}
-              <div className="bg-white rounded-lg border border-slate-200 p-4">
-                <h3 className="font-semibold text-sm mb-1">Editing: {activeScenario?.name}</h3>
-                <p className="text-xs text-neutral-600 mb-3">
-                  Mark a concept as a <strong>driver</strong> (▲ increase / ▼ decrease) the way Mental Modeler scenarios work: it's forced to full activation (+1 / -1) and held there for the entire run. Or set a custom starting value for finer-grained control, and lock it independently if you want it held fixed too.
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  {aConcepts.map((c) => {
-                    const ov = activeScenario?.initialOverrides?.[c.id];
-                    const locked = activeScenario?.lockedConcepts?.[c.id] !== undefined;
-                    const isIncreaseDriver = locked && activeScenario?.lockedConcepts?.[c.id] === 1 && ov === 1;
-                    const isDecreaseDriver = locked && activeScenario?.lockedConcepts?.[c.id] === -1 && ov === -1;
-                    return (
-                      <div key={c.id} className="border border-slate-200 rounded p-2 flex items-center gap-1.5">
-                        <span className="text-xs flex-1 truncate">{c.name}</span>
-                        <button
-                          onClick={() => setDriver(activeScenario.id, c.id, 1)}
-                          title="Driver: increase (locked at +1)"
-                          className={`text-[11.5px] w-5 h-5 rounded border leading-none ${isIncreaseDriver ? "border-cobalt-700 bg-cobalt-50 text-cobalt-800" : "border-slate-200 text-neutral-600 hover:border-slate-400"}`}
-                        >▲</button>
-                        <button
-                          onClick={() => setDriver(activeScenario.id, c.id, -1)}
-                          title="Driver: decrease (locked at −1)"
-                          className={`text-[11.5px] w-5 h-5 rounded border leading-none ${isDecreaseDriver ? "border-rose-600 bg-rose-50 text-rose-700" : "border-slate-200 text-neutral-600 hover:border-slate-400"}`}
-                        >▼</button>
-                        <input
-                          type="number" step={0.05} min={-1} max={1}
-                          placeholder={String(c.initialValue)}
-                          value={ov ?? ""}
-                          onChange={(e) => e.target.value === "" ? clearOverride(activeScenario.id, c.id) : setOverride(activeScenario.id, c.id, clamp(parseFloat(e.target.value)))}
-                          className="w-14 text-xs border border-slate-200 rounded px-1 py-0.5"
-                        />
-                        <button onClick={() => toggleLock(activeScenario.id, c.id, ov ?? c.initialValue)} title="Lock this value for the whole run" className={locked ? "text-cobalt-700" : "text-neutral-500 hover:text-neutral-900"}>
-                          {locked ? <Lock size={13} /> : <Unlock size={13} />}
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
+            {/* ======== results ======== */}
+            {comparedIds.length === 0 ? (
+              <div className="bg-white rounded-lg border border-dashed border-slate-300 p-4 text-xs text-neutral-700">
+                Tick one or more scenarios under <strong>Compare and run</strong>, then click Run simulation, to see them next to the baseline.
               </div>
-
-              {/* comparison */}
-              {comparedIds.length === 0 && (
-                <div className="bg-white rounded-lg border border-dashed border-slate-300 p-4 text-xs text-neutral-700">
-                  Tick <strong>compare</strong> on one or more scenarios in the list, then click Run simulation, to see them side by side with the baseline.
-                </div>
-              )}
-              {comparedIds.length > 0 && (
-                <div className="bg-white rounded-lg border border-slate-200 p-4" data-chart="scenario-comparison">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-semibold text-sm">Comparison to baseline</h3>
-                    <div className="flex items-center gap-2">
-                      <Btn variant="outline" onClick={() => setFigComparisonBarOpen((v) => !v)} disabled={!Object.keys(results).length}><SlidersHorizontal size={13} />{figComparisonBarOpen ? "Hide figure options" : "Customize & export"}</Btn>
-                      <Btn variant="outline" onClick={exportComparisonCSV} disabled={!Object.keys(results).length}><Download size={13} />Export CSV</Btn>
+            ) : !Object.keys(results).length ? (
+              <div className="bg-white rounded-lg border border-slate-200 p-4 text-xs text-neutral-600 italic">Run the simulation to see the comparison here.</div>
+            ) : (
+              <>
+                <div className="bg-white rounded-lg border border-slate-200 p-4" data-chart="scenario-panels">
+                  <div className="flex items-center justify-between gap-2 flex-wrap mb-1">
+                    <h3 className="font-semibold text-sm">Scenario comparison</h3>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <select value={scenarioFigMode} onChange={(e) => setScenarioFigMode(e.target.value)} className="text-xs border border-slate-200 rounded px-2 py-1 bg-white">
+                        <option value="delta">Change against the baseline</option>
+                        <option value="level">Steady-state values</option>
+                      </select>
+                      <select value={scenarioFigSort} onChange={(e) => setScenarioFigSort(e.target.value)} className="text-xs border border-slate-200 rounded px-2 py-1 bg-white">
+                        <option value="module">Order: by module</option>
+                        <option value="name">Order: alphabetical</option>
+                        <option value="effect">Order: largest change first</option>
+                      </select>
+                      <label className="text-xs text-neutral-700 flex items-center gap-1"><input type="checkbox" checked={scenarioFigHideDrivers} onChange={(e) => setScenarioFigHideDrivers(e.target.checked)} />Hide drivers</label>
+                      <Btn variant="outline" onClick={() => setFigScenarioPanelsOpen((v) => !v)}><SlidersHorizontal size={13} />{figScenarioPanelsOpen ? "Hide figure options" : "Customize & export"}</Btn>
+                      <Btn variant="outline" onClick={exportComparisonCSV}><Download size={13} />CSV</Btn>
                     </div>
                   </div>
-                  {!Object.keys(results).length ? (
-                    <p className="text-xs text-neutral-600 italic">Run the simulation to see results here.</p>
-                  ) : (
-                    <>
-                      {resultsStale && <div className="mb-3"><StaleResultBanner label="this comparison" /></div>}
-                      {notYetRun.length > 0 && (
-                        <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800 flex items-start gap-1.5">
-                          <Info size={13} className="shrink-0 mt-0.5" />
-                          <span>Not run yet: {notYetRun.map((id) => `"${comparisonNames[id]}"`).join(", ")}. Click Run simulation to include {notYetRun.length === 1 ? "it" : "them"}.</span>
-                        </div>
-                      )}
-                      <div className="mb-4">
-                        <MethodPanel
-                          title="Method & diagnostics for this comparison"
-                          stats={[
-                            { label: "Scenarios simulated", value: 1 + comparedIds.length, hint: "The baseline plus every scenario selected for comparison. Each is an independent run." },
-                            { label: "Transfer function / λ", value: transferFunctionLabel(settings) },
-                            { label: "Update rule / mode", value: `${settings.updateRule ?? "relative"} / ${settings.mode ?? "synchronous"}` },
-                            {
-                              label: "All runs converged",
-                              value: ["baseline", ...comparedIds].every((id) => !results[id] || results[id].converged) ? "Yes" : "No",
-                              tone: ["baseline", ...comparedIds].every((id) => !results[id] || results[id].converged) ? "good" : "warn",
-                              hint: "A run that hit the iteration cap without converging has not reached a steady state, so its 'final' values are wherever it happened to stop.",
-                            },
-                            ...(settings.squashFunction === "linear" ? [{
-                              label: "Runs that diverged",
-                              value: `${["baseline", ...comparedIds].filter((id) => results[id]?.diverged).length}`,
-                              tone: ["baseline", ...comparedIds].some((id) => results[id]?.diverged) ? "warn" : "good",
-                              hint: `With no squashing function nothing keeps activation inside -1 to +1. A run is stopped and marked diverged once a concept passes ±${LINEAR_DIVERGENCE_LIMIT}: its 'final' values are where it was stopped, not a steady state.`,
-                            }] : []),
-                          ]}
-                        >
-                          <p><strong>"Synergy" and "Trade-Off" describe direction of movement, not whether something got better.</strong> The classification counts how many outcome concepts moved up versus down relative to baseline by more than the threshold. This tool has no notion of which direction is desirable for any given concept, so a scenario that drives a harmful concept (a pollution or loss indicator, for instance) upward is counted exactly as an improvement would be. Apply your own valence to each concept before repeating any of these labels in writing.</p>
-                          <p><strong>Effects are differences between two settled states.</strong> Each scenario is run independently from its own starting vector with its own locks and overrides, and the effect shown is scenario equilibrium minus baseline equilibrium, concept by concept. Concepts you have locked are held at their set value for the entire run, so their "effect" reflects your intervention rather than the model's response.</p>
-                          <p><strong>The labels are count-based thresholds.</strong> Full means every outcome moved the same way, Partial means at least half did, Narrow means at least one did, and any mix of upward and downward movement past the threshold becomes a Trade-Off. A concept moving by slightly more or less than the threshold flips the count, and with few outcomes selected a single concept can change the label.</p>
-                          <p><strong>Nothing here is dynamic.</strong> Iteration counts are steps to convergence, not time: a scenario converging in 8 iterations is not "faster" in any real-world sense than one converging in 40.</p>
-                        </MethodPanel>
-                      </div>
-                      {(() => {
-                        // Rows keyed by scenario id (never by name, which can be
-                        // edited or shared by two scenarios); names are only for
-                        // display. A scenario that has not been run yet has no
-                        // value (null: no bar), rather than a misleading 0.
-                        const seriesIds = ["baseline", ...comparedIds];
-                        const data = aConcepts.map((c) => {
-                          const row = { concept: c.name };
-                          seriesIds.forEach((id) => { row[id] = results[id] ? round2(results[id].final[c.id] ?? 0) : null; });
-                          return row;
+                  <p className="text-[12.5px] text-neutral-600 mb-3">One panel per scenario. Each bar is how far a concept's steady state moves against the baseline, on one shared scale; bars are coloured by module. A hatched bar is a driver: the concept the scenario holds fixed, shown at its held value.</p>
+                  {resultsStale && <div className="mb-3"><StaleResultBanner label="this comparison" /></div>}
+                  {notYetRun.length > 0 && (
+                    <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800 flex items-start gap-1.5">
+                      <Info size={13} className="shrink-0 mt-0.5" />
+                      <span>Not run yet: {notYetRun.map((id) => `"${comparisonNames[id]}"`).join(", ")}. Click Run simulation to include {notYetRun.length === 1 ? "it" : "them"}.</span>
+                    </div>
+                  )}
+                  <ScenarioComparisonFigure
+                    containerRef={scenarioPanelsRef} rows={scenarioFigure.rows} panels={scenarioFigure.panels} mode={scenarioFigMode}
+                    moduleColor={moduleStrongColor} fig={figScenarioPanels}
+                  />
+                  {figScenarioPanelsOpen && (
+                    <FigurePanel
+                      settings={figScenarioPanels} onChange={setFigScenarioPanels}
+                      exporting={figScenarioPanelsBusy}
+                      onExport={async () => {
+                        setFigScenarioPanelsBusy(true);
+                        await exportFigure(scenarioPanelsRef.current, "scenario-comparison-panels.png", figScenarioPanels, {
+                          title: figScenarioPanels.title || "Scenario comparison",
+                          subtitle: `Scenarios: ${comparedIds.map((id) => comparisonNames[id]).join(", ")} against ${comparisonNames.baseline}`,
                         });
-                        const baselineAllZero = !!results.baseline && aConcepts.every((c) => Math.abs(results.baseline.final[c.id] ?? 0) < 1e-9);
-                        const colors = figurePalette(figComparisonBar.palette, Math.max(comparedIds.length, 1));
-                        const short = (t) => (t.length > 18 ? `${t.slice(0, 17)}\u2026` : t);
-                        const ConceptTick = ({ x, y, payload }) => (
-                          <g transform={`translate(${x},${y})`}>
-                            <title>{payload.value}</title>
-                            <text dy={10} textAnchor="end" transform="rotate(-35)" fontSize={figComparisonBar.tickFontSize} fill="#262626">{short(payload.value)}</text>
-                          </g>
-                        );
-                        return (
-                          <>
-                            <div ref={comparisonBarRef} className="w-full mb-2" style={figComparisonBarOpen ? { width: mmToPx(figComparisonBar.widthMm, 96), height: mmToPx(figComparisonBar.heightMm, 96), maxWidth: "100%" } : { height: 300 }}>
-                              <ResponsiveContainer>
-                                <BarChart data={data} margin={{ top: 16, right: 16, left: 0, bottom: 8 }}>
-                                  {figComparisonBar.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
-                                  <XAxis dataKey="concept" interval={0} height={90} tick={(p) => <ConceptTick {...p} />} label={figComparisonBar.xLabel ? { value: figComparisonBar.xLabel, position: "bottom", offset: 60, fontSize: figComparisonBar.axisFontSize } : undefined} />
-                                  <YAxis domain={settings.squashFunction === "linear" ? ["auto", "auto"] : [-1, 1]} tick={{ fontSize: figComparisonBar.tickFontSize }} tickFormatter={(v) => fmtDec(v, figComparisonBar.decimals)} label={{ value: figComparisonBar.yLabel || "Activation", angle: -90, position: "insideLeft", fontSize: figComparisonBar.axisFontSize }} />
-                                  <RTooltip formatter={(v, name) => [v === null ? "not run" : v.toFixed(2), name]} />
-                                  {figComparisonBar.legendPosition !== "hidden" && (
-                                    <Legend
-                                      wrapperStyle={{ fontSize: figComparisonBar.legendFontSize }}
-                                      layout={figComparisonBar.legendPosition === "left" || figComparisonBar.legendPosition === "right" ? "vertical" : "horizontal"}
-                                      verticalAlign={figComparisonBar.legendPosition === "left" || figComparisonBar.legendPosition === "right" ? "middle" : figComparisonBar.legendPosition}
-                                      align={figComparisonBar.legendPosition === "left" || figComparisonBar.legendPosition === "right" ? figComparisonBar.legendPosition : "center"}
-                                    />
-                                  )}
-                                  {figComparisonBar.title && <text x="50%" y={14} textAnchor="middle" fontSize={figComparisonBar.titleFontSize} fontWeight={600} fill="#0f172a">{figComparisonBar.title}</text>}
-                                  <ReferenceLine y={0} stroke="#94a3b8" />
-                                  {/* minPointSize: a value of exactly 0 is drawn as a thin bar on the
-                                      zero line, so "settled at 0" is visibly different from "missing". */}
-                                  <Bar dataKey="baseline" name={comparisonNames.baseline} fill="#404040" fillOpacity={figComparisonBar.opacity} radius={[3, 3, 0, 0]} minPointSize={2} />
-                                  {comparedIds.map((id, i) => (
-                                    <Bar key={id} dataKey={id} name={comparisonNames[id]} fill={colors[i % colors.length]} fillOpacity={figComparisonBar.opacity} radius={[3, 3, 0, 0]} minPointSize={2} />
-                                  ))}
-                                </BarChart>
-                              </ResponsiveContainer>
-                            </div>
-                            {baselineAllZero && (
-                              <p className="text-[12.5px] text-neutral-700 mb-4">
-                                The baseline settles at 0 for every concept, so its bars are the thin grey marks on the zero line. That happens when every concept starts at 0 and nothing is held fixed;
-                                give concepts a starting value (Inspector or Model editor) for a baseline that reflects the current state of the system.
-                              </p>
-                            )}
-                            {figComparisonBarOpen && (
-                              <div className="mb-4">
-                                <FigurePanel
-                                  settings={figComparisonBar} onChange={setFigComparisonBar}
-                                  exporting={figComparisonBarBusy}
-                                  onExport={async () => {
-                                    setFigComparisonBarBusy(true);
-                                    await exportFigure(comparisonBarRef.current, "scenario-comparison.png", figComparisonBar, {
-                                      title: figComparisonBar.title || "Scenario Comparison to Baseline",
-                                      subtitle: `Scenarios: ${["baseline", ...comparedIds].map((id) => comparisonNames[id]).join(", ")}`,
-                                    });
-                                    setFigComparisonBarBusy(false);
-                                  }}
-                                />
-                              </div>
-                            )}
-                          </>
-                        );
-                      })()}
+                        setFigScenarioPanelsBusy(false);
+                      }}
+                    />
+                  )}
+                </div>
+
+                <FoldableBox storageKey="se.fold.scenarioAdvanced" icon={SlidersHorizontal} title="Advanced results" summary="Method and diagnostics, the comparison table, the grouped bar chart, trajectories over the iterations, and the change in percentage points.">
+                  <div className="space-y-5">
+                  <MethodPanel
+                    title="Method & diagnostics for this comparison"
+                    stats={[
+                      { label: "Scenarios simulated", value: 1 + comparedIds.length, hint: "The baseline plus every scenario selected for comparison. Each is an independent run." },
+                      { label: "Transfer function / λ", value: transferFunctionLabel(settings) },
+                      { label: "Update rule / mode", value: `${settings.updateRule ?? "relative"} / ${settings.mode ?? "synchronous"}` },
+                      {
+                        label: "All runs converged",
+                        value: ["baseline", ...comparedIds].every((id) => !results[id] || results[id].converged) ? "Yes" : "No",
+                        tone: ["baseline", ...comparedIds].every((id) => !results[id] || results[id].converged) ? "good" : "warn",
+                        hint: "A run that hit the iteration cap without converging has not reached a steady state, so its 'final' values are wherever it happened to stop.",
+                      },
+                      ...(settings.squashFunction === "linear" ? [{
+                        label: "Runs that diverged",
+                        value: `${["baseline", ...comparedIds].filter((id) => results[id]?.diverged).length}`,
+                        tone: ["baseline", ...comparedIds].some((id) => results[id]?.diverged) ? "warn" : "good",
+                        hint: `With no squashing function nothing keeps activation inside -1 to +1. A run is stopped and marked diverged once a concept passes ±${LINEAR_DIVERGENCE_LIMIT}: its 'final' values are where it was stopped, not a steady state.`,
+                      }] : []),
+                    ]}
+                  >
+                    <p><strong>"Synergy" and "Trade-Off" describe direction of movement, not whether something got better.</strong> The classification counts how many outcome concepts moved up versus down relative to baseline by more than the threshold. This tool has no notion of which direction is desirable for any given concept, so a scenario that drives a harmful concept (a pollution or loss indicator, for instance) upward is counted exactly as an improvement would be. Apply your own valence to each concept before repeating any of these labels in writing.</p>
+                    <p><strong>Effects are differences between two settled states.</strong> Each scenario is run independently from its own starting vector with its own locks and overrides, and the effect shown is scenario equilibrium minus baseline equilibrium, concept by concept. Concepts you have locked are held at their set value for the entire run, so their "effect" reflects your intervention rather than the model's response.</p>
+                    <p><strong>The labels are count-based thresholds.</strong> Full means every outcome moved the same way, Partial means at least half did, Narrow means at least one did, and any mix of upward and downward movement past the threshold becomes a Trade-Off. A concept moving by slightly more or less than the threshold flips the count, and with few outcomes selected a single concept can change the label.</p>
+                    <p><strong>Nothing here is dynamic.</strong> Iteration counts are steps to convergence, not time: a scenario converging in 8 iterations is not "faster" in any real-world sense than one converging in 40.</p>
+                  </MethodPanel>
+                    <div>
+                      <h4 className="text-sm font-semibold mb-2">Steady states per scenario</h4>
+                      <div className="overflow-x-auto">
                       <table className="w-full text-xs">
                         <thead>
                           <tr className="text-left text-neutral-600 border-b border-slate-100">
@@ -13887,110 +13994,188 @@ function SpaghettiEngineApp() {
                           })}
                         </tbody>
                       </table>
-
-                      {trajectoryComparison && (
-                        <div className="mt-5 pt-4 border-t border-slate-100 space-y-4">
-                          <div className="flex items-center justify-between">
-                            <h4 className="text-sm font-semibold flex items-center gap-1.5"><Activity size={14} className="text-cobalt-700" />Trajectory comparison</h4>
-                            <Btn variant="outline" onClick={() => setFigTrajComparisonOpen((v) => !v)}><SlidersHorizontal size={13} />{figTrajComparisonOpen ? "Hide figure options" : "Customize & export"}</Btn>
-                          </div>
-                          <p className="text-xs text-neutral-600">
-                            The baseline is always computed and shown alongside every scenario run. Baseline (no scenario applied) and "{comparisonNames[comparedIds[0]]}", iteration by iteration, plus their difference (scenario minus baseline).
-                          </p>
-                          {figTrajComparisonOpen && (
-                            <FigurePanel
-                              settings={figTrajComparison} onChange={setFigTrajComparison} defaults={TRAJECTORY_FIGURE_DEFAULTS}
-                              seriesOptions={trajComparisonSeriesOptions} hiddenKeys={hiddenTrajComparisonIds} onToggleSeries={toggleHiddenTrajComparison}
-                              sortOptions={TRAJ_COMPARISON_ORDER_OPTIONS} sortValue={trajComparisonOrder} onSortChange={setTrajComparisonOrder}
-                              exporting={figTrajComparisonBusy}
-                              onExport={async () => {
-                                setFigTrajComparisonBusy(true);
-                                const targets = [
-                                  { ref: trajBaselineRef, key: "baseline", title: "Baseline (time series)" },
-                                  { ref: trajScenarioRef, key: "scenario", title: `${comparisonNames[comparedIds[0]]} (time series)` },
-                                  { ref: trajDifferenceRef, key: "difference", title: "Difference (scenario minus baseline)" },
-                                ];
-                                for (const t of targets) {
-                                  // eslint-disable-next-line no-await-in-loop
-                                  await exportFigure(t.ref.current, `scenario-trajectory-${t.key}.png`, figTrajComparison, { title: figTrajComparison.title || t.title, subtitle: "Trajectory comparison" });
-                                }
-                                setFigTrajComparisonBusy(false);
-                              }}
-                            />
-                          )}
-                          {[
-                            { key: "baseline", title: "Baseline (time series)", ref: trajBaselineRef },
-                            { key: "scenario", title: `${comparisonNames[comparedIds[0]]} (time series)`, ref: trajScenarioRef },
-                            { key: "difference", title: "Difference (scenario minus baseline)", ref: trajDifferenceRef },
-                          ].map(({ key, title, ref }) => (
-                            <div key={key}>
-                              <div className="text-xs font-medium text-neutral-900 mb-1">{title}</div>
-                              <div ref={ref} className="w-full h-52" style={figTrajComparisonOpen ? { width: mmToPx(figTrajComparison.widthMm, 96), height: mmToPx(figTrajComparison.heightMm, 96), maxWidth: "100%" } : undefined}>
-                                <ResponsiveContainer>
-                                  <LineChart data={trajectoryComparison[key]}>
-                                    {figTrajComparison.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
-                                    <XAxis dataKey="iteration" tick={{ fontSize: figTrajComparison.tickFontSize }} label={figTrajComparison.xLabel ? { value: figTrajComparison.xLabel, position: "insideBottom", offset: -2, fontSize: figTrajComparison.axisFontSize } : undefined} />
-                                    <YAxis domain={key === "difference" || settings.squashFunction === "linear" ? ["auto", "auto"] : [-1, 1]} tick={{ fontSize: figTrajComparison.tickFontSize }} tickFormatter={(v) => fmtDec(v, figTrajComparison.decimals)} label={figTrajComparison.yLabel ? { value: figTrajComparison.yLabel, angle: -90, position: "insideLeft", fontSize: figTrajComparison.axisFontSize } : undefined} />
-                                    <RTooltip />
-                                    {figTrajComparison.legendPosition !== "hidden" && (
-                                      <Legend
-                                        wrapperStyle={{ fontSize: figTrajComparison.legendFontSize }}
-                                        layout={figTrajComparison.legendPosition === "left" || figTrajComparison.legendPosition === "right" ? "vertical" : "horizontal"}
-                                        verticalAlign={figTrajComparison.legendPosition === "left" || figTrajComparison.legendPosition === "right" ? "middle" : figTrajComparison.legendPosition}
-                                        align={figTrajComparison.legendPosition === "left" || figTrajComparison.legendPosition === "right" ? figTrajComparison.legendPosition : "center"}
-                                      />
-                                    )}
-                                    {figTrajComparison.title && <text x="50%" y={14} textAnchor="middle" fontSize={figTrajComparison.titleFontSize} fontWeight={600} fill="#0f172a">{figTrajComparison.title}</text>}
-                                    <ReferenceLine y={0} stroke="#cbd5e1" />
-                                    {trajComparisonRows.map((c, i) => (
-                                      <Line key={c.id} type="monotone" dataKey={c.id} name={c.name} stroke={figurePalette(figTrajComparison.palette, trajComparisonRows.length)[i]} strokeWidth={figTrajComparison.lineWidth} strokeOpacity={figTrajComparison.opacity} dot={figTrajComparison.markerSize > 0 ? { r: figTrajComparison.markerSize } : false} />
-                                    ))}
-                                  </LineChart>
-                                </ResponsiveContainer>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {componentChangeData && (
-                        <div className="mt-5 pt-4 border-t border-slate-100">
-                          <h4 className="text-sm font-semibold mb-1 flex items-center gap-1.5"><GitCompare size={14} className="text-cobalt-700" />Component change vs. baseline</h4>
-                          <p className="text-xs text-neutral-600 mb-3">
-                            Mental-Modeler-style output: each concept's equilibrium activation under "{comparisonNames[comparedIds[0]]}", expressed in percentage points of the full −100%…+100% activation range, relative to baseline. Sorted by magnitude of change.
-                          </p>
-                          <div className="w-full" style={{ height: Math.max(200, componentChangeData.length * 26 + 40) }}>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="text-sm font-semibold">Grouped bar chart</h4>
+                        <Btn variant="outline" onClick={() => setFigComparisonBarOpen((v) => !v)}><SlidersHorizontal size={13} />{figComparisonBarOpen ? "Hide figure options" : "Customize & export"}</Btn>
+                      </div>
+                    {(() => {
+                      // Rows keyed by scenario id (never by name, which can be
+                      // edited or shared by two scenarios); names are only for
+                      // display. A scenario that has not been run yet has no
+                      // value (null: no bar), rather than a misleading 0.
+                      const seriesIds = ["baseline", ...comparedIds];
+                      const data = aConcepts.map((c) => {
+                        const row = { concept: c.name };
+                        seriesIds.forEach((id) => { row[id] = results[id] ? round2(results[id].final[c.id] ?? 0) : null; });
+                        return row;
+                      });
+                      const baselineAllZero = !!results.baseline && aConcepts.every((c) => Math.abs(results.baseline.final[c.id] ?? 0) < 1e-9);
+                      const colors = figurePalette(figComparisonBar.palette, Math.max(comparedIds.length, 1));
+                      const short = (t) => (t.length > 18 ? `${t.slice(0, 17)}\u2026` : t);
+                      const ConceptTick = ({ x, y, payload }) => (
+                        <g transform={`translate(${x},${y})`}>
+                          <title>{payload.value}</title>
+                          <text dy={10} textAnchor="end" transform="rotate(-35)" fontSize={figComparisonBar.tickFontSize} fill="#262626">{short(payload.value)}</text>
+                        </g>
+                      );
+                      return (
+                        <>
+                          <div ref={comparisonBarRef} className="w-full mb-2" style={figComparisonBarOpen ? { width: mmToPx(figComparisonBar.widthMm, 96), height: mmToPx(figComparisonBar.heightMm, 96), maxWidth: "100%" } : { height: 300 }}>
                             <ResponsiveContainer>
-                              <BarChart data={componentChangeData} layout="vertical" margin={{ left: 8, right: 24 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                                {/* A concept swinging from fully negative to fully positive is a
-                                    200-point change, past a fixed [-100,100] domain (confirmed
-                                    reproducible: Biodiversity decline swung -194 points in this
-                                    session's own agriculture-template test), which silently clipped
-                                    the bar. Same dataMin/dataMax-expanding pattern already used for
-                                    the Sensitivity curves' YAxis below: -100..100 stays the default
-                                    view for ordinary changes, and only expands when the data actually
-                                    needs it, so nothing is ever cut off. */}
-                                <XAxis type="number" domain={[(dataMin) => Math.min(-100, dataMin - 10), (dataMax) => Math.max(100, dataMax + 10)]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 12 }} />
-                                <YAxis type="category" dataKey="name" width={labelAxisWidth(componentChangeData.map((d) => d.name))} interval={0} tick={(p) => <SingleLineTick {...p} />} />
-                                <RTooltip formatter={(v) => [`${v > 0 ? "+" : ""}${v}%`, "Change"]} />
-                                <ReferenceLine x={0} stroke="#94a3b8" />
-                                <Bar dataKey="change" radius={[0, 3, 3, 0]}>
-                                  {componentChangeData.map((d) => (
-                                    <Cell key={d.name} fill={d.change >= 0 ? "#16a34a" : "#dc2626"} />
-                                  ))}
-                                </Bar>
+                              <BarChart data={data} margin={{ top: 16, right: 16, left: 0, bottom: 8 }}>
+                                {figComparisonBar.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
+                                <XAxis dataKey="concept" interval={0} height={90} tick={(p) => <ConceptTick {...p} />} label={figComparisonBar.xLabel ? { value: figComparisonBar.xLabel, position: "bottom", offset: 60, fontSize: figComparisonBar.axisFontSize } : undefined} />
+                                <YAxis domain={settings.squashFunction === "linear" ? ["auto", "auto"] : [-1, 1]} tick={{ fontSize: figComparisonBar.tickFontSize }} tickFormatter={(v) => fmtDec(v, figComparisonBar.decimals)} label={{ value: figComparisonBar.yLabel || "Activation", angle: -90, position: "insideLeft", fontSize: figComparisonBar.axisFontSize }} />
+                                <RTooltip formatter={(v, name) => [v === null ? "not run" : v.toFixed(2), name]} />
+                                {figComparisonBar.legendPosition !== "hidden" && (
+                                  <Legend
+                                    wrapperStyle={{ fontSize: figComparisonBar.legendFontSize }}
+                                    layout={figComparisonBar.legendPosition === "left" || figComparisonBar.legendPosition === "right" ? "vertical" : "horizontal"}
+                                    verticalAlign={figComparisonBar.legendPosition === "left" || figComparisonBar.legendPosition === "right" ? "middle" : figComparisonBar.legendPosition}
+                                    align={figComparisonBar.legendPosition === "left" || figComparisonBar.legendPosition === "right" ? figComparisonBar.legendPosition : "center"}
+                                  />
+                                )}
+                                {figComparisonBar.title && <text x="50%" y={14} textAnchor="middle" fontSize={figComparisonBar.titleFontSize} fontWeight={600} fill="#0f172a">{figComparisonBar.title}</text>}
+                                <ReferenceLine y={0} stroke="#94a3b8" />
+                                {/* minPointSize: a value of exactly 0 is drawn as a thin bar on the
+                                    zero line, so "settled at 0" is visibly different from "missing". */}
+                                <Bar dataKey="baseline" name={comparisonNames.baseline} fill="#404040" fillOpacity={figComparisonBar.opacity} radius={[3, 3, 0, 0]} minPointSize={2} />
+                                {comparedIds.map((id, i) => (
+                                  <Bar key={id} dataKey={id} name={comparisonNames[id]} fill={colors[i % colors.length]} fillOpacity={figComparisonBar.opacity} radius={[3, 3, 0, 0]} minPointSize={2} />
+                                ))}
                               </BarChart>
                             </ResponsiveContainer>
                           </div>
+                          {baselineAllZero && (
+                            <p className="text-[12.5px] text-neutral-700 mb-4">
+                              The baseline settles at 0 for every concept, so its bars are the thin grey marks on the zero line. That happens when every concept starts at 0 and nothing is held fixed;
+                              give concepts a starting value (Inspector or Model editor) for a baseline that reflects the current state of the system.
+                            </p>
+                          )}
+                          {figComparisonBarOpen && (
+                            <div className="mb-4">
+                              <FigurePanel
+                                settings={figComparisonBar} onChange={setFigComparisonBar}
+                                exporting={figComparisonBarBusy}
+                                onExport={async () => {
+                                  setFigComparisonBarBusy(true);
+                                  await exportFigure(comparisonBarRef.current, "scenario-comparison.png", figComparisonBar, {
+                                    title: figComparisonBar.title || "Scenario Comparison to Baseline",
+                                    subtitle: `Scenarios: ${["baseline", ...comparedIds].map((id) => comparisonNames[id]).join(", ")}`,
+                                  });
+                                  setFigComparisonBarBusy(false);
+                                }}
+                              />
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
+                    </div>
+                    {trajectoryComparison && (
+                      <div className="mt-5 pt-4 border-t border-slate-100 space-y-4">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-sm font-semibold flex items-center gap-1.5"><Activity size={14} className="text-cobalt-700" />Trajectory comparison</h4>
+                          <Btn variant="outline" onClick={() => setFigTrajComparisonOpen((v) => !v)}><SlidersHorizontal size={13} />{figTrajComparisonOpen ? "Hide figure options" : "Customize & export"}</Btn>
                         </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
+                        <p className="text-xs text-neutral-600">
+                          The baseline is always computed and shown alongside every scenario run. Baseline (no scenario applied) and "{comparisonNames[comparedIds[0]]}", iteration by iteration, plus their difference (scenario minus baseline).
+                        </p>
+                        {figTrajComparisonOpen && (
+                          <FigurePanel
+                            settings={figTrajComparison} onChange={setFigTrajComparison} defaults={TRAJECTORY_FIGURE_DEFAULTS}
+                            seriesOptions={trajComparisonSeriesOptions} hiddenKeys={hiddenTrajComparisonIds} onToggleSeries={toggleHiddenTrajComparison}
+                            sortOptions={TRAJ_COMPARISON_ORDER_OPTIONS} sortValue={trajComparisonOrder} onSortChange={setTrajComparisonOrder}
+                            exporting={figTrajComparisonBusy}
+                            onExport={async () => {
+                              setFigTrajComparisonBusy(true);
+                              const targets = [
+                                { ref: trajBaselineRef, key: "baseline", title: "Baseline (time series)" },
+                                { ref: trajScenarioRef, key: "scenario", title: `${comparisonNames[comparedIds[0]]} (time series)` },
+                                { ref: trajDifferenceRef, key: "difference", title: "Difference (scenario minus baseline)" },
+                              ];
+                              for (const t of targets) {
+                                // eslint-disable-next-line no-await-in-loop
+                                await exportFigure(t.ref.current, `scenario-trajectory-${t.key}.png`, figTrajComparison, { title: figTrajComparison.title || t.title, subtitle: "Trajectory comparison" });
+                              }
+                              setFigTrajComparisonBusy(false);
+                            }}
+                          />
+                        )}
+                        {[
+                          { key: "baseline", title: "Baseline (time series)", ref: trajBaselineRef },
+                          { key: "scenario", title: `${comparisonNames[comparedIds[0]]} (time series)`, ref: trajScenarioRef },
+                          { key: "difference", title: "Difference (scenario minus baseline)", ref: trajDifferenceRef },
+                        ].map(({ key, title, ref }) => (
+                          <div key={key}>
+                            <div className="text-xs font-medium text-neutral-900 mb-1">{title}</div>
+                            <div ref={ref} className="w-full h-52" style={figTrajComparisonOpen ? { width: mmToPx(figTrajComparison.widthMm, 96), height: mmToPx(figTrajComparison.heightMm, 96), maxWidth: "100%" } : undefined}>
+                              <ResponsiveContainer>
+                                <LineChart data={trajectoryComparison[key]}>
+                                  {figTrajComparison.showGridlines && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
+                                  <XAxis dataKey="iteration" tick={{ fontSize: figTrajComparison.tickFontSize }} label={figTrajComparison.xLabel ? { value: figTrajComparison.xLabel, position: "insideBottom", offset: -2, fontSize: figTrajComparison.axisFontSize } : undefined} />
+                                  <YAxis domain={key === "difference" || settings.squashFunction === "linear" ? ["auto", "auto"] : [-1, 1]} tick={{ fontSize: figTrajComparison.tickFontSize }} tickFormatter={(v) => fmtDec(v, figTrajComparison.decimals)} label={figTrajComparison.yLabel ? { value: figTrajComparison.yLabel, angle: -90, position: "insideLeft", fontSize: figTrajComparison.axisFontSize } : undefined} />
+                                  <RTooltip />
+                                  {figTrajComparison.legendPosition !== "hidden" && (
+                                    <Legend
+                                      wrapperStyle={{ fontSize: figTrajComparison.legendFontSize }}
+                                      layout={figTrajComparison.legendPosition === "left" || figTrajComparison.legendPosition === "right" ? "vertical" : "horizontal"}
+                                      verticalAlign={figTrajComparison.legendPosition === "left" || figTrajComparison.legendPosition === "right" ? "middle" : figTrajComparison.legendPosition}
+                                      align={figTrajComparison.legendPosition === "left" || figTrajComparison.legendPosition === "right" ? figTrajComparison.legendPosition : "center"}
+                                    />
+                                  )}
+                                  {figTrajComparison.title && <text x="50%" y={14} textAnchor="middle" fontSize={figTrajComparison.titleFontSize} fontWeight={600} fill="#0f172a">{figTrajComparison.title}</text>}
+                                  <ReferenceLine y={0} stroke="#cbd5e1" />
+                                  {trajComparisonRows.map((c, i) => (
+                                    <Line key={c.id} type="monotone" dataKey={c.id} name={c.name} stroke={figurePalette(figTrajComparison.palette, trajComparisonRows.length)[i]} strokeWidth={figTrajComparison.lineWidth} strokeOpacity={figTrajComparison.opacity} dot={figTrajComparison.markerSize > 0 ? { r: figTrajComparison.markerSize } : false} />
+                                  ))}
+                                </LineChart>
+                              </ResponsiveContainer>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {componentChangeData && (
+                      <div className="mt-5 pt-4 border-t border-slate-100">
+                        <h4 className="text-sm font-semibold mb-1 flex items-center gap-1.5"><GitCompare size={14} className="text-cobalt-700" />Component change vs. baseline</h4>
+                        <p className="text-xs text-neutral-600 mb-3">
+                          Mental-Modeler-style output: each concept's equilibrium activation under "{comparisonNames[comparedIds[0]]}", expressed in percentage points of the full −100%…+100% activation range, relative to baseline. Sorted by magnitude of change.
+                        </p>
+                        <div className="w-full" style={{ height: Math.max(200, componentChangeData.length * 26 + 40) }}>
+                          <ResponsiveContainer>
+                            <BarChart data={componentChangeData} layout="vertical" margin={{ left: 8, right: 24 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                              {/* A concept swinging from fully negative to fully positive is a
+                                  200-point change, past a fixed [-100,100] domain (confirmed
+                                  reproducible: Biodiversity decline swung -194 points in this
+                                  session's own agriculture-template test), which silently clipped
+                                  the bar. Same dataMin/dataMax-expanding pattern already used for
+                                  the Sensitivity curves' YAxis below: -100..100 stays the default
+                                  view for ordinary changes, and only expands when the data actually
+                                  needs it, so nothing is ever cut off. */}
+                              <XAxis type="number" domain={[(dataMin) => Math.min(-100, dataMin - 10), (dataMax) => Math.max(100, dataMax + 10)]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 12 }} />
+                              <YAxis type="category" dataKey="name" width={labelAxisWidth(componentChangeData.map((d) => d.name))} interval={0} tick={(p) => <SingleLineTick {...p} />} />
+                              <RTooltip formatter={(v) => [`${v > 0 ? "+" : ""}${v}%`, "Change"]} />
+                              <ReferenceLine x={0} stroke="#94a3b8" />
+                              <Bar dataKey="change" radius={[0, 3, 3, 0]}>
+                                {componentChangeData.map((d) => (
+                                  <Cell key={d.name} fill={d.change >= 0 ? "#16a34a" : "#dc2626"} />
+                                ))}
+                              </Bar>
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </FoldableBox>
+              </>
+            )}
           </div>
         )}
 
