@@ -1261,13 +1261,13 @@ async function layoutHierarchical(concepts, edges, direction = "DOWN", figure = 
 // Small shared UI bits
 // ============================================================================
 function Btn({ children, onClick, variant = "default", disabled, title, className = "" }) {
-  const base = "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
+  const base = "se-btn inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-cobalt-400 focus-visible:ring-offset-1 disabled:opacity-40 disabled:cursor-not-allowed";
   const styles = {
-    default: "bg-slate-900 text-white hover:bg-slate-700",
+    default: "bg-ink text-white shadow-sm hover:bg-cobalt-900 active:translate-y-px",
     ghost: "bg-transparent text-neutral-900 hover:bg-slate-100",
-    outline: "border border-slate-300 text-neutral-900 hover:bg-slate-50",
+    outline: "border border-stone-300 bg-white text-neutral-900 shadow-[0_1px_0_rgba(15,27,61,0.04)] hover:border-stone-400 hover:bg-stone-50",
     danger: "bg-transparent text-red-600 hover:bg-red-50",
-    accent: "bg-cobalt-700 text-white hover:bg-cobalt-600",
+    accent: "bg-cobalt-700 text-white shadow-sm shadow-cobalt-900/20 hover:bg-cobalt-800 active:translate-y-px",
   };
   return (
     <button title={title} disabled={disabled} onClick={onClick} className={`${base} ${styles[variant]} ${className}`}>
@@ -1346,11 +1346,14 @@ function MethodPanel({ title = "Method & diagnostics", stats = [], children, fol
   const [shown, setShown] = useState(!fold);
   if (fold && !shown) {
     return (
-      <div className="bg-white rounded-lg border border-slate-200">
-        <button onClick={() => setShown(true)} aria-expanded={false} className="w-full flex items-center gap-2 px-4 py-3 text-left rounded-lg hover:bg-slate-50">
-          <ChevronRight size={15} className="text-neutral-700 shrink-0" />
-          <span className="text-sm font-semibold text-neutral-900">{title}</span>
-          <span className="text-[12.5px] text-neutral-600">How the results were computed, and how far to trust them</span>
+      <div className="se-fold bg-white rounded-lg border border-slate-200">
+        <button onClick={() => setShown(true)} aria-expanded={false} className="w-full flex items-center gap-3 px-4 py-3 text-left rounded-[14px] hover:bg-stone-50 transition-colors">
+          <span className="w-8 h-8 rounded-lg bg-stone-100 text-stone-700 flex items-center justify-center shrink-0"><FlaskConical size={16} /></span>
+          <span className="min-w-0">
+            <span className="se-display block text-[15px] font-semibold text-ink">{title}</span>
+            <span className="block text-xs text-neutral-700 mt-0.5">How the results were computed, and how far to trust them</span>
+          </span>
+          <span className="ml-auto shrink-0 inline-flex items-center gap-1 text-[12.5px] font-medium text-stone-800 bg-stone-100 hover:bg-stone-200 rounded-full pl-2.5 pr-2 py-1">Show<ChevronRight size={13} /></span>
         </button>
       </div>
     );
@@ -1358,9 +1361,10 @@ function MethodPanel({ title = "Method & diagnostics", stats = [], children, fol
   return (
     <div className="bg-white rounded-lg border border-slate-200 p-4">
       {fold ? (
-        <button onClick={() => setShown(false)} aria-expanded className="w-full flex items-center gap-2 mb-3 text-left">
-          <ChevronDown size={15} className="text-neutral-700 shrink-0" />
-          <span className="text-sm font-semibold text-neutral-900">{title}</span>
+        <button onClick={() => setShown(false)} aria-expanded className="w-full flex items-center gap-3 mb-3 text-left">
+          <span className="w-8 h-8 rounded-lg bg-stone-100 text-stone-700 flex items-center justify-center shrink-0"><FlaskConical size={16} /></span>
+          <span className="se-display text-[15px] font-semibold text-ink">{title}</span>
+          <span className="ml-auto shrink-0 inline-flex items-center gap-1 text-[12.5px] font-medium text-stone-800 bg-stone-100 hover:bg-stone-200 rounded-full pl-2.5 pr-2 py-1">Hide<ChevronDown size={13} /></span>
         </button>
       ) : <h4 className="text-sm font-semibold mb-3">{title}</h4>}
       {stats.length > 0 && (
@@ -6556,21 +6560,22 @@ function useRememberedOpen(key, defaultOpen) {
 function FoldableBox({ storageKey, title, icon: Icon = HelpCircle, summary, badge, defaultOpen = false, children }) {
   const [open, toggle] = useRememberedOpen(storageKey, defaultOpen);
   return (
-    <div className="bg-white rounded-lg border border-slate-200">
+    <div className="se-fold bg-white rounded-lg border border-slate-200">
       <button
         onClick={toggle}
         aria-expanded={open}
-        className="w-full flex items-center gap-2 px-4 py-3 text-left rounded-lg hover:bg-slate-50 transition-colors"
+        className="w-full flex items-center gap-3 px-4 py-3 text-left rounded-[14px] hover:bg-stone-50 transition-colors"
       >
-        {open ? <ChevronDown size={15} className="text-neutral-700 shrink-0" /> : <ChevronRight size={15} className="text-neutral-700 shrink-0" />}
-        <Icon size={15} className="text-cobalt-700 shrink-0" />
-        <span className="text-sm font-semibold text-neutral-900">{title}</span>
-        {badge && <span className="text-xs font-normal text-neutral-600">{badge}</span>}
-        <span className="ml-auto shrink-0 text-[12.5px] font-medium text-cobalt-700 border border-cobalt-200 bg-cobalt-50 rounded px-1.5 py-0.5">
-          {open ? "Hide" : "Show"}
+        <span className="se-tone-chip w-8 h-8 rounded-lg bg-cobalt-50 text-cobalt-700 flex items-center justify-center shrink-0"><Icon size={16} /></span>
+        <span className="min-w-0">
+          <span className="se-display text-[15px] font-semibold text-ink">{title}</span>
+          {badge && <span className="ml-2 text-xs font-normal text-neutral-600">{badge}</span>}
+          {!open && summary && <span className="block text-xs text-neutral-700 mt-0.5">{summary}</span>}
+        </span>
+        <span className="ml-auto shrink-0 inline-flex items-center gap-1 text-[12.5px] font-medium text-cobalt-800 bg-cobalt-50 hover:bg-cobalt-100 rounded-full pl-2.5 pr-2 py-1">
+          {open ? "Hide" : "Show"}{open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
         </span>
       </button>
-      {!open && summary && <p className="px-4 pb-3 -mt-1 pl-[3.1rem] text-xs text-neutral-700">{summary}</p>}
       {open && <div className="px-4 pb-4 pt-1">{children}</div>}
     </div>
   );
@@ -12973,9 +12978,18 @@ const BASIC_TABS = new Set(["editor", "network", "metrics", "equilibrium", "scen
 const UI_LEVEL_KEY = "se.ui.level";
 const GUIDE_KEY = "se.guide";
 
+// One colour per group of tabs, so a reader can tell at a glance where in
+// the work they are. Written out in full so Tailwind finds the classes.
+const GROUP_TONES = {
+  teal: { text: "text-teal-700", chip: "bg-teal-50 text-teal-700", chipOn: "bg-teal-600 text-white", ring: "border-teal-300" },
+  cobalt: { text: "text-cobalt-700", chip: "bg-cobalt-50 text-cobalt-700", chipOn: "bg-cobalt-700 text-white", ring: "border-cobalt-300" },
+  violet: { text: "text-violet-700", chip: "bg-violet-50 text-violet-700", chipOn: "bg-violet-600 text-white", ring: "border-violet-300" },
+  amber: { text: "text-amber-700", chip: "bg-amber-50 text-amber-700", chipOn: "bg-amber-500 text-white", ring: "border-amber-300" },
+  about: { text: "text-citrus-700", chip: "bg-citrus-100 text-citrus-700", chipOn: "bg-citrus-400 text-ink", ring: "border-citrus-400" },
+};
 const TAB_GROUPS = [
   {
-    id: "building", label: "Model building",
+    id: "building", label: "Model building", short: "Build", icon: Share2, tone: "teal",
     hint: "Build and explore the model. Well suited to working through with participants.",
     tabs: [
       { id: "editor", label: "Model editor", icon: Table2 },
@@ -12985,7 +12999,7 @@ const TAB_GROUPS = [
     ],
   },
   {
-    id: "state", label: "State and scenario analysis",
+    id: "state", label: "State and scenario analysis", short: "Explore", icon: Activity, tone: "cobalt",
     hint: "See where the system settles, and compare what-if scenarios.",
     tabs: [
       { id: "equilibrium", label: "Baseline Equilibrium", icon: Activity },
@@ -12993,7 +13007,7 @@ const TAB_GROUPS = [
     ],
   },
   {
-    id: "transition", label: "Transition analyses",
+    id: "transition", label: "Transition analyses", short: "Change", icon: TrendingUp, tone: "violet",
     hint: "Find tipping points and effective routes to change. Mainly for the analyst.",
     tabs: [
       { id: "transition", label: "Transition Point Analysis", icon: TrendingUp },
@@ -13001,7 +13015,7 @@ const TAB_GROUPS = [
     ],
   },
   {
-    id: "sensitivity", label: "Sensitivity analyses",
+    id: "sensitivity", label: "Sensitivity analyses", short: "Test", icon: SlidersHorizontal, tone: "amber",
     hint: "Test how far the results depend on the weights and starting values. Mainly for the analyst.",
     tabs: [
       { id: "sensitivity", label: "Sensitivity Analysis", icon: SlidersHorizontal },
@@ -13009,7 +13023,7 @@ const TAB_GROUPS = [
     ],
   },
   {
-    id: "about", label: "About & documentation", accent: true,
+    id: "about", label: "About & documentation", accent: true, icon: Info,
     hint: "What the tool is for, the documentation as PDF, and who to contact.",
     tabs: [
       { id: "about", label: "About the Spaghetti Engine", icon: Info },
@@ -13997,7 +14011,7 @@ function SpaghettiEngineApp() {
   return (
     <div className="w-full h-full min-h-[100dvh] md:min-h-[820px] bg-white text-neutral-900 flex flex-col" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
       {/* Top bar */}
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-3 sm:px-5 py-2.5 border-b-2 border-citrus-400 bg-ink text-white">
+      <div className="se-topbar relative flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-3 sm:px-5 py-2.5 bg-ink text-white">
         <button onClick={() => setTab("about")} className="flex items-center gap-2.5 text-left rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-citrus-400" title="About the Spaghetti Engine, and the documentation">
           <BrandMark size={32} />
           <span className="leading-tight">
@@ -14043,14 +14057,14 @@ function SpaghettiEngineApp() {
             <ChevronDown size={12} className="shrink-0" />
           </button>
           <Btn
-            variant="outline" className="!text-slate-200 !border-slate-600 hover:!bg-slate-800"
+            variant="outline" className="!bg-transparent !shadow-none !text-slate-200 !border-slate-600 hover:!bg-slate-800"
             onClick={exportAnalysisWorkbook} disabled={exportingWorkbook}
             title="Builds one .xlsx workbook with the model structure, network metrics, baseline equilibrium, and every scenario/analysis that's been run"
           >
             <Table2 size={14} /><span className="hidden lg:inline">{exportingWorkbook ? "Building workbook…" : "Export Analysis Workbook"}</span>
           </Btn>
-          <Btn variant="outline" className="max-sm:!hidden !text-slate-200 !border-slate-600 hover:!bg-slate-800" onClick={exportModel} title="Download this model as a .json file"><Download size={14} /><span className="hidden lg:inline">Export JSON</span></Btn>
-          <Btn variant="outline" className="max-sm:!hidden !text-slate-200 !border-slate-600 hover:!bg-slate-800" onClick={() => fileInputRef.current?.click()} title="Open a model from a .json file"><Upload size={14} /><span className="hidden lg:inline">Import</span></Btn>
+          <Btn variant="outline" className="max-sm:!hidden !bg-transparent !shadow-none !text-slate-200 !border-slate-600 hover:!bg-slate-800" onClick={exportModel} title="Download this model as a .json file"><Download size={14} /><span className="hidden lg:inline">Export JSON</span></Btn>
+          <Btn variant="outline" className="max-sm:!hidden !bg-transparent !shadow-none !text-slate-200 !border-slate-600 hover:!bg-slate-800" onClick={() => fileInputRef.current?.click()} title="Open a model from a .json file"><Upload size={14} /><span className="hidden lg:inline">Import</span></Btn>
           <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={importModel} />
         </div>
       </div>
@@ -14058,7 +14072,7 @@ function SpaghettiEngineApp() {
       <ModuleSuggestions concepts={concepts} />
 
       {restoreNotice && (
-        <div className="flex items-center gap-3 flex-wrap px-5 py-2 text-xs bg-cobalt-50 border-b border-cobalt-200 text-cobalt-900">
+        <div className="flex items-center gap-3 flex-wrap px-5 py-2 text-xs bg-gradient-to-r from-cobalt-50 via-white to-[#f7f5f0] border-b border-stone-200 text-cobalt-900">
           <Check size={14} className="text-cobalt-700" />
           <span>
             <strong>Welcome back.</strong> &ldquo;{activeModelName}&rdquo; ({concepts.length} concept{concepts.length === 1 ? "" : "s"}, {edges.length} relationship{edges.length === 1 ? "" : "s"}) was opened from this browser
@@ -14135,11 +14149,15 @@ function SpaghettiEngineApp() {
         </div>
       )}
 
-      {/* Tabs: the groups on top, and the tabs of the active group beneath */}
-      <div className="bg-white">
-        <div role="tablist" aria-label="Workspace sections" className="flex sm:flex-wrap items-center gap-1.5 px-3 sm:px-5 pt-2.5 pb-1 overflow-x-auto">
-          {visibleGroups.map((g) => {
+      {/* Tabs: the groups on top, as the steps of a piece of work, and the
+          tabs of the active group beneath */}
+      <div className="se-nav bg-[#f7f5f0] border-b border-stone-200">
+        <div role="tablist" aria-label="Workspace sections" className="flex items-stretch gap-2 px-3 sm:px-5 pt-3 pb-2 overflow-x-auto">
+          {visibleGroups.map((g, gi) => {
             const on = g.id === activeGroup.id;
+            const tone = GROUP_TONES[g.tone] || GROUP_TONES.about;
+            const GIcon = g.icon || Info;
+            const step = visibleGroups.filter((x) => !x.accent).indexOf(g) + 1;
             return (
               <button
                 key={g.id}
@@ -14147,42 +14165,44 @@ function SpaghettiEngineApp() {
                 aria-selected={on}
                 onClick={() => goToGroup(g)}
                 title={g.hint}
-                className={`px-3.5 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${g.accent ? "ml-auto " : ""}${
-                  g.accent
-                    ? (on ? "bg-citrus-400 text-neutral-900" : "bg-citrus-50 text-citrus-700 border border-citrus-300 hover:bg-citrus-100")
-                    : (on ? "bg-cobalt-700 text-white" : "bg-slate-100 text-neutral-900 hover:bg-slate-200 hover:text-black")
+                className={`group flex items-center gap-2.5 rounded-xl border pl-2 pr-3.5 py-1.5 text-left whitespace-nowrap transition-all ${g.accent ? "ml-auto " : ""}${
+                  on ? `bg-white ${tone.ring} shadow-[0_2px_10px_-4px_rgba(15,27,61,0.25)]` : "border-transparent hover:bg-white/70 hover:border-stone-200"
                 }`}
               >
-                {g.label}
+                <span className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors ${on ? tone.chipOn : tone.chip}`}><GIcon size={16} /></span>
+                <span className="leading-tight">
+                  {!g.accent && <span className={`block text-[10.5px] font-semibold uppercase tracking-[0.08em] ${on ? tone.text : "text-stone-500"}`}>Step {step} &middot; {g.short}</span>}
+                  <span className={`se-display block text-[14px] font-semibold ${on ? "text-ink" : "text-stone-700 group-hover:text-ink"}`}>{g.label}</span>
+                </span>
               </button>
             );
           })}
         </div>
-        {activeGroup.tabs.length < 2 ? <div className="mt-1 border-b border-slate-200" /> : (
-        <div className="flex items-center justify-between gap-4 px-3 sm:px-5 border-b border-slate-200 overflow-x-auto">
-          <div role="tablist" aria-label={activeGroup.label} className="flex">
+        {activeGroup.tabs.length >= 2 && (
+        <div className="flex items-center justify-between gap-4 px-3 sm:px-5 pb-2.5 overflow-x-auto">
+          <div role="tablist" aria-label={activeGroup.label} className="inline-flex gap-1 rounded-xl bg-stone-200/60 p-1">
             {activeGroup.tabs.map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
                 role="tab"
                 aria-selected={tab === id}
                 onClick={() => setTab(id)}
-                className={`flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                  tab === id ? "border-cobalt-700 text-cobalt-800" : "border-transparent text-neutral-700 hover:text-black"
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+                  tab === id ? `bg-white shadow-sm ${(GROUP_TONES[activeGroup.tone] || GROUP_TONES.about).text}` : "text-stone-700 hover:text-ink hover:bg-white/60"
                 }`}
               >
                 <Icon size={15} /> {label}
               </button>
             ))}
           </div>
-          <span className="hidden xl:block text-xs text-neutral-600 whitespace-nowrap">{activeGroup.hint}</span>
+          <span className="hidden xl:block text-xs text-stone-600 whitespace-nowrap">{activeGroup.hint}</span>
         </div>
         )}
       </div>
 
       {tab !== "about" && !basic && <AnalysisScopeBar viewInfo={viewInfo} modules={modules} networkView={networkView} setNetworkView={setNetworkView} />}
 
-      <div className="se-content flex-1 overflow-auto p-3 sm:p-5 bg-slate-50">
+      <div className="se-content flex-1 overflow-auto p-3 sm:p-6 bg-[#f7f5f0]" data-tone={activeGroup.tone || "about"}>
         {/* A display error in one tab stays in that tab: the rest of the app,
             the tab bar, and the model are unaffected, and switching tabs
             (the key) starts that tab fresh. */}
@@ -14833,7 +14853,7 @@ function SpaghettiEngineApp() {
         </ErrorBoundary>
       </div>
 
-      <div className="px-3 sm:px-5 py-2 border-t border-slate-200 bg-white text-[12.5px] text-neutral-700 flex items-center gap-1.5">
+      <div className="px-3 sm:px-5 py-2 border-t border-stone-200 bg-[#f7f5f0] text-[12.5px] text-stone-600 flex items-center gap-1.5">
         <Info size={12} className="shrink-0" />
         <span className="flex-1 hidden lg:inline">Prototype scope: runs entirely in your browser. Your model is saved automatically in this browser only; use Export JSON to keep a copy or move it to another computer. Analysis results are not saved and are re-run on demand. PDF/DOCX/PPTX export are not yet implemented.</span>
         <span className="flex-1 lg:hidden">Prototype: runs in your browser; your model is saved in this browser only.</span>

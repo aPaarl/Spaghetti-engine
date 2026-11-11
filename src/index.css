@@ -27,6 +27,8 @@
   --color-cloud: #f6f8fc;
   --color-poppy-500: #e5484d;
   --font-sans: 'Inter', system-ui, sans-serif;
+  --font-display: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  --color-paper: #f7f5f0;
   /* Readability: the two small text sizes the interface uses most are one step
      larger than Tailwind's defaults (12 and 14 px). */
   --text-xs: 0.8125rem;
@@ -82,3 +84,68 @@ body {
 .se-content table tbody td { border-bottom: 1px solid #eef0f3; }
 .se-content table tbody tr:nth-child(even) { background-color: #f9fafb; }
 .se-content table tbody tr:hover { background-color: #eef2ff; }
+
+
+/* ------------------------------------------------------------------------
+   Look of the workspace: warm paper background, white cards with soft
+   shadows and rounder corners, a display face for headings. Only the look
+   changes here; no element is added or removed.
+   ------------------------------------------------------------------------ */
+.se-display { font-family: var(--font-display); letter-spacing: -0.01em; }
+.se-topbar::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px;
+  background: linear-gradient(90deg, #ffd23f 0%, #ffd23f 22%, #5a87f5 60%, #2dd4bf 100%);
+}
+.se-content .bg-white.rounded-lg.border,
+.se-content .bg-white.rounded-lg.border-slate-200 {
+  border-radius: 14px;
+  border-color: #e7e2d8;
+  box-shadow: 0 1px 2px rgba(15, 27, 61, 0.04), 0 8px 24px -16px rgba(15, 27, 61, 0.18);
+}
+.se-content .rounded-md.border { border-radius: 10px; }
+.se-content h3,
+.se-content h4 { font-family: var(--font-display); letter-spacing: -0.01em; color: #0f1b3d; }
+.se-content h3.text-sm,
+.se-content h4.text-sm { font-size: 1rem; line-height: 1.5rem; }
+.se-content h3.font-semibold.text-sm:only-child { margin-bottom: 0.1rem; }
+.se-content select,
+.se-content textarea,
+.se-content input[type="text"],
+.se-content input[type="number"],
+.se-content input:not([type]) {
+  border-radius: 8px;
+  border-color: #d8d2c4;
+  background-color: #ffffff;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.se-content select:focus,
+.se-content textarea:focus,
+.se-content input[type="text"]:focus,
+.se-content input[type="number"]:focus,
+.se-content input:not([type]):focus {
+  outline: none;
+  border-color: #5a87f5;
+  box-shadow: 0 0 0 3px rgba(90, 135, 245, 0.18);
+}
+.se-content input[type="range"] { accent-color: #2456d6; }
+/* Status boxes: softer tints and rounder corners. */
+.se-content .rounded-md.border.bg-amber-50,
+.se-content .rounded-lg.border.bg-amber-50 { background-color: #fff8e6; border-color: #f6d88f; }
+.se-content .bg-slate-50.rounded,
+.se-content .bg-slate-50.rounded-md { background-color: #faf8f3; }
+/* Scroll bars that do not shout. */
+.se-content ::-webkit-scrollbar { width: 10px; height: 10px; }
+.se-content ::-webkit-scrollbar-thumb { background: #d8d2c4; border-radius: 10px; border: 2px solid transparent; background-clip: content-box; }
+.se-content ::-webkit-scrollbar-track { background: transparent; }
+/* A short entrance for the content of a tab. */
+@media (prefers-reduced-motion: no-preference) {
+  .se-content > * { animation: se-rise 0.28s ease-out both; }
+  @keyframes se-rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+}
+/* The colour of the active group of tabs carries into its fold-outs. */
+.se-content[data-tone="teal"] { --tone: #0f766e; --tone-soft: #f0fdfa; }
+.se-content[data-tone="cobalt"] { --tone: #2456d6; --tone-soft: #f2f6ff; }
+.se-content[data-tone="violet"] { --tone: #6d28d9; --tone-soft: #f5f3ff; }
+.se-content[data-tone="amber"] { --tone: #b45309; --tone-soft: #fffbeb; }
+.se-content[data-tone="about"] { --tone: #8a6b00; --tone-soft: #fffbea; }
+.se-content .se-tone-chip { background-color: var(--tone-soft); color: var(--tone); }
