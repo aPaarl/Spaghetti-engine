@@ -12,7 +12,7 @@
 //                             against the baseline, with the concepts the
 //                             scenario holds fixed drawn hatched
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 // One house style for every hand-drawn figure in the tool (the Recharts
 // charts follow it through index.css): ink, muted text, grid and bands.
@@ -25,6 +25,18 @@ export const SCENARIO_COLORS = ["#2f6db5", "#cc7a1a", "#2e7d32", "#7b4fa8", "#c2
 
 // Width of the box the figure sits in, so figures are drawn in pixels at the
 // width they get (no scaled viewBox) and fill the card.
+// Set while a figure is being exported, so a figure can add what a printed
+// copy needs and the page shows elsewhere (such as the key to numbered dots).
+let exportingNow = false;
+const exportListeners = new Set();
+export function setFigureExporting(v) {
+  exportingNow = !!v;
+  exportListeners.forEach((f) => f());
+}
+export function useFigureExporting() {
+  return useSyncExternalStore((f) => { exportListeners.add(f); return () => exportListeners.delete(f); }, () => exportingNow);
+}
+
 export function useBoxWidth(fallback = 900) {
   const ref = useRef(null);
   const [w, setW] = useState(0);
@@ -604,11 +616,20 @@ export function quadrantOf(d, xSplit, ySplit) {
 // points: [{ x, y, name, effect }]
 export function PrioritizationMatrix({ points, xSplit = 0.5, ySplit, fontSize = 12 }) {
   const [ref, W] = useBoxWidth();
+  const exporting = useFigureExporting();
   const fs = fontSize;
   const padL = 58, padR = 18, padT = 12, padB = fs * 4.2;
   const plotW = Math.max(200, W - padL - padR);
   const plotH = Math.max(260, Math.min(460, plotW * 0.5));
-  const H = padT + plotH + padB;
+  // An exported copy carries the key to the numbers under the plot, since the
+  // lists on the page do not travel with it.
+  const kfs = fs * 0.82, kLine = kfs * 1.55;
+  const kColW = Math.min(W - 16, Math.max(...points.map((p, i) => textW(`${i + 1}  ${p.name}`, kfs)), 60) + 30);
+  const kCols = Math.max(1, Math.floor((W - 16) / kColW));
+  const kRows = Math.ceil(points.length / kCols);
+  const keyY = padT + plotH + padB;
+  const keyH = exporting && points.length ? kRows * kLine + 8 : 0;
+  const H = padT + plotH + padB + keyH;
   const yMax = Math.max(0.1, ...points.map((p) => p.y)) * 1.12;
   const px = (v) => padL + 14 + v * (plotW - 28);
   const py = (v) => padT + (1 - v / yMax) * plotH;
@@ -620,10 +641,36 @@ export function PrioritizationMatrix({ points, xSplit = 0.5, ySplit, fontSize = 
   // figure). Names are written next to a dot where they fit without touching
   // another name or dot: right, left, above or below, in that order.
   const R = 8;
-  const dots = points.map((p) => ({ x: px(p.x), y: py(p.y) }));
+  // Dots that would sit on top of each other are moved sideways, so every
+  // number stays readable; the exact values are in each dot's tooltip.
+  const dots = [];
+  points.forEach((p) => {
+    const d = { x: px(p.x), y: py(p.y) };
+    while (dots.some((o) => Math.hypot(o.x - d.x, o.y - d.y) < R * 1.9)) d.x += R * 2 + 1;
+    dots.push(d);
+  });
   const boxes = dots.map((d) => ({ x0: d.x - R, x1: d.x + R, y0: d.y - R, y1: d.y + R }));
   const free = (b) => b.x0 >= padL + 2 && b.x1 <= padL + plotW - 2 && b.y0 >= padT + 2 && b.y1 <= padT + plotH - 2
     && !boxes.some((o) => o.x0 < b.x1 && b.x0 < o.x1 && o.y0 < b.y1 && b.y0 < o.y1);
+  const quad = (key) => QUADRANTS.find((q) => q.key === key);
+  const qRects = [
+    { q: quad("quick"), x: padL, y: py(yMax), w: px(xSplit) - padL, h: py(ys) - py(yMax), ax: "end" },
+    { q: quad("strategic"), x: px(xSplit), y: py(yMax), w: padL + plotW - px(xSplit), h: py(ys) - py(yMax), ax: "end" },
+    { q: quad("small"), x: padL, y: py(ys), w: px(xSplit) - padL, h: py(0) - py(ys), ax: "end" },
+    { q: quad("poor"), x: px(xSplit), y: py(ys), w: padL + plotW - px(xSplit), h: py(0) - py(ys), ax: "end" },
+  ];
+  // The quadrant captions are kept clear of the names as well.
+  // A caption that a dot would cover moves to the bottom of its quadrant.
+  const dotBoxes = boxes.slice();
+  qRects.forEach((r) => {
+    r.ty = r.y;
+    if (r.h <= fs * 2.6) return;
+    const tw = Math.max(textW(r.q.label, fs * 1.02) * 1.08, r.h > fs * 4 ? textW(r.q.text, fs * 0.82) : 0);
+    const x1 = r.x + r.w - 4, ch = r.h > fs * 4 ? fs * 3.1 : fs * 1.9;
+    const hit = (y0) => dotBoxes.some((o) => o.x0 < x1 && x1 - tw - 10 < o.x1 && o.y0 < y0 + ch && y0 < o.y1);
+    if (hit(r.y) && !hit(r.y + r.h - ch - 2)) r.ty = r.y + r.h - ch - 2;
+    boxes.push({ x0: x1 - tw - 10, x1, y0: r.ty, y1: r.ty + ch });
+  });
   const order = points.map((p, i) => i).sort((i, j) => points[j].y - points[i].y);
   const labels = [];
   order.forEach((i) => {
@@ -635,13 +682,6 @@ export function PrioritizationMatrix({ points, xSplit = 0.5, ySplit, fontSize = 
     const c = cands.find((k) => free({ x0: k.x, x1: k.x + w, y0: k.y, y1: k.y + h }));
     if (c) { boxes.push({ x0: c.x, x1: c.x + w, y0: c.y, y1: c.y + h }); labels.push({ i, x: c.x, y: c.y + h * 0.78 }); }
   });
-  const quad = (key) => QUADRANTS.find((q) => q.key === key);
-  const qRects = [
-    { q: quad("quick"), x: padL, y: py(yMax), w: px(xSplit) - padL, h: py(ys) - py(yMax), ax: "end" },
-    { q: quad("strategic"), x: px(xSplit), y: py(yMax), w: padL + plotW - px(xSplit), h: py(ys) - py(yMax), ax: "end" },
-    { q: quad("small"), x: padL, y: py(ys), w: px(xSplit) - padL, h: py(0) - py(ys), ax: "end" },
-    { q: quad("poor"), x: px(xSplit), y: py(ys), w: padL + plotW - px(xSplit), h: py(0) - py(ys), ax: "end" },
-  ];
   return (
     <div ref={ref} className="w-full">
       <svg width={W} height={H} style={{ display: "block" }} fontFamily={FONT} role="img" aria-label="Intervention prioritisation matrix: transition point against effect size">
@@ -649,8 +689,8 @@ export function PrioritizationMatrix({ points, xSplit = 0.5, ySplit, fontSize = 
         {qRects.map((r) => (
           <g key={r.q.key}>
             <rect x={r.x} y={r.y} width={Math.max(0, r.w)} height={Math.max(0, r.h)} fill={r.q.fill} />
-            {r.h > fs * 2.6 && <text x={r.ax === "start" ? r.x + 10 : r.x + r.w - 10} y={r.y + fs * 1.4} textAnchor={r.ax} fontSize={fs * 1.02} fontWeight={700} fill={r.q.ink}>{r.q.label}</text>}
-            {r.h > fs * 4 && <text x={r.ax === "start" ? r.x + 10 : r.x + r.w - 10} y={r.y + fs * 2.6} textAnchor={r.ax} fontSize={fs * 0.82} fill={r.q.ink}>{r.q.text}</text>}
+            {r.h > fs * 2.6 && <text x={r.ax === "start" ? r.x + 10 : r.x + r.w - 10} y={r.ty + fs * 1.4} textAnchor={r.ax} fontSize={fs * 1.02} fontWeight={700} fill={r.q.ink}>{r.q.label}</text>}
+            {r.h > fs * 4 && <text x={r.ax === "start" ? r.x + 10 : r.x + r.w - 10} y={r.ty + fs * 2.6} textAnchor={r.ax} fontSize={fs * 0.82} fill={r.q.ink}>{r.q.text}</text>}
           </g>
         ))}
         {yTicks.map((t) => (
@@ -684,6 +724,17 @@ export function PrioritizationMatrix({ points, xSplit = 0.5, ySplit, fontSize = 
           );
         })}
         {labels.map((l) => <text key={`l${l.i}`} x={l.x} y={l.y} fontSize={lfs} fill={INK}>{points[l.i].name}</text>)}
+        {keyH > 0 && points.map((p, i) => {
+          const col = i % kCols, row = Math.floor(i / kCols);
+          const x = 8 + col * kColW, y = keyY + row * kLine + kLine / 2;
+          return (
+            <g key={`k${i}`}>
+              <circle cx={x + 7} cy={y} r={6.5} fill={p.effect >= 0 ? "#15803d" : "#c2410c"} />
+              <text x={x + 7} y={y + 2.9} fontSize={8} textAnchor="middle" fill="#ffffff" fontWeight={700}>{i + 1}</text>
+              <text x={x + 19} y={y + kfs * 0.34} fontSize={kfs} fill={INK}>{p.name}</text>
+            </g>
+          );
+        })}
       </svg>
     </div>
   );
