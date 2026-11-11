@@ -1890,7 +1890,10 @@ async function buildEditedFigure(raw, s, { title, subtitle, isViewBox }) {
   solve();
   // Text size: scale every font so the typical text prints at textPt.
   const outPt = median(fontsUnits()) / u * 0.75;
-  const ratio = s.textPt / outPt;
+  // A figure with a fixed drawing (a viewBox, such as the metro map) keeps its
+  // own layout, so its text may be made smaller but never larger: larger text
+  // would run into the lines and labels next to it.
+  const ratio = isViewBox ? Math.min(1, s.textPt / outPt) : s.textPt / outPt;
   if (texts.length && Math.abs(ratio - 1) > 0.02) {
     textParts.forEach((t) => { const f = getStylePx(t, "font-size") || 12; setStyleProp(t, "font-size", `${(f * ratio).toFixed(2)}px`); });
     if (s.autoCrop) { b = box(); solve(); }
@@ -2119,6 +2122,7 @@ function FigureEditor({ req }) {
             <div className="px-4 py-2 border-t border-slate-200 bg-white text-[12px] text-neutral-700 flex flex-wrap gap-x-4 gap-y-1">
               {built && <span><span className="font-semibold">{built.widthMm.toFixed(0)} × {built.heightMm.toFixed(0)} mm</span>{s.format !== "svg" && ` · ${Math.round((built.widthMm / 25.4) * s.dpi)} × ${Math.round((built.heightMm / 25.4) * s.dpi)} px at ${s.dpi} dpi`}</span>}
               {built && <span>Text prints at about {built.printedPt.toFixed(1)} pt</span>}
+              {built && built.isViewBox && built.printedPt < s.textPt - 0.3 && <span className="text-amber-700">This figure keeps its own layout, so its text cannot be enlarged without overlapping. A wider size makes the text larger.</span>}
               {capturing && <span className="text-cobalt-700">Laying the figure out again…</span>}
               {tall && <span className="text-amber-700">Taller than a journal page (about 240 mm). A wider size or a smaller text size makes it shorter.</span>}
               {error && preview && <span className="text-red-700">{error}</span>}
@@ -6549,7 +6553,37 @@ function useRememberedOpen(key, defaultOpen) {
     try { localStorage.setItem(key, o ? "0" : "1"); } catch { /* storage unavailable: keep in memory only */ }
     return !o;
   });
+  // Another part of the page can ask for this section to open (see
+  // openFigureFromFold), for example an export button outside the fold.
+  useEffect(() => {
+    if (!key) return undefined;
+    const onOpen = (e) => {
+      if (e.detail !== key) return;
+      try { localStorage.setItem(key, "1"); } catch { /* storage unavailable */ }
+      setOpen(true);
+    };
+    window.addEventListener("se:open-fold", onOpen);
+    return () => window.removeEventListener("se:open-fold", onOpen);
+  }, [key]);
   return [open, toggle];
+}
+
+// Opens the figure editor for a chart that sits inside a folded section. If
+// the chart is not on the page yet, the section is opened first (openFold, or
+// a FoldableBox storage key), and the editor follows once the chart is drawn.
+function openFigureFromFold(openFold, getEl, filename, settings, labels) {
+  if (mainSvgIn(getEl())) { openFigureEditor(getEl(), filename, settings, labels); return; }
+  if (typeof openFold === "function") openFold();
+  else window.dispatchEvent(new CustomEvent("se:open-fold", { detail: openFold }));
+  let tries = 0;
+  const tick = () => {
+    const el = getEl();
+    if (mainSvgIn(el) || ++tries > 60) {
+      el?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+      openFigureEditor(el, filename, settings, labels);
+    } else setTimeout(tick, 50);
+  };
+  setTimeout(tick, 50);
 }
 
 // Every explanatory box in the app ("What is...", "Purpose", "How these
@@ -7318,12 +7352,14 @@ function InfluenceRoutesTab({ concepts, edges, config, setConfig, onHighlight })
 // ============================================================================
 function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, settings, result, setResult, setChartCache, modelVersion }) {
   useCachedChart(setChartCache, "sensitivityScores", [result]);
-  const [sensInput, setSensInput] = useState(null);
-  const [sensOutputs, setSensOutputs] = useState([]);
-  const [sensMin, setSensMin] = useState(-1);
-  const [sensMax, setSensMax] = useState(1);
-  const [sensSteps, setSensSteps] = useState(20);
-  const [sensCompareIds, setSensCompareIds] = useState([]);
+  // The setup starts from the last run, so it still matches the results on
+  // screen after the user leaves this tab and comes back.
+  const [sensInput, setSensInput] = useState(() => result?.inputId ?? null);
+  const [sensOutputs, setSensOutputs] = useState(() => result?.outputs ?? []);
+  const [sensMin, setSensMin] = useState(() => result?.setup?.min ?? -1);
+  const [sensMax, setSensMax] = useState(() => result?.setup?.max ?? 1);
+  const [sensSteps, setSensSteps] = useState(() => result?.setup?.steps ?? 20);
+  const [sensCompareIds, setSensCompareIds] = useState(() => result?.setup?.compareIds ?? []);
   const [sensFilter, setSensFilter] = useState("");
   const sensCurvesRef = useRef(null);
   const tornadoRef = useRef(null);
@@ -7395,7 +7431,7 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
       return { name: c.name, low: round2(lo), high: round2(hi), impact: round2(hi - lo) };
     }).sort((a, b) => Math.abs(b.impact) - Math.abs(a.impact)).slice(0, 12);
 
-    setResult({ curveData, elasticity, tornado, scenarioIds, multi, primaryOutput, outputs: [...sensOutputs], inputId: sensInput, __modelVersion: modelVersion });
+    setResult({ curveData, elasticity, tornado, scenarioIds, multi, primaryOutput, outputs: [...sensOutputs], inputId: sensInput, setup: { min: sensMin, max: sensMax, steps: sensSteps, compareIds: [...sensCompareIds] }, __modelVersion: modelVersion });
   };
   const isStale = !!result && result.__modelVersion !== modelVersion;
 
@@ -7694,11 +7730,13 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
 // several small distribution charts rather than one figure, and a full
 // summary table already exports on its own via CSV below.
 function MonteCarloTab({ concepts, edges, scenarios, activeScenarioId, settings, result, setResult, modelVersion }) {
-  const [scenarioId, setScenarioId] = useState(activeScenarioId);
-  const [runs, setRuns] = useState(500);
-  const [weightSpread, setWeightSpread] = useState(0.1);
-  const [initialSpread, setInitialSpread] = useState(0);
-  const [seed, setSeed] = useState(() => Math.floor(Math.random() * 1e6));
+  // The setup starts from the last run, so it still matches the results on
+  // screen after the user leaves this tab and comes back.
+  const [scenarioId, setScenarioId] = useState(() => result?.scenarioId ?? activeScenarioId);
+  const [runs, setRuns] = useState(() => result?.config?.runs ?? 500);
+  const [weightSpread, setWeightSpread] = useState(() => result?.config?.weightSpread ?? 0.1);
+  const [initialSpread, setInitialSpread] = useState(() => result?.config?.initialSpread ?? 0);
+  const [seed, setSeed] = useState(() => result?.config?.seed ?? Math.floor(Math.random() * 1e6));
   const [chartIds, setChartIds] = useState([]);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(null);
@@ -7863,7 +7901,13 @@ function MonteCarloTab({ concepts, edges, scenarios, activeScenarioId, settings,
             // A plain-language reading of the runs for a non-expert: how
             // robust the picture is, which concepts are firm and which are
             // uncertain, and which could end on either side of 0.
-            const pc = result.perConcept;
+            // Concepts that nothing feeds into (levers and other drivers) and
+            // concepts the scenario locks do not depend on the weights, so
+            // counting them as "firm" would overstate how robust the result is.
+            const fed = new Set(edges.filter((e) => e.source !== e.target).map((e) => e.target));
+            const lockedIds = new Set(Object.keys(scenarios.find((sc) => sc.id === result.scenarioId)?.lockedConcepts || {}));
+            const pc = result.perConcept.filter((p) => fed.has(p.id) && !lockedIds.has(p.id));
+            const fixedCount = result.perConcept.length - pc.length;
             const band = (p) => p.p95 - p.p5;
             const firm = pc.filter((p) => band(p) < 0.1);
             const loose = [...pc].filter((p) => band(p) >= 0.3).sort((a, b) => band(b) - band(a));
@@ -7886,7 +7930,7 @@ function MonteCarloTab({ concepts, edges, scenarios, activeScenarioId, settings,
                   {flips.length > 0 ? <li><strong>Could go either way:</strong> {names(flips)} {flips.length === 1 ? "ends" : "end"} above 0 in some runs and below 0 in others. Whether {flips.length === 1 ? "it rises or falls" : "these rise or fall"} depends on weights the group is unsure about, which makes {flips.length === 1 ? "it" : "them"} a good topic for discussion.</li>
                     : <li>No concept switches between ending above and below 0, so the direction of every result holds up.</li>}
                 </ul>
-                <p className="text-[12px] text-neutral-600 mt-2">"In 9 out of 10 runs" refers to the 5% to 95% range in the table below.</p>
+                <p className="text-[12px] text-neutral-600 mt-2">"In 9 out of 10 runs" refers to the 5% to 95% range in the table below.{fixedCount > 0 ? ` The ${fixedCount} ${fixedCount === 1 ? "concept" : "concepts"} that nothing feeds into, or that the scenario holds fixed, ${fixedCount === 1 ? "is" : "are"} left out of these counts, because ${fixedCount === 1 ? "its value does" : "their values do"} not depend on the weights.` : ""}</p>
               </div>
             );
           })()}
@@ -10925,13 +10969,15 @@ const SYNERGY_STYLE = {
 
 function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenarioId, settings, result, setResult, setChartCache, modelVersion }) {
   useCachedChart(setChartCache, "transitionCurves", [result]);
-  const [tpIntervention, setTpIntervention] = useState("");
-  const [tpDirection, setTpDirection] = useState("increase");
-  const [tpOutcomes, setTpOutcomes] = useState([]);
-  const [tpResolution, setTpResolution] = useState(100);
+  // The setup starts from the last run, so it still matches the results on
+  // screen after the user leaves this tab and comes back.
+  const [tpIntervention, setTpIntervention] = useState(() => result?.interventionId ?? "");
+  const [tpDirection, setTpDirection] = useState(() => result?.direction ?? "increase");
+  const [tpOutcomes, setTpOutcomes] = useState(() => (result?.rows || []).map((r) => r.outcomeId));
+  const [tpResolution, setTpResolution] = useState(() => result?.resolution ?? 100);
   const [tpFilter, setTpFilter] = useState("");
   const matrixRef = useRef(null);
-  const [tpFlatThreshold, setTpFlatThreshold] = useState(0.015);
+  const [tpFlatThreshold, setTpFlatThreshold] = useState(() => result?.flatThreshold ?? 0.015);
   const [running, setRunning] = useState(false);
 
   const responseChartRef = useRef(null);
@@ -11421,10 +11467,10 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
               <Btn variant="outline" onClick={exportSlopeCSV}><Download size={13} />Marginal benefit curves (CSV)</Btn>
               <Btn variant="outline" onClick={exportTableCSV}><Download size={13} />TP table (CSV)</Btn>
               <Btn variant="outline" onClick={exportRankingsCSV} disabled={!kpis}><Download size={13} />Rankings (CSV)</Btn>
-              <Btn variant="outline" onClick={() => openFigureEditor(responseChartRef.current, "transition-response-curves.png", figResponse, { title: figResponse.title || `Response curves: ${result.interventionName} (${transitionRangeLabel(result.direction)})`, subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}` })}><Download size={13} />Response chart ({figResponse.format.toUpperCase()})</Btn>
-              <Btn variant="outline" onClick={() => openFigureEditor(slopeChartRef.current, "transition-marginal-benefit.png", figSlope, { title: figSlope.title || `Marginal benefit: ${result.interventionName}`, subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}` })}><Download size={13} />Marginal chart ({figSlope.format.toUpperCase()})</Btn>
+              <Btn variant="outline" onClick={() => openFigureFromFold("se.fold.tpAdvanced", () => responseChartRef.current, "transition-response-curves.png", figResponse, { title: figResponse.title || `Response curves: ${result.interventionName} (${transitionRangeLabel(result.direction)})`, subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}` })}><Download size={13} />Response chart ({figResponse.format.toUpperCase()})</Btn>
+              <Btn variant="outline" onClick={() => openFigureFromFold("se.fold.tpAdvanced", () => slopeChartRef.current, "transition-marginal-benefit.png", figSlope, { title: figSlope.title || `Marginal benefit: ${result.interventionName}`, subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}` })}><Download size={13} />Marginal chart ({figSlope.format.toUpperCase()})</Btn>
             </div>
-            <p className="text-[11.5px] text-neutral-600 mt-2 italic">PDF export is not yet implemented (see the roadmap note at the bottom of the page). Use PNG for images and CSV for data in the meantime.</p>
+            <p className="text-[11.5px] text-neutral-600 mt-2">The chart buttons open the figure editor, which saves PNG, SVG or PDF. The CSV files hold the data behind the charts.</p>
           </div>
 
           <MethodPanel fold
@@ -12732,9 +12778,9 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
               <Btn variant="outline" onClick={exportStagesCSV} disabled={!selected}><Download size={13} />Selected pathway stages (CSV)</Btn>
               <Btn variant="outline" onClick={exportLeversCSV}><Download size={13} />Lever profiles (CSV)</Btn>
               <Btn variant="outline" onClick={exportPortfoliosCSV}><Download size={13} />Portfolios (CSV)</Btn>
-              <Btn variant="outline" disabled={!advancedOpen} title={advancedOpen ? undefined : "Open Advanced results to export this chart"} onClick={() => openFigureEditor(planeRef.current, "transition-pathways-effort-gain.png", figPlane, { title: figPlane.title || "Transition Pathways: Effort-Gain Plane", subtitle: `${pathwayContextLine} · ${s.counts.admissible} of ${s.counts.total} pathways admissible` })}><Download size={13} />Effort-gain plane ({figPlane.format.toUpperCase()})</Btn>
-              <Btn variant="outline" onClick={() => openFigureEditor(trajectoryRef.current, "transition-pathway-trajectory.png", figTrajectory, { title: figTrajectory.title || `Outcome trajectory: ${selectedLabel}`, subtitle: pathwayContextLine })} disabled={!selected || !advancedOpen} title={advancedOpen ? undefined : "Open Advanced results to export this chart"}><Download size={13} />Selected trajectory ({figTrajectory.format.toUpperCase()})</Btn>
-              <Btn variant="outline" onClick={() => openFigureEditor(accrualRef.current, "transition-pathway-benefit-accrual.png", figAccrual, { title: figAccrual.title || `Benefit accrual: ${selectedLabel}`, subtitle: `Early Benefit Index ${fmtNum(selected?.ebi)}` })} disabled={!selected || !advancedOpen || !trajectory || trajectory.accrual.length <= 1} title={advancedOpen ? undefined : "Open Advanced results to export this chart"}><Download size={13} />Selected benefit accrual ({figAccrual.format.toUpperCase()})</Btn>
+              <Btn variant="outline" onClick={() => openFigureFromFold(() => setAdvancedOpen(true), () => planeRef.current, "transition-pathways-effort-gain.png", figPlane, { title: figPlane.title || "Transition Pathways: Effort-Gain Plane", subtitle: `${pathwayContextLine} · ${s.counts.admissible} of ${s.counts.total} pathways admissible` })}><Download size={13} />Effort-gain plane ({figPlane.format.toUpperCase()})</Btn>
+              <Btn variant="outline" onClick={() => openFigureFromFold(() => setAdvancedOpen(true), () => trajectoryRef.current, "transition-pathway-trajectory.png", figTrajectory, { title: figTrajectory.title || `Outcome trajectory: ${selectedLabel}`, subtitle: pathwayContextLine })} disabled={!selected}><Download size={13} />Selected trajectory ({figTrajectory.format.toUpperCase()})</Btn>
+              <Btn variant="outline" onClick={() => openFigureFromFold(() => setAdvancedOpen(true), () => accrualRef.current, "transition-pathway-benefit-accrual.png", figAccrual, { title: figAccrual.title || `Benefit accrual: ${selectedLabel}`, subtitle: `Early Benefit Index ${fmtNum(selected?.ebi)}` })} disabled={!selected || !trajectory || trajectory.accrual.length <= 1}><Download size={13} />Selected benefit accrual ({figAccrual.format.toUpperCase()})</Btn>
             </div>
             <p className="text-[11.5px] text-neutral-600 mt-2">The Export Analysis Workbook in the header also includes these results (pathways, rankings, stages of the top pathways, lever profiles, portfolios, and the invariance and robustness tests).</p>
           </div>
@@ -12800,9 +12846,20 @@ function gettingStartedSteps({ concepts, edges, tab, edgeInspected, hasResults }
   ];
 }
 
-function GettingStartedGuide({ steps, collapsed, setCollapsed, onClose, onGo }) {
+function GettingStartedGuide({ steps, tab, collapsed, setCollapsed, onClose, onGo }) {
   const doneCount = steps.filter((st) => st.done).length;
   const current = steps.find((st) => !st.done);
+  // The card floats over the page. When the user moves on to a tab the
+  // current step does not need (or every step is done), fold it into the
+  // small pill so it does not cover maps, figures and results.
+  const prevTab = useRef(tab);
+  useEffect(() => {
+    if (prevTab.current === tab) return;
+    prevTab.current = tab;
+    if (collapsed) return;
+    const drawing = tab === "network" || tab === "editor";
+    if (!current || (!drawing && current.action?.tab !== tab)) setCollapsed(true);
+  }, [tab]);
   if (collapsed) {
     return (
       <button onClick={() => setCollapsed(false)} className="fixed bottom-14 left-4 z-40 inline-flex items-center gap-2 rounded-full bg-ink text-white text-xs font-medium px-3.5 py-2 shadow-lg hover:bg-slate-800">
@@ -14135,6 +14192,7 @@ function SpaghettiEngineApp() {
       {guide.open && (
         <GettingStartedGuide
           steps={gettingStartedSteps({ concepts, edges, tab, edgeInspected, hasResults: !!baselineResult || Object.keys(results).length > 0 })}
+          tab={tab}
           collapsed={guide.collapsed} setCollapsed={(c) => setGuide({ collapsed: c })}
           onClose={() => setGuide({ open: false })}
           onGo={(t) => { if (!basic || BASIC_TABS.has(t)) setTab(t); }}
@@ -14855,7 +14913,7 @@ function SpaghettiEngineApp() {
 
       <div className="px-3 sm:px-5 py-2 border-t border-stone-200 bg-[#f7f5f0] text-[12.5px] text-stone-600 flex items-center gap-1.5">
         <Info size={12} className="shrink-0" />
-        <span className="flex-1 hidden lg:inline">Prototype scope: runs entirely in your browser. Your model is saved automatically in this browser only; use Export JSON to keep a copy or move it to another computer. Analysis results are not saved and are re-run on demand. PDF/DOCX/PPTX export are not yet implemented.</span>
+        <span className="flex-1 hidden lg:inline">Prototype scope: runs entirely in your browser. Your model is saved automatically in this browser only; use Export JSON to keep a copy or move it to another computer. Analysis results are not saved and are re-run on demand. Figures export as PNG, SVG or PDF; full reports in Word or PowerPoint are not yet available.</span>
         <span className="flex-1 lg:hidden">Prototype: runs in your browser; your model is saved in this browser only.</span>
         <a href={`mailto:${CONTACT.email}?subject=${encodeURIComponent(`The Spaghetti Engine v${APP_VERSION}`)}`} className="shrink-0 text-cobalt-700 hover:underline" title={`Contact ${CONTACT.name}`}>Contact: {CONTACT.name}</a>
       </div>

@@ -133,7 +133,11 @@ export function ConvergenceChart({ series, concepts, converged, diverged, iterat
   const fs = fontSize;
   const colors = moduleColorMap(concepts);
   const modules = [...colors.keys()];
-  const cols = modules.length <= 1 || W < 820 ? 1 : 2;
+  // On screen a narrow box stacks the panels. For a figure export two columns
+  // are kept down to a smaller width, so a double-column figure stays shorter
+  // than a printed page.
+  const exporting = useFigureExporting();
+  const cols = modules.length <= 1 || W < (exporting ? 600 : 820) ? 1 : 2;
   const gap = 18;
   const panelW = (W - (cols - 1) * gap) / cols;
   const lfs = fs * 0.9;
@@ -630,10 +634,14 @@ export function PrioritizationMatrix({ points, xSplit = 0.5, ySplit, fontSize = 
   const keyY = padT + plotH + padB;
   const keyH = exporting && points.length ? kRows * kLine + 8 : 0;
   const H = padT + plotH + padB + keyH;
-  const yMax = Math.max(0.1, ...points.map((p) => p.y)) * 1.12;
+  const ys0 = ySplit ?? (points.length ? points.reduce((a, p) => a + p.y, 0) / points.length : 0);
+  // The axis runs a little past the largest effect and well past the split,
+  // so the two upper quadrants keep room for their captions even when there
+  // is one outcome or the effects lie close together.
+  const yMax = Math.max(0.1, Math.max(0, ...points.map((p) => p.y)) * 1.12, ys0 * 1.4);
+  const ys = points.length || ySplit != null ? ys0 : yMax / 2;
   const px = (v) => padL + 14 + v * (plotW - 28);
   const py = (v) => padT + (1 - v / yMax) * plotH;
-  const ys = ySplit ?? (points.length ? points.reduce((a, p) => a + p.y, 0) / points.length : yMax / 2);
   const yStep = niceStep(yMax, 5);
   const yTicks = []; for (let t = 0; t <= yMax + 1e-9; t += yStep) yTicks.push(Math.round(t * 1e6) / 1e6);
   const lfs = fs * 0.88;
