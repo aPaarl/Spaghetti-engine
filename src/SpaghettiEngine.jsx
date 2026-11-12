@@ -1279,7 +1279,7 @@ function Btn({ children, onClick, variant = "default", disabled, title, classNam
 
 // A small drop-down menu for the dark top bar: one button that opens a list
 // of actions. Closes on a click outside, on Escape, or after a choice.
-function TopBarMenu({ label, icon: Icon, items }) {
+function TopBarMenu({ button, buttonClass, title, items, align = "right" }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
@@ -1291,16 +1291,13 @@ function TopBarMenu({ label, icon: Icon, items }) {
     return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", esc); };
   }, [open]);
   return (
-    <div ref={ref} className="relative">
-      <button
-        onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}
-        className="inline-flex items-center gap-1.5 rounded-md border border-slate-600 bg-transparent text-sm text-slate-100 px-2.5 py-1.5 hover:bg-slate-800"
-      >
-        <Icon size={15} className="text-citrus-400" /><span className="hidden sm:inline">{label}</span><ChevronDown size={13} className={open ? "rotate-180" : ""} />
+    <div ref={ref} className="relative min-w-0">
+      <button onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open} title={title} className={buttonClass}>
+        {button}
       </button>
       {open && (
-        <div role="menu" className="absolute right-0 top-full mt-1.5 z-[70] w-80 rounded-lg border border-slate-200 bg-white text-neutral-900 shadow-xl py-1">
-          {items.map((it) => (
+        <div role="menu" className={`absolute ${align === "left" ? "left-0" : "right-0"} top-full mt-1.5 z-[70] w-80 max-w-[calc(100vw-1.5rem)] rounded-lg border border-slate-200 bg-white text-neutral-900 shadow-xl py-1`}>
+          {items.map((it, i) => it.divider ? <div key={`d${i}`} className="my-1 border-t border-slate-100" /> : (
             <button
               key={it.label} role="menuitem" disabled={it.disabled}
               onClick={() => { setOpen(false); it.onClick(); }}
@@ -1444,10 +1441,15 @@ function MethodPanel({ title = "Method & diagnostics", stats = [], children, fol
 // canvas, every metric, every simulation and every export at once. The preset
 // menu and the module chips are built from the concepts' categories, so a new
 // category appears here as soon as a concept uses it.
-function AnalysisScopeBar({ viewInfo, modules, networkView, setNetworkView }) {
+function AnalysisScopeBar({ viewInfo, modules, networkView, setNetworkView, initiallyOpen = false, onDone = null }) {
   const v = viewInfo;
   const [flashChips, setFlashChips] = useState(false);
-  const [openSmall, setOpenSmall] = useState(false);
+  const [openSmall, setOpenSmallState] = useState(initiallyOpen);
+  const setOpenSmall = (fn) => {
+    const next = typeof fn === "function" ? fn(openSmall) : fn;
+    if (!next && onDone) onDone();
+    setOpenSmallState(next);
+  };
   const keys = resolveViewModules(modules, networkView);
   const every = keys.length === modules.length;
   const presetValue = networkView.mode === "nexus"
@@ -5679,7 +5681,7 @@ function NetworkTabInner({
     commitHistory, setSelected, expandModule, openModuleAsModel, setCollapsedModules]);
 
   return (
-    <div className={`grid gap-4 lg:h-[calc(100vh-290px)] lg:min-h-[460px] grid-cols-1 ${inspectorCollapsed ? "" : "lg:grid-cols-[1fr_280px]"}`}>
+    <div className={`grid gap-4 lg:h-[calc(100vh-160px)] lg:min-h-[460px] grid-cols-1 ${inspectorCollapsed ? "" : "lg:grid-cols-[1fr_260px] 2xl:grid-cols-[1fr_300px]"}`}>
       <div className="bg-white rounded-lg border border-slate-200 p-2 sm:p-3 flex flex-col relative h-[78dvh] min-h-[440px] lg:h-auto lg:min-h-0">
         {/* One row, grouped by what you are doing: build (add, undo, redo),
             tidy (Arrange), look (View, and which part of a modular model is
@@ -5727,7 +5729,7 @@ function NetworkTabInner({
               <Eye size={14} />View<ChevronDown size={12} />
             </Btn>
             {viewMenuOpen && (
-              <div className="absolute z-30 mt-1 w-72 bg-white border border-slate-200 rounded-md shadow-lg py-1 text-xs">
+              <div className="absolute z-30 mt-1 w-72 max-h-[70vh] overflow-auto bg-white border border-slate-200 rounded-md shadow-lg py-1 text-xs">
                 <p className="px-3 pt-1 pb-0.5 text-[13px] font-semibold uppercase tracking-wide text-neutral-600">Style</p>
                 <MenuChoice checked={figureStyle} onClick={() => setFigureStyle(true)} label="Figure" hint="Clean, name-only cards; ready for a paper or slide" />
                 <MenuChoice checked={!figureStyle} onClick={() => setFigureStyle(false)} label="Editing" hint="Larger cards that also show each concept's value" />
@@ -5736,6 +5738,16 @@ function NetworkTabInner({
                 <MenuChoice checked={edgeStyle === "orthogonal"} onClick={() => setEdgeStyle("orthogonal")} label="Right angles" hint="Horizontal and vertical segments" />
                 <MenuChoice checkbox checked={!hideEdgeLabels} onClick={() => setHideEdgeLabels((v) => !v)} label="Show weights" hint="The number on each relationship" />
                 <MenuChoice checkbox checked={showMiniMap} onClick={() => setShowMiniMap(!showMiniMap)} label="Overview map" hint="A small map of the whole model in the corner" />
+                {setCollapsedModules && moduleKeysInView.length >= 2 && (
+                  <>
+                    <p className="px-3 pt-1.5 pb-0.5 text-[13px] font-semibold uppercase tracking-wide text-neutral-600">Modules</p>
+                    <MenuChoice checked={structure === "full"} onClick={() => showStructure("full")} label="Full model" hint="Every concept on the map" />
+                    <MenuChoice checked={structure === "overview"} onClick={() => showStructure("overview")} label="Module overview" hint="Every module folded into one block" />
+                    {folded.modules.map((m) => (
+                      <MenuChoice key={m.key} checked={structure === `m:${m.key}`} onClick={() => showStructure(`m:${m.key}`)} label={`Open ${m.label}`} hint="This module unfolded inside the others" />
+                    ))}
+                  </>
+                )}
                 {setDisplayMode && (
                   <>
                     <p className="px-3 pt-1.5 pb-0.5 text-[13px] font-semibold uppercase tracking-wide text-neutral-600">Outside the analysis scope</p>
@@ -5746,24 +5758,7 @@ function NetworkTabInner({
               </div>
             )}
           </div>
-          {setCollapsedModules && moduleKeysInView.length >= 2 && (
-            <label className="flex items-center gap-1.5 border border-slate-300 rounded-md pl-2 bg-white text-xs" title="Show the full model, every module folded into one block, or one module opened inside the others">
-              <Layers size={13} className="text-neutral-700 shrink-0" />
-              <select
-                value={structure === "custom" ? "custom" : structure}
-                onChange={(e) => e.target.value !== "custom" && showStructure(e.target.value)}
-                className="py-1.5 pr-1.5 bg-transparent text-xs text-neutral-900 outline-none"
-              >
-                <option value="full">Full model</option>
-                <option value="overview">Module overview</option>
-                <optgroup label="Open one module">
-                  {folded.modules.map((m) => <option key={m.key} value={`m:${m.key}`}>{m.label}</option>)}
-                </optgroup>
-                {structure === "custom" && <option value="custom" disabled>Custom folding</option>}
-              </select>
-            </label>
-          )}
-          <div className="relative flex-1 min-w-[110px] max-w-[260px]">
+          <div className="relative flex-1 min-w-[96px] max-w-[280px]">
             <div className="flex items-center gap-1 border border-slate-300 rounded-md px-2 py-1 bg-white">
               <Search size={13} className="text-neutral-600 shrink-0" />
               <input
@@ -6640,16 +6635,16 @@ function FoldableBox({ storageKey, title, icon: Icon = HelpCircle, summary, badg
       <button
         onClick={toggle}
         aria-expanded={open}
-        className="w-full flex items-center gap-3 px-4 py-3 text-left rounded-[14px] hover:bg-stone-50 transition-colors"
+        className="w-full flex items-center gap-3 px-4 py-2.5 text-left rounded-[14px] hover:bg-stone-50 transition-colors"
       >
-        <span className="se-tone-chip w-8 h-8 rounded-lg bg-cobalt-50 text-cobalt-700 flex items-center justify-center shrink-0"><Icon size={16} /></span>
+        <span className="se-tone-chip w-7 h-7 rounded-lg bg-cobalt-50 text-cobalt-700 flex items-center justify-center shrink-0"><Icon size={15} /></span>
         <span className="min-w-0">
           <span className="se-display text-[16.5px] font-semibold text-ink">{title}</span>
           {badge && <span className="ml-2 text-xs font-normal text-neutral-600">{badge}</span>}
           {!open && summary && <span className="block text-xs text-neutral-700 mt-0.5">{summary}</span>}
         </span>
         <span className="ml-auto shrink-0 inline-flex items-center gap-1 text-[14px] font-medium text-cobalt-800 bg-cobalt-50 hover:bg-cobalt-100 rounded-full pl-2.5 pr-2 py-1">
-          {open ? "Hide" : "Show"}{open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+          {open ? "Hide" : "Read more"}{open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
         </span>
       </button>
       {open && <div className="px-4 pb-4 pt-1">{children}</div>}
@@ -14109,76 +14104,75 @@ function SpaghettiEngineApp() {
     setTab(lastTabInGroup.current[g.id] || g.tabs[0].id);
   };
 
+  const [scopeOpen, setScopeOpen] = useState(false);
   const guideSteps = gettingStartedSteps({ concepts, edges, tab, edgeInspected, hasResults: !!baselineResult || Object.keys(results).length > 0 });
 
   return (
     <div className="w-full h-full min-h-[100dvh] md:min-h-[600px] bg-white text-neutral-900 flex flex-col" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
-      {/* Top bar */}
-      <div className="se-topbar relative flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-3 sm:px-5 py-2 bg-ink text-white">
-        <button onClick={() => setTab("about")} className="flex items-center gap-2.5 text-left rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-citrus-400" title="About the Spaghetti Engine, and the documentation">
-          <BrandMark size={32} />
-          <span className="leading-tight">
-            <span className="block font-semibold tracking-tight whitespace-nowrap">The Spaghetti Engine</span>
-            <span className="hidden 2xl:block text-[12px] uppercase tracking-[0.12em] text-slate-300 whitespace-nowrap">Visual system modelling workspace</span>
-          </span>
-          <span className="hidden sm:inline ml-1 text-[13px] font-mono px-1.5 py-0.5 rounded border border-slate-700 bg-slate-800 text-citrus-400" title="Version">v{APP_VERSION}</span>
+      {/* Top bar: the tool on the left, the open model beside it (one menu
+          for switching, importing and exporting models), and on the right
+          the Advanced switch and one Help menu (guide, game, documentation). */}
+      <div className="se-topbar relative flex flex-wrap items-center gap-x-3 gap-y-2 px-3 sm:px-5 py-2 bg-ink text-white">
+        <button onClick={() => setTab("about")} className="flex items-center gap-2.5 text-left rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-citrus-400" title={`About the Spaghetti Engine, and the documentation (version ${APP_VERSION})`}>
+          <BrandMark size={30} />
+          <span className="hidden sm:block font-semibold tracking-tight whitespace-nowrap">The Spaghetti Engine</span>
         </button>
-        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-          {saveFailed ? (
-            <span className="text-[14px] text-amber-300 mr-1 flex items-center gap-1" title="This browser refused to store the model (storage blocked or full). Use Export JSON to keep a copy.">
-              <Info size={12} />Not saved: use Export JSON
-            </span>
-          ) : savedAt && (
-            <span className="hidden lg:flex text-[14px] text-slate-300 mr-1 items-center gap-1" title="Your models are saved automatically in this browser. Use Export JSON to keep a file copy or move a model to another computer.">
-              <Check size={12} className="text-cobalt-400" />Saved {new Date(savedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-            </span>
-          )}
-          <div className="flex items-center rounded-md border border-slate-600 overflow-hidden text-sm" role="group" aria-label="Interface level">
-            <button
-              onClick={() => setUiLevel("basic")}
-              title="Basic: the essentials for building a map and seeing what it does"
-              className={`px-2.5 py-1.5 ${basic ? "bg-citrus-400 text-ink font-semibold" : "bg-slate-800 text-slate-200 hover:bg-slate-700"}`}
-            >Basic</button>
-            <button
-              onClick={() => setUiLevel("advanced")}
-              title="Advanced: every analysis tab, the analysis scope, module folding, and the simulation settings"
-              className={`px-2.5 py-1.5 border-l border-slate-600 ${!basic ? "bg-citrus-400 text-ink font-semibold" : "bg-slate-800 text-slate-200 hover:bg-slate-700"}`}
-            >Advanced</button>
-          </div>
-          <button
-            onClick={() => setGameOpen(!gameOpen)}
-            aria-pressed={gameOpen}
-            title="The Veldmeer game: a 30-minute tutorial in modelling, fuzzy cognitive maps and this tool, in which you build your own model of a lake in trouble"
-            className={`inline-flex items-center gap-1.5 rounded-md border text-sm px-2.5 py-1.5 ${gameOpen ? "bg-citrus-400 text-ink border-citrus-400 font-semibold" : "bg-slate-800 text-slate-100 border-slate-600 hover:bg-slate-700"}`}
-          ><Gamepad2 size={14} className={gameOpen ? "text-ink" : "text-citrus-400"} />Game</button>
-          {(!guide.open || guide.collapsed) && !gameOpen && (
-            <button onClick={() => setGuide({ open: true, collapsed: false })} className="inline-flex items-center gap-1.5 text-sm text-slate-200 hover:text-white px-1.5 py-1.5" title="Show the Getting started guide: the first steps of building a map">
-              <Compass size={15} className="text-citrus-400" /><span className="hidden sm:inline">Guide</span>
-              {guide.open && <span className="text-xs text-slate-400">{guideSteps.filter((st) => st.done).length}/{guideSteps.length}</span>}
-            </button>
-          )}
-          <button
-            onClick={() => { saveNow(); setLibraryOpen(true); }}
-            className="inline-flex items-center gap-1.5 max-w-[150px] sm:max-w-[240px] bg-slate-800 text-sm text-slate-100 rounded-md px-2.5 py-1.5 border border-slate-600 hover:bg-slate-700"
-            title="Your models: open another one, start a new one, rename, copy, or delete"
-          >
-            <FolderOpen size={14} className="text-citrus-400 shrink-0" />
+        <span className="hidden sm:block h-6 w-px bg-slate-600" aria-hidden="true" />
+        <TopBarMenu
+          align="left"
+          buttonClass="inline-flex items-center gap-2 max-w-[200px] sm:max-w-[320px] rounded-md px-2.5 py-1.5 text-sm text-slate-100 hover:bg-slate-800"
+          title="Your model: switch to another, start a new one, import or export"
+          button={<>
+            <FolderOpen size={15} className="text-citrus-400 shrink-0" />
             <span className="truncate font-medium">{activeModelName}</span>
-            <ChevronDown size={12} className="shrink-0" />
-          </button>
-          {/* Import and export sit together in one menu, so the bar stays
-              on one line on an ordinary laptop screen. */}
+            <ChevronDown size={13} className="shrink-0" />
+          </>}
+          items={[
+            { icon: FolderOpen, label: "My models", hint: "Open another model, start a new one, rename, copy or delete", onClick: () => { saveNow(); setLibraryOpen(true); } },
+            { divider: true },
+            { icon: Upload, label: "Import JSON", hint: "Open a model from a .json file", onClick: () => fileInputRef.current?.click() },
+            { icon: Download, label: "Export JSON", hint: "Keep a copy, or move the model to another computer", onClick: exportModel },
+            { icon: Table2, label: exportingWorkbook ? "Building workbook…" : "Export Analysis Workbook (.xlsx)", hint: "Model structure, metrics, baseline and every analysis that has been run", onClick: exportAnalysisWorkbook, disabled: exportingWorkbook },
+          ]}
+        />
+        {saveFailed ? (
+          <span className="text-[14px] text-amber-300 flex items-center gap-1" title="This browser refused to store the model (storage blocked or full). Use Export JSON to keep a copy.">
+            <Info size={12} />Not saved: use Export JSON
+          </span>
+        ) : savedAt && (
+          <span className="hidden lg:flex text-[13px] text-slate-400 items-center gap-1" title="Your models are saved automatically in this browser. Use Export JSON to keep a file copy or move a model to another computer.">
+            <Check size={12} className="text-cobalt-400" />Saved {new Date(savedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+          </span>
+        )}
+        <div className="ml-auto flex items-center gap-1.5 sm:gap-3">
+          <label
+            className="inline-flex items-center gap-2 cursor-pointer select-none text-sm text-slate-200 hover:text-white"
+            title={basic ? "Show every analysis tab, the analysis scope, module folding and the simulation settings" : "Back to the essentials: building a map, and seeing where it settles and what scenarios change"}
+          >
+            <span className="hidden sm:inline">Advanced tools</span>
+            <button
+              role="switch" aria-checked={!basic} aria-label="Advanced tools"
+              onClick={() => setUiLevel(basic ? "advanced" : "basic")}
+              className={`relative w-10 h-6 rounded-full transition-colors ${basic ? "bg-slate-600" : "bg-citrus-400"}`}
+            >
+              <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${basic ? "" : "translate-x-4"}`} />
+            </button>
+          </label>
           <TopBarMenu
-            label={exportingWorkbook ? "Building workbook…" : "Import / export"}
-            icon={Download}
+            buttonClass={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm ${gameOpen ? "bg-citrus-400 text-ink border-citrus-400 font-semibold" : "border-slate-600 text-slate-100 hover:bg-slate-800"}`}
+            title="Help: the Getting started guide, the Veldmeer game, and the documentation"
+            button={<>
+              <HelpCircle size={15} className={gameOpen ? "text-ink" : "text-citrus-400"} /><span className="hidden sm:inline">Help</span><ChevronDown size={13} />
+            </>}
             items={[
-              { icon: Upload, label: "Import JSON", hint: "Open a model from a .json file", onClick: () => fileInputRef.current?.click() },
-              { icon: Download, label: "Export JSON", hint: "Keep a copy, or move it to another computer", onClick: exportModel },
-              { icon: Table2, label: "Export Analysis Workbook (.xlsx)", hint: "Model structure, metrics, baseline and every analysis that has been run", onClick: exportAnalysisWorkbook, disabled: exportingWorkbook },
+              { icon: Compass, label: `Getting started guide (${guideSteps.filter((st) => st.done).length} of ${guideSteps.length} done)`, hint: "The first steps of building a map, one at a time", onClick: () => { setGameOpen(false); setGuide({ open: true, collapsed: false }); } },
+              { icon: Gamepad2, label: gameOpen ? "Close the Veldmeer game" : "Play the Veldmeer game", hint: "A 30-minute tutorial: build your own model of a lake in trouble", onClick: () => setGameOpen(!gameOpen) },
+              { divider: true },
+              { icon: Info, label: "About & documentation", hint: `What the tool is for, the user manual, and contact. Version ${APP_VERSION}`, onClick: () => setTab("about") },
             ]}
           />
-          <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={importModel} />
         </div>
+        <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={importModel} />
       </div>
 
       <ModuleSuggestions concepts={concepts} />
@@ -14264,7 +14258,7 @@ function SpaghettiEngineApp() {
 
       {/* Tabs: the groups on top, as the steps of a piece of work, and the
           tabs of the active group beneath */}
-      <div className="se-nav bg-[#f7f5f0] border-b border-stone-200">
+      <div className="se-nav lg:hidden bg-[#f7f5f0] border-b border-stone-200">
         <div role="tablist" aria-label="Workspace sections" className="flex items-stretch gap-1.5 px-3 sm:px-5 pt-2.5 pb-2 overflow-x-auto">
           {visibleGroups.map((g, gi) => {
             const on = g.id === activeGroup.id;
@@ -14310,10 +14304,65 @@ function SpaghettiEngineApp() {
         )}
       </div>
 
-      {tab !== "about" && !basic && <AnalysisScopeBar viewInfo={viewInfo} modules={modules} networkView={networkView} setNetworkView={setNetworkView} />}
+      {/* The analysis scope: on a laptop or desktop screen it is a line in
+          the side menu, and this bar appears only while a part of the model
+          is selected or while the scope is being changed. */}
+      {tab !== "about" && !basic && (
+        <div className={viewInfo.isFiltered || scopeOpen ? "" : "lg:hidden"}>
+          <AnalysisScopeBar
+            key={scopeOpen ? "open" : "closed"} initiallyOpen={scopeOpen} onDone={scopeOpen ? () => setScopeOpen(false) : null}
+            viewInfo={viewInfo} modules={modules} networkView={networkView} setNetworkView={setNetworkView}
+          />
+        </div>
+      )}
 
       <div className="flex-1 min-h-0 flex">
-      <div className="se-content flex-1 min-w-0 overflow-auto p-3 sm:p-6 bg-[#f7f5f0]" data-tone={activeGroup.tone || "about"}>
+      {/* Side menu (laptop and desktop): every step and its tabs in one
+          list, so each tab is one click away and you can see where you are. */}
+      <nav aria-label="Workspace sections" className="se-sidenav hidden lg:flex flex-col w-56 shrink-0 border-r border-stone-200 bg-white overflow-y-auto py-3">
+        {visibleGroups.filter((g) => !g.accent).map((g, gi) => {
+          const tone = GROUP_TONES[g.tone] || GROUP_TONES.about;
+          return (
+            <div key={g.id} className="mb-3" title={g.hint}>
+              <div className="flex items-center gap-2 px-4 pb-1.5">
+                <span className={`w-5 h-5 rounded-md flex items-center justify-center text-[12px] font-bold shrink-0 ${tone.chip}`}>{gi + 1}</span>
+                <span className="text-[13.5px] font-semibold text-stone-600 leading-tight">{g.label}</span>
+              </div>
+              {g.tabs.map(({ id, label, icon: Icon }) => {
+                const on = tab === id;
+                return (
+                  <button
+                    key={id} onClick={() => setTab(id)} aria-current={on ? "page" : undefined}
+                    className={`w-full flex items-center gap-2.5 pl-5 pr-2 py-1.5 text-left text-[15px] leading-snug border-l-[3px] transition-colors ${
+                      on ? `bg-stone-100 font-semibold text-ink ${tone.ring}` : "border-transparent text-stone-700 hover:bg-stone-50 hover:text-ink"
+                    }`}
+                  >
+                    <Icon size={16} className={`shrink-0 ${on ? tone.text : "text-stone-500"}`} />{label}
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })}
+        <div className="mt-auto pt-3 border-t border-stone-200 mx-4 space-y-3">
+          {!basic && tab !== "about" && (
+            <div className="text-[13px] text-stone-600">
+              <div className="flex items-center gap-1.5">
+                <span className={`w-2 h-2 rounded-full ${viewInfo.isFiltered ? "bg-amber-500" : "bg-cobalt-600"}`} />
+                <span>Analysing <strong className="text-ink">{viewInfo.label}</strong></span>
+              </div>
+              {modules.length > 0 && (
+                <button onClick={() => setScopeOpen((o) => !o)} className="mt-1 text-cobalt-700 hover:underline">{scopeOpen ? "Close scope options" : "Change scope"}</button>
+              )}
+            </div>
+          )}
+          <button
+            onClick={() => setTab("about")}
+            className={`flex items-center gap-2 text-[15px] ${tab === "about" ? "font-semibold text-ink" : "text-stone-700 hover:text-ink"}`}
+          ><Info size={16} className="text-citrus-700" />About &amp; documentation</button>
+        </div>
+      </nav>
+      <div className="se-content flex-1 min-w-0 overflow-auto p-3 sm:p-5 bg-[#f7f5f0]" data-tone={activeGroup.tone || "about"}>
         {/* A display error in one tab stays in that tab: the rest of the app,
             the tab bar, and the model are unaffected, and switching tabs
             (the key) starts that tab fresh. */}
@@ -14974,7 +15023,7 @@ function SpaghettiEngineApp() {
 
       <div className="px-3 sm:px-5 py-1.5 border-t border-stone-200 bg-[#f7f5f0] text-[13.5px] text-stone-600 flex items-center gap-1.5">
         <Info size={12} className="shrink-0" />
-        <span className="flex-1 truncate" title="Prototype scope: runs entirely in your browser. Your model is saved automatically in this browser only; use Import / export to keep a copy or move it to another computer. Analysis results are not saved and are re-run on demand. Figures export as PNG, SVG or PDF; full reports in Word or PowerPoint are not yet available.">Prototype: runs in your browser, and your model is saved in this browser only. Use Import / export to keep a copy.</span>
+        <span className="flex-1 truncate" title="Prototype scope: runs entirely in your browser. Your model is saved automatically in this browser only; use Export JSON in the model menu to keep a copy or move it to another computer. Analysis results are not saved and are re-run on demand. Figures export as PNG, SVG or PDF; full reports in Word or PowerPoint are not yet available.">Prototype: runs in your browser, and your model is saved in this browser only. To keep a copy, use Export JSON in the model menu at the top left.</span>
         <a href={`mailto:${CONTACT.email}?subject=${encodeURIComponent(`The Spaghetti Engine v${APP_VERSION}`)}`} className="shrink-0 text-cobalt-700 hover:underline" title={`Contact ${CONTACT.name}`}>Contact: {CONTACT.name}</a>
       </div>
     </div>
