@@ -18,8 +18,12 @@ import {
   useUpdateNodeInternals, useNodesInitialized,
 } from "@xyflow/react";
 import { FCM_LAYOUT_MODES, runFcmLayout } from "./layout/fcmLayout.js";
-import ELK from "elkjs/lib/elk.bundled.js";
-import ExcelJS from "exceljs";
+// ELK (layered layout) and ExcelJS (workbook export) are large and only
+// needed on demand, so they are loaded the first time they are used. This
+// keeps them out of the first download and makes the page open faster.
+let elkInstance = null;
+const loadElk = async () => elkInstance || (elkInstance = new (await import("elkjs/lib/elk.bundled.js")).default());
+const loadExcelJS = async () => (await import("exceljs")).default;
 // React Flow's Network tab renders nodes as HTML (not SVG) with edges as a
 // separate SVG layer, so the plain SVG->canvas capture used for every other
 // (pure-SVG, Recharts) chart in this app can't reproduce it; html-to-image
@@ -889,6 +893,29 @@ const DEFAULT_BASELINE_INIT = { mode: "model", values: {} };
 // kept (concepts, relationships, scenarios, settings); analysis results are
 // recomputed on demand anyway. A stored model is cleaned like an import: a
 // damaged saved copy must never be able to break the app on every visit.
+// A model file written by hand or by another tool often gives every concept
+// the same position (or none), which stacks all cards on one spot. Such a
+// model is spread out in a readable grid, one column block per module, so the
+// map can be read straight away (Arrange can tidy it further).
+function spreadStackedConcepts(concepts) {
+  if (!Array.isArray(concepts) || concepts.length < 2) return { concepts, spread: false };
+  const key = (c) => `${Math.round(c.position?.x ?? 0)},${Math.round(c.position?.y ?? 0)}`;
+  const counts = new Map();
+  concepts.forEach((c) => counts.set(key(c), (counts.get(key(c)) || 0) + 1));
+  if (Math.max(...counts.values()) < Math.max(2, concepts.length * 0.5)) return { concepts, spread: false };
+  const modules = [...new Set(concepts.map((c) => (c.category || "").trim()))];
+  const perRow = Math.max(3, Math.ceil(Math.sqrt(concepts.length / Math.max(1, modules.length))) + 1);
+  const pos = new Map();
+  let x0 = 0;
+  modules.forEach((m) => {
+    const cs = concepts.filter((c) => (c.category || "").trim() === m);
+    const cols = Math.min(perRow, cs.length);
+    cs.forEach((c, i) => pos.set(c.id, { x: x0 + (i % cols) * 240, y: Math.floor(i / cols) * 150 }));
+    x0 += cols * 240 + 120;
+  });
+  return { concepts: concepts.map((c) => ({ ...c, position: pos.get(c.id) || c.position })), spread: true };
+}
+
 function cleanStored(raw) {
   try {
     const clean = raw ? sanitizeModel(raw) : null;
@@ -1226,7 +1253,6 @@ function layoutCircular(concepts) {
 // handles FCM feedback loops internally, and its LAYER_SWEEP crossing
 // minimization scales far better than a hand-rolled layering pass once
 // networks get into the dozens-to-hundreds of concepts.
-const elk = new ELK();
 async function layoutHierarchical(concepts, edges, direction = "DOWN", figure = false) {
   const graph = {
     id: "root",
@@ -1252,7 +1278,7 @@ async function layoutHierarchical(concepts, edges, direction = "DOWN", figure = 
     }),
     edges: edges.map((e) => ({ id: e.id, sources: [e.source], targets: [e.target] })),
   };
-  const result = await elk.layout(graph);
+  const result = await (await loadElk()).layout(graph);
   const positions = {};
   (result.children || []).forEach((n) => { positions[n.id] = { x: n.x, y: n.y }; });
   return concepts.map((c) => ({ ...c, position: positions[c.id] || c.position }));
@@ -10682,6 +10708,7 @@ async function buildAnalysisWorkbook({
   // of quietly exporting output that no longer matches the model above it.
   const isStale = (result) => !!result && result.__modelVersion !== modelVersion;
   const STALE_NOTE = "Stale: the model was edited after this was run and it has not been re-run since; the figures below reflect the model as it was at the time of that run, not the current one.";
+  const ExcelJS = await loadExcelJS();
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "The Spaghetti Engine";
   workbook.created = new Date();
@@ -13038,7 +13065,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
               <Btn variant="outline" onClick={() => openFigureFromFold(() => setAdvancedOpen(true), () => trajectoryRef.current, "transition-pathway-trajectory.png", figTrajectory, { title: figTrajectory.title || `Outcome trajectory: ${selectedLabel}`, subtitle: pathwayContextLine })} disabled={!selected}><Download size={13} />Selected trajectory ({figTrajectory.format.toUpperCase()})</Btn>
               <Btn variant="outline" onClick={() => openFigureFromFold(() => setAdvancedOpen(true), () => accrualRef.current, "transition-pathway-benefit-accrual.png", figAccrual, { title: figAccrual.title || `Benefit accrual: ${selectedLabel}`, subtitle: `Early Benefit Index ${fmtNum(selected?.ebi)}` })} disabled={!selected || !trajectory || trajectory.accrual.length <= 1}><Download size={13} />Selected benefit accrual ({figAccrual.format.toUpperCase()})</Btn>
             </div>
-            <p className="text-[13px] text-neutral-600 mt-2">The Export Analysis Workbook in the header also includes these results (pathways, rankings, stages of the top pathways, lever profiles, portfolios, and the invariance and robustness tests).</p>
+            <p className="text-[13px] text-neutral-600 mt-2">The Export Analysis Workbook (in the model menu at the top left) also includes these results (pathways, rankings, stages of the top pathways, lever profiles, portfolios, and the invariance and robustness tests).</p>
           </div>
 
           <MethodPanel
@@ -14023,6 +14050,8 @@ function SpaghettiEngineApp() {
       try {
         const data = sanitizeModel(JSON.parse(reader.result));
         if (!data) throw new Error("not a model");
+        const spread = spreadStackedConcepts(data.concepts);
+        if (spread.spread) { data.concepts = spread.concepts; data.fixes = [...(data.fixes || []), "The concepts had no positions of their own (they all sat on one spot), so they were spread out by module. Use Arrange on the Network tab to tidy the map further."]; }
         // An imported file becomes a new model in the library, named after
         // the file; the model that was open stays saved as it was.
         saveNow();
@@ -14109,6 +14138,7 @@ function SpaghettiEngineApp() {
   };
   const exportModelTablesXlsx = async () => {
     const t = modelTables();
+    const ExcelJS = await loadExcelJS();
     const workbook = new ExcelJS.Workbook();
     workbook.creator = "The Spaghetti Engine";
     const used = new Set();
