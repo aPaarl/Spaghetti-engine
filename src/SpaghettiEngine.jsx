@@ -1731,22 +1731,29 @@ const FIGURE_TEMPLATES = [
   {
     id: "sans", label: "Journal, sans serif",
     note: "Arial at 7 pt, colour-blind safe colours, thin lines, no title (it goes in the caption), cropped close, PNG at 600 dpi. In line with the figure guidelines of most science journals (for example Nature, Science, Cell, PLOS).",
-    set: { fontId: "arial", textPt: 7, palette: "okabeIto", lineScale: 0.8, showTitle: false, frame: false, background: "white", autoCrop: true, marginMm: 1, format: "png", dpi: 600 },
+    set: { fontId: "arial", textPt: 7, palette: "okabeIto", lineScale: 0.8, showTitle: false, frame: false, background: "white", autoCrop: true, marginMm: 1, format: "png", dpi: 600, clean: true, grid: false },
   },
   {
     id: "serif", label: "Journal, serif",
     note: "Times New Roman at 8 pt, colour-blind safe colours that also separate in greyscale, normal lines, no title, cropped close, PDF at 600 dpi. In line with publishers that set text in a serif face (for example Elsevier, APA style) and with theses.",
-    set: { fontId: "times", textPt: 8, palette: "tol", lineScale: 1, showTitle: false, frame: false, background: "white", autoCrop: true, marginMm: 2, format: "pdf", dpi: 600 },
+    set: { fontId: "times", textPt: 8, palette: "tol", lineScale: 1, showTitle: false, frame: false, background: "white", autoCrop: true, marginMm: 2, format: "pdf", dpi: 600, clean: true, grid: false },
+  },
+  {
+    id: "screen", label: "As on screen",
+    note: "The look of the app: Inter, the screen colours, the boxes and gridlines, and the title. For slides, posters and reports rather than a journal.",
+    set: { fontId: "inter", textPt: 8, palette: "asShown", lineScale: 1, showTitle: true, frame: false, background: "white", autoCrop: false, marginMm: 4, format: "png", dpi: 300, clean: false, grid: true },
   },
 ];
+// A figure opens ready for a journal (the sans serif template); the screen
+// look is one click away.
 const EDITOR_DEFAULTS = {
-  template: "", widthMm: 174, heightMm: 100, fontId: "inter", textPt: 8, palette: "asShown", lineScale: 1,
-  showTitle: true, panelLabel: "", frame: false, background: "white",
-  autoCrop: false, marginMm: 4, trimTop: 0, trimRight: 0, trimBottom: 0, trimLeft: 0,
-  format: "png", dpi: 300,
+  widthMm: 174, heightMm: 100, panelLabel: "", trimTop: 0, trimRight: 0, trimBottom: 0, trimLeft: 0,
+  ...FIGURE_TEMPLATES[0].set, template: FIGURE_TEMPLATES[0].id,
 };
-const EDITOR_PREF_KEY = "se.figureEditor";
-const EDITOR_KEPT = ["template", "widthMm", "fontId", "textPt", "palette", "lineScale", "showTitle", "frame", "background", "autoCrop", "marginMm", "format", "dpi"];
+// Version 2: the journal template became the default, so earlier saved
+// choices (the screen style by default) are not carried over.
+const EDITOR_PREF_KEY = "se.figureEditor.v2";
+const EDITOR_KEPT = ["template", "widthMm", "fontId", "textPt", "palette", "lineScale", "showTitle", "frame", "background", "autoCrop", "marginMm", "format", "dpi", "clean", "grid"];
 function readEditorPrefs() {
   try { return { ...EDITOR_DEFAULTS, ...JSON.parse(localStorage.getItem(EDITOR_PREF_KEY) || "{}") }; } catch { return { ...EDITOR_DEFAULTS }; }
 }
@@ -1922,6 +1929,48 @@ function measureInHost(root, el) {
   try { return el.getBBox(); } catch { return null; } finally { host.removeChild(root); }
 }
 
+// Print cleaning: takes off what only helps on screen. Notes go, the rounded boxes
+// drawn around panels and cards lose their outline and fill, and grey text
+// (axis ticks, notes) becomes black, as journals ask. Coloured text, which
+// names a series, keeps its colour.
+function readPaint(el, p) {
+  return (el.getAttribute("style") || "").match(new RegExp(`(?:^|;)\\s*${p}\\s*:\\s*([^;]+)`))?.[1]?.trim() || el.getAttribute(p);
+}
+function cleanFigureForPrint(root) {
+  // Screen notes under or beside a figure (counts, "Settled after n
+  // iterations") belong in the caption of a paper.
+  root.querySelectorAll("[data-fig-note]").forEach((n) => n.remove());
+  root.querySelectorAll("rect").forEach((r) => {
+    const rx = parseFloat(r.getAttribute("rx") || (r.getAttribute("style") || "").match(/(?:^|;)\s*rx\s*:\s*([\d.]+)/)?.[1] || "0");
+    const w = parseFloat(r.getAttribute("width")) || 0, h = parseFloat(r.getAttribute("height")) || 0;
+    if (rx < 3 || w < 60 || h < 40) return;
+    const fill = parseCssColor(readPaint(r, "fill"));
+    const pale = !fill || fill.a === 0 || rgbToHsl(fill).l > 0.93;
+    if (!pale) return;
+    setStyleProp(r, "stroke", "none");
+    setStyleProp(r, "fill", "none");
+    r.removeAttribute("stroke"); r.removeAttribute("fill");
+  });
+  root.querySelectorAll("text, tspan").forEach((t) => {
+    const c = parseCssColor(readPaint(t, "fill"));
+    if (!c) return;
+    const chroma = (Math.max(c.r, c.g, c.b) - Math.min(c.r, c.g, c.b)) / 255;
+    if (chroma < 0.12) { setStyleProp(t, "fill", "#000000"); if (t.hasAttribute("fill")) t.setAttribute("fill", "#000000"); }
+  });
+}
+// Gridlines: the chart grids, and light dashed lines that only guide the eye.
+function removeGridlines(root) {
+  root.querySelectorAll("[data-fig-grid]").forEach((g) => g.remove());
+  root.querySelectorAll("line, path").forEach((el) => {
+    const dash = readPaint(el, "stroke-dasharray");
+    if (!dash || dash === "none") return;
+    const c = parseCssColor(readPaint(el, "stroke"));
+    if (!c) return;
+    const chroma = (Math.max(c.r, c.g, c.b) - Math.min(c.r, c.g, c.b)) / 255;
+    if (chroma < 0.1 && rgbToHsl(c).l > 0.8) el.remove();
+  });
+}
+
 // Builds the finished figure from a layout copy and the editor settings.
 // Returns the SVG text plus its size in mm and the text size it prints at.
 async function buildEditedFigure(raw, s, { title, subtitle, isViewBox }) {
@@ -1934,6 +1983,8 @@ async function buildEditedFigure(raw, s, { title, subtitle, isViewBox }) {
   const textParts = [...drawing.querySelectorAll("text, tspan")];
   textParts.forEach((t) => setStyleProp(t, "font-family", font.stack));
   recolourFigure(drawing, s.palette);
+  if (s.clean) cleanFigureForPrint(drawing);
+  if (!s.grid) removeGridlines(drawing);
   if (Math.abs(s.lineScale - 1) > 1e-3) {
     drawing.querySelectorAll("path, line, polyline, polygon, circle, ellipse, rect").forEach((el) => {
       const st = el.getAttribute("style") || "";
@@ -1975,6 +2026,18 @@ async function buildEditedFigure(raw, s, { title, subtitle, isViewBox }) {
     if (s.autoCrop) { b = box(); solve(); }
   }
   const printedPt = (median(fontsUnits()) / u) * 0.75;
+  // Lines thinner than 0.25 pt in print disappear or break up; journals ask
+  // for at least that. Thicken any that would be thinner.
+  const MIN_LINE_PT = 0.25;
+  let minLinePt = Infinity;
+  drawing.querySelectorAll("path, line, polyline, polygon, circle, ellipse, rect").forEach((el) => {
+    const st = el.getAttribute("style") || "";
+    if (/stroke:\s*none/.test(st) || (!/stroke:/.test(st) && !el.getAttribute("stroke"))) return;
+    const w = getStylePx(el, "stroke-width") ?? 1;
+    const ptW = (w * kDraw / u) * 0.75;
+    if (s.clean && ptW < MIN_LINE_PT) { setStyleProp(el, "stroke-width", `${((MIN_LINE_PT / 0.75) * u / kDraw).toFixed(3)}px`); minLinePt = Math.min(minLinePt, MIN_LINE_PT); }
+    else minLinePt = Math.min(minLinePt, ptW);
+  });
   const left = b.x + (s.trimLeft / 25.4) * 96 * u, top0 = b.y + (s.trimTop / 25.4) * 96 * u;
   const keptW = b.w - trimX * u, keptH = Math.max(10, b.h - trimY * u);
   // Title band, sized in points like the rest of the text.
@@ -2032,7 +2095,7 @@ async function buildEditedFigure(raw, s, { title, subtitle, isViewBox }) {
   root.setAttribute("width", `${s.widthMm.toFixed(2)}mm`);
   root.setAttribute("height", `${heightMm.toFixed(2)}mm`);
   const text = '<?xml version="1.0" encoding="UTF-8"?>\n' + new XMLSerializer().serializeToString(root);
-  return { svgText: text, widthMm: s.widthMm, heightMm, printedPt, aspect: H / W, isViewBox };
+  return { svgText: text, widthMm: s.widthMm, heightMm, printedPt, minLinePt: Number.isFinite(minLinePt) ? minLinePt : null, aspect: H / W, isViewBox };
 }
 
 function renderFigurePng(svgText, widthMm, heightMm, dpi, transparent) {
@@ -2070,6 +2133,36 @@ function EditorSection({ title, children }) {
     <div className="border-t border-slate-100 pt-3">
       <div className="text-[13.5px] font-semibold uppercase tracking-wide text-neutral-600 mb-2">{title}</div>
       <div className="space-y-2">{children}</div>
+    </div>
+  );
+}
+// What a journal checks in a figure, read from the finished file: text size
+// at print, the thinnest line, resolution, width, colours and title. ok is
+// true (fine), false (worth a look) or null (neutral information).
+function readinessChecks(built, s) {
+  const out = [];
+  const pt = built.printedPt;
+  out.push({ id: "text", ok: pt >= 5 && pt <= 9.5, text: `Text ${pt.toFixed(1)} pt`, hint: "Most journals ask for 5 to 9 pt at the printed size." });
+  if (built.minLinePt != null) out.push({ id: "lines", ok: built.minLinePt >= 0.249, text: built.minLinePt >= 0.249 ? "Lines at least 0.25 pt" : `Thinnest line ${built.minLinePt.toFixed(2)} pt`, hint: "Lines thinner than 0.25 pt may vanish in print. Clean for print (Fine-tune) thickens them." });
+  out.push(s.format === "svg"
+    ? { id: "res", ok: true, text: "Vector (any size)" }
+    : { id: "res", ok: s.dpi >= 600, text: `${s.dpi} dpi`, hint: "Charts and line art need 600 dpi or more; 300 dpi suits photographs." });
+  const col = EXPORT_WIDTHS.find((w) => Math.abs(w.mm - built.widthMm) < 1.5);
+  out.push({ id: "width", ok: col ? true : null, text: col ? col.label.replace(/ \(.*\)/, "").replace("Double column", "2 columns").replace("Single column", "1 column").replace("1.5 column", "1.5 columns") + ` (${col.mm} mm)` : `Custom width ${built.widthMm.toFixed(0)} mm`, hint: "Common column widths: 85 mm, 120 mm and 174 mm. Check your journal." });
+  out.push({ id: "colours", ok: s.palette === "asShown" ? false : true, text: s.palette === "asShown" ? "Screen colours" : s.palette === "grayscale" ? "Greyscale" : "Colour-blind safe colours", hint: "Choose a colour-blind safe palette under Fine-tune." });
+  out.push({ id: "title", ok: s.showTitle ? null : true, text: s.showTitle ? "Title in the figure" : "Title left for the caption" });
+  return out;
+}
+
+// A numbered step of the figure editor's panel.
+function EditorStep({ n, title, children }) {
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-2">
+        <span className="w-5 h-5 rounded-full bg-cobalt-700 text-white text-[12px] font-bold flex items-center justify-center shrink-0">{n}</span>
+        <span className="text-sm font-semibold text-neutral-900">{title}</span>
+      </div>
+      <div className="space-y-2 pl-7">{children}</div>
     </div>
   );
 }
@@ -2195,117 +2288,134 @@ function FigureEditor({ req }) {
                 <div className="text-xs text-neutral-600 mt-10">{error || "Preparing the figure…"}</div>
               )}
             </div>
-            <div className="px-4 py-2 border-t border-slate-200 bg-white text-[13.5px] text-neutral-700 flex flex-wrap gap-x-4 gap-y-1">
-              {built && <span><span className="font-semibold">{built.widthMm.toFixed(0)} × {built.heightMm.toFixed(0)} mm</span>{s.format !== "svg" && ` · ${Math.round((built.widthMm / 25.4) * s.dpi)} × ${Math.round((built.heightMm / 25.4) * s.dpi)} px at ${s.dpi} dpi`}</span>}
-              {built && <span>Text prints at about {built.printedPt.toFixed(1)} pt</span>}
-              {built && built.isViewBox && built.printedPt < s.textPt - 0.3 && <span className="text-amber-700">This figure keeps its own layout, so its text cannot be enlarged without overlapping. A wider size makes the text larger.</span>}
-              {capturing && <span className="text-cobalt-700">Laying the figure out again…</span>}
-              {tall && <span className="text-amber-700">Taller than a journal page (about 240 mm). A wider size or a smaller text size makes it shorter.</span>}
-              {error && preview && <span className="text-red-700">{error}</span>}
+            <div className="px-4 py-2 border-t border-slate-200 bg-white text-[13.5px] text-neutral-700 space-y-1">
+              <div className="flex flex-wrap gap-x-4 gap-y-1">
+                {built && <span><span className="font-semibold">{built.widthMm.toFixed(0)} × {built.heightMm.toFixed(0)} mm</span>{s.format !== "svg" && ` · ${Math.round((built.widthMm / 25.4) * s.dpi)} × ${Math.round((built.heightMm / 25.4) * s.dpi)} px`}</span>}
+                {capturing && <span className="text-cobalt-700">Laying the figure out again…</span>}
+                {error && preview && <span className="text-red-700">{error}</span>}
+              </div>
+              {built && (
+                <ul className="flex flex-wrap gap-x-4 gap-y-1" aria-label="Checks for a journal">
+                  {readinessChecks(built, s).map((c) => (
+                    <li key={c.id} className={`flex items-center gap-1 ${c.ok === true ? "text-green-800" : c.ok === false ? "text-amber-800" : "text-neutral-600"}`} title={c.hint || ""}>
+                      {c.ok === true ? <CheckCircle2 size={13} /> : c.ok === false ? <Info size={13} /> : <Circle size={13} />}{c.text}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {built && built.isViewBox && built.printedPt < s.textPt - 0.3 && <p className="text-amber-700">This figure keeps its own layout, so its text cannot be enlarged without overlapping. A wider size makes the text larger.</p>}
+              {tall && <p className="text-amber-700">Taller than a journal page (about 240 mm). A wider size or a smaller text size makes it shorter.</p>}
             </div>
           </div>
-          <div className="w-full md:w-[340px] shrink-0 border-t md:border-t-0 md:border-l border-slate-200 overflow-y-auto p-4 space-y-3">
-            <div>
-              <div className="text-[13.5px] font-semibold uppercase tracking-wide text-neutral-600 mb-2">Template</div>
-              <div className="grid grid-cols-2 gap-2">
+          <div className="w-full md:w-[340px] shrink-0 border-t md:border-t-0 md:border-l border-slate-200 overflow-y-auto p-4 space-y-4">
+            <EditorStep n={1} title="Style">
+              <div className="grid grid-cols-3 gap-1.5">
                 {FIGURE_TEMPLATES.map((t) => (
-                  <button key={t.id} onClick={() => applyTemplate(t)} className={`text-left rounded-md border px-2.5 py-2 text-xs ${s.template === t.id ? "border-cobalt-600 bg-cobalt-50 text-cobalt-800" : "border-slate-200 hover:border-slate-400 text-neutral-900"}`}>
-                    <span className="block font-semibold">{t.label}</span>
-                    <span className="block text-[12.5px] text-neutral-600">{t.id === "sans" ? "Arial 7 pt, 600 dpi PNG" : "Times 8 pt, 600 dpi PDF"}</span>
+                  <button key={t.id} onClick={() => applyTemplate(t)} className={`text-left rounded-md border px-2 py-1.5 text-xs leading-snug ${s.template === t.id ? "border-cobalt-600 bg-cobalt-50 text-cobalt-900" : "border-slate-200 hover:border-slate-400 text-neutral-900"}`}>
+                    <span className="block font-semibold">{t.id === "sans" ? "Journal" : t.id === "serif" ? "Serif" : "Screen"}</span>
+                    <span className="block text-[12px] text-neutral-600">{t.id === "sans" ? "Arial 7 pt" : t.id === "serif" ? "Times 8 pt, PDF" : "As in the app"}</span>
                   </button>
                 ))}
               </div>
-              <p className="text-[13px] text-neutral-600 mt-1.5 leading-snug">{tpl ? tpl.note : "A template sets the font, text size, colours, lines, title, cropping and format. Every setting below can still be changed. Check your journal's own guidelines for the final word."}</p>
-            </div>
+              <p className="text-[13px] text-neutral-600 leading-snug">{tpl ? tpl.note : "Custom: a template setting was changed under Fine-tune."}</p>
+            </EditorStep>
 
-            <EditorSection title="Size">
-              <div className="flex flex-wrap gap-1">
-                {EXPORT_WIDTHS.map((w) => (
-                  <button key={w.id} onClick={() => set({ widthMm: w.mm })} className={`rounded border px-2 py-1 text-xs ${s.widthMm === w.mm ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 hover:border-slate-500"}`} title={w.label}>{w.label.replace(/ \(.*\)/, "")} · {w.mm}</button>
+            <EditorStep n={2} title="Width in the paper">
+              <div className="grid grid-cols-3 gap-1.5">
+                {EXPORT_WIDTHS.filter((w) => w.id !== "page").map((w) => (
+                  <button key={w.id} onClick={() => set({ widthMm: w.mm })} className={`rounded-md border px-2 py-1.5 text-xs leading-snug ${s.widthMm === w.mm ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 hover:border-slate-500 text-neutral-900"}`} title={w.label}>
+                    <span className="block font-semibold">{w.id === "single" ? "1 column" : w.id === "onehalf" ? "1.5 column" : "2 columns"}</span>
+                    <span className={`block text-[12px] ${s.widthMm === w.mm ? "text-slate-300" : "text-neutral-600"}`}>{w.mm} mm</span>
+                  </button>
                 ))}
               </div>
-              <EditorRow label="Width (mm)">{mmInput("widthMm", 30, 400)}</EditorRow>
-              {req.isChart && <EditorRow label="Height (mm)">{mmInput("heightMm", 30, 400)}</EditorRow>}
-              {!req.isChart && <p className="text-[13px] text-neutral-600">The height follows from the figure.</p>}
-            </EditorSection>
+            </EditorStep>
 
-            <EditorSection title="Text">
-              <EditorRow label="Font">
-                <select value={s.fontId} onChange={(e) => set({ fontId: e.target.value })} className="border border-slate-300 rounded px-1.5 py-0.5 text-xs">
-                  {FIGURE_FONTS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
-                </select>
+            <EditorStep n={3} title="Panel letter and title">
+              <EditorRow label="Panel letter (a, b, c)">
+                <input value={s.panelLabel} onChange={(e) => setS((p) => ({ ...p, panelLabel: e.target.value.slice(0, 4) }))} placeholder="none" aria-label="Panel letter" className="w-16 border border-slate-300 rounded px-1.5 py-0.5 text-xs" />
               </EditorRow>
-              <EditorRow label="Text size (pt)">
-                <input type="range" min={5} max={14} step={0.5} value={s.textPt} onChange={(e) => set({ textPt: Number(e.target.value) })} className="w-24" aria-label="Text size" />
-                <span className="w-9 text-right font-mono">{s.textPt}</span>
-              </EditorRow>
-              <p className="text-[13px] text-neutral-600 leading-snug">The size of most labels. Titles are drawn a little larger. Journals usually ask for 5 to 9 pt at the printed size.</p>
-            </EditorSection>
-
-            <EditorSection title="Colours and lines">
-              <EditorRow label="Colours">
-                <select value={s.palette} onChange={(e) => set({ palette: e.target.value })} className="border border-slate-300 rounded px-1.5 py-0.5 text-xs max-w-[190px]">
-                  {EDITOR_PALETTES.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-                </select>
-              </EditorRow>
-              <EditorRow label="Line thickness">
-                <input type="range" min={0.5} max={2} step={0.1} value={s.lineScale} onChange={(e) => set({ lineScale: Number(e.target.value) })} className="w-24" aria-label="Line thickness" />
-                <span className="w-9 text-right font-mono">×{s.lineScale.toFixed(1)}</span>
-              </EditorRow>
-              <EditorRow group label="Background">
-                <span className="inline-flex border border-slate-300 rounded overflow-hidden">
-                  {[["white", "White"], ["transparent", "None"]].map(([v, l], i) => <button key={v} onClick={() => set({ background: v })} className={`${seg(s.background === v)} ${i ? "border-l border-slate-300" : ""}`}>{l}</button>)}
-                </span>
-              </EditorRow>
-            </EditorSection>
-
-            <EditorSection title="Title and labels">
-              <label className="flex items-center gap-2 text-xs text-neutral-900"><input type="checkbox" checked={s.showTitle} onChange={(e) => set({ showTitle: e.target.checked })} />Show the title in the figure</label>
-              {s.showTitle && (
+              <label className="flex items-center gap-2 text-xs text-neutral-900"><input type="checkbox" checked={s.showTitle} onChange={(e) => set({ showTitle: e.target.checked })} />Title inside the figure</label>
+              {s.showTitle ? (
                 <>
                   <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" aria-label="Title" className="w-full border border-slate-300 rounded px-2 py-1 text-xs" />
                   <input value={subtitle} onChange={(e) => setSubtitle(e.target.value)} placeholder="Subtitle (optional)" aria-label="Subtitle" className="w-full border border-slate-300 rounded px-2 py-1 text-xs" />
                 </>
+              ) : (
+                <p className="text-[13px] text-neutral-600 leading-snug">Journals put the title in the caption, so it is left out.</p>
               )}
-              <EditorRow label="Panel letter">
-                <input value={s.panelLabel} onChange={(e) => setS((p) => ({ ...p, panelLabel: e.target.value.slice(0, 4) }))} placeholder="a" aria-label="Panel letter" className="w-16 border border-slate-300 rounded px-1.5 py-0.5 text-xs" />
-              </EditorRow>
-              <p className="text-[13px] text-neutral-600 leading-snug">Most journals put the title in the caption and mark the panels of a figure with a, b, c.</p>
-            </EditorSection>
+            </EditorStep>
 
-            <EditorSection title="Framing and cropping">
-              <label className="flex items-center gap-2 text-xs text-neutral-900"><input type="checkbox" checked={s.autoCrop} onChange={(e) => set({ autoCrop: e.target.checked })} />Crop to what is drawn</label>
-              <EditorRow label="Margin (mm)">{mmInput("marginMm", 0, 20, 0.5)}</EditorRow>
-              <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
-                <EditorRow label="Trim top">{mmInput("trimTop", 0, 200, 0.5)}</EditorRow>
-                <EditorRow label="Trim bottom">{mmInput("trimBottom", 0, 200, 0.5)}</EditorRow>
-                <EditorRow label="Trim left">{mmInput("trimLeft", 0, 200, 0.5)}</EditorRow>
-                <EditorRow label="Trim right">{mmInput("trimRight", 0, 200, 0.5)}</EditorRow>
-              </div>
-              <label className="flex items-center gap-2 text-xs text-neutral-900"><input type="checkbox" checked={s.frame} onChange={(e) => set({ frame: e.target.checked })} />Draw a thin frame around the figure</label>
-            </EditorSection>
-
-            <EditorSection title="File">
-              <EditorRow group label="Format">
-                <span className="inline-flex border border-slate-300 rounded overflow-hidden">
-                  {[["png", "PNG"], ["svg", "SVG"], ["pdf", "PDF"]].map(([f, l], i) => <button key={f} onClick={() => set({ format: f })} className={`${seg(s.format === f)} ${i ? "border-l border-slate-300" : ""}`}>{l}</button>)}
+            <EditorStep n={4} title="File">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex border border-slate-300 rounded overflow-hidden" role="group" aria-label="Format">
+                  {[["png", "PNG"], ["pdf", "PDF"], ["svg", "SVG"]].map(([f, l], i) => <button key={f} onClick={() => set({ format: f })} className={`${seg(s.format === f)} ${i ? "border-l border-slate-300" : ""}`}>{l}</button>)}
                 </span>
-              </EditorRow>
-              {s.format !== "svg" && (
-                <EditorRow group label="Resolution">
-                  <span className="inline-flex border border-slate-300 rounded overflow-hidden">
+                {s.format !== "svg" && (
+                  <span className="inline-flex border border-slate-300 rounded overflow-hidden" role="group" aria-label="Resolution">
                     {[300, 600, 1200].map((d, i) => <button key={d} onClick={() => set({ dpi: d })} className={`${seg(s.dpi === d)} ${i ? "border-l border-slate-300" : ""}`}>{d} dpi</button>)}
                   </span>
-                </EditorRow>
-              )}
+                )}
+              </div>
               <p className="text-[13px] text-neutral-600 leading-snug">
-                {s.format === "svg" ? "Vector: stays sharp at any size and opens in Illustrator, Inkscape or PowerPoint. Its size is set in millimetres." : s.format === "pdf" ? "A one-page PDF at the size of the figure, with the figure as a high-resolution image." : "An image with its print size recorded, so Word and LaTeX place it at the right width."}
+                {s.format === "svg" ? "Vector: sharp at any size; opens in Illustrator, Inkscape or PowerPoint." : s.format === "pdf" ? "A one-page PDF at the printed size, with the figure at the resolution chosen." : "Its print size is stored in the file, so Word and LaTeX place it at the right width."}
               </p>
-            </EditorSection>
+            </EditorStep>
+
+            <details className="border-t border-slate-100 pt-3 group">
+              <summary className="cursor-pointer text-[13.5px] font-semibold text-neutral-800 flex items-center gap-1.5">
+                <ChevronRight size={14} className="group-open:rotate-90 transition-transform" />Fine-tune
+                <span className="font-normal text-neutral-500">font, colours, lines, cropping</span>
+              </summary>
+              <div className="space-y-3 mt-3">
+                <EditorSection title="Text">
+                  <EditorRow label="Font">
+                    <select value={s.fontId} onChange={(e) => set({ fontId: e.target.value })} className="border border-slate-300 rounded px-1.5 py-0.5 text-xs">
+                      {FIGURE_FONTS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+                    </select>
+                  </EditorRow>
+                  <EditorRow label="Text size (pt)">
+                    <input type="range" min={5} max={14} step={0.5} value={s.textPt} onChange={(e) => set({ textPt: Number(e.target.value) })} className="w-24" aria-label="Text size" />
+                    <span className="w-9 text-right font-mono">{s.textPt}</span>
+                  </EditorRow>
+                </EditorSection>
+                <EditorSection title="Colours and lines">
+                  <EditorRow label="Colours">
+                    <select value={s.palette} onChange={(e) => set({ palette: e.target.value })} className="border border-slate-300 rounded px-1.5 py-0.5 text-xs max-w-[190px]">
+                      {EDITOR_PALETTES.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                    </select>
+                  </EditorRow>
+                  <EditorRow label="Line thickness">
+                    <input type="range" min={0.5} max={2} step={0.1} value={s.lineScale} onChange={(e) => set({ lineScale: Number(e.target.value) })} className="w-24" aria-label="Line thickness" />
+                    <span className="w-9 text-right font-mono">×{s.lineScale.toFixed(1)}</span>
+                  </EditorRow>
+                  <label className="flex items-center gap-2 text-xs text-neutral-900"><input type="checkbox" checked={!!s.clean} onChange={(e) => set({ clean: e.target.checked })} />Clean for print: no panel boxes or screen notes, black text, lines at least 0.25 pt</label>
+                  <label className="flex items-center gap-2 text-xs text-neutral-900"><input type="checkbox" checked={!!s.grid} onChange={(e) => set({ grid: e.target.checked })} />Gridlines</label>
+                  <EditorRow group label="Background">
+                    <span className="inline-flex border border-slate-300 rounded overflow-hidden">
+                      {[["white", "White"], ["transparent", "None"]].map(([v, l], i) => <button key={v} onClick={() => set({ background: v })} className={`${seg(s.background === v)} ${i ? "border-l border-slate-300" : ""}`}>{l}</button>)}
+                    </span>
+                  </EditorRow>
+                </EditorSection>
+                <EditorSection title="Size and cropping">
+                  <EditorRow label="Width (mm)">{mmInput("widthMm", 30, 400)}</EditorRow>
+                  {req.isChart && <EditorRow label="Height (mm)">{mmInput("heightMm", 30, 400)}</EditorRow>}
+                  <label className="flex items-center gap-2 text-xs text-neutral-900"><input type="checkbox" checked={s.autoCrop} onChange={(e) => set({ autoCrop: e.target.checked })} />Crop to what is drawn</label>
+                  <EditorRow label="Margin (mm)">{mmInput("marginMm", 0, 20, 0.5)}</EditorRow>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+                    <EditorRow label="Trim top">{mmInput("trimTop", 0, 200, 0.5)}</EditorRow>
+                    <EditorRow label="Trim bottom">{mmInput("trimBottom", 0, 200, 0.5)}</EditorRow>
+                    <EditorRow label="Trim left">{mmInput("trimLeft", 0, 200, 0.5)}</EditorRow>
+                    <EditorRow label="Trim right">{mmInput("trimRight", 0, 200, 0.5)}</EditorRow>
+                  </div>
+                  <label className="flex items-center gap-2 text-xs text-neutral-900"><input type="checkbox" checked={s.frame} onChange={(e) => set({ frame: e.target.checked })} />Thin frame around the figure</label>
+                </EditorSection>
+              </div>
+            </details>
           </div>
         </div>
         <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-slate-200">
-          <button onClick={() => { setS({ ...EDITOR_DEFAULTS, widthMm: s.widthMm, heightMm: s.heightMm }); saveEditorPrefs({ ...EDITOR_DEFAULTS, widthMm: s.widthMm }); setTitle(req.title || ""); setSubtitle(req.subtitle || ""); }} className="text-xs text-neutral-700 underline hover:text-neutral-900">Reset to the screen style</button>
+          <button onClick={() => { setS({ ...EDITOR_DEFAULTS, widthMm: s.widthMm, heightMm: s.heightMm }); saveEditorPrefs({ ...EDITOR_DEFAULTS, widthMm: s.widthMm }); setTitle(req.title || ""); setSubtitle(req.subtitle || ""); }} className="text-xs text-neutral-700 underline hover:text-neutral-900">Reset to the journal style</button>
           <div className="flex items-center gap-2">
             <Btn variant="outline" onClick={close}>Cancel</Btn>
             <Btn variant="accent" onClick={download} disabled={!built || capturing || saving}><Download size={13} />{saving ? "Saving…" : `Download ${s.format.toUpperCase()}`}</Btn>
@@ -9875,6 +9985,11 @@ function inlineSvgStyles(orig, clone) {
       parts.push(`${p}:${v}`);
     });
     cl.setAttribute("style", parts.join(";"));
+    // Classes go, but the figure editor still needs to know which parts are
+    // screen notes and which are chart gridlines.
+    const cls = cl.getAttribute("class") || "";
+    if (/\bse-fig-note\b/.test(cls)) cl.setAttribute("data-fig-note", "1");
+    if (/\brecharts-(cartesian|polar)-grid\b/.test(cls)) cl.setAttribute("data-fig-grid", "1");
     cl.removeAttribute("class");
   }
 }

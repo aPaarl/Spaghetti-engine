@@ -185,7 +185,7 @@ export function ConvergenceChart({ series, concepts, converged, diverged, iterat
               <rect x={x0 + 0.5} y={y0 + 0.5} width={panelW - 1} height={panelH - 1} rx={8} fill="#ffffff" stroke={FIG.border} />
               <rect x={x0 + 14} y={y0 + fs * 1.05} width={11} height={11} rx={2} fill={base} />
               <text x={x0 + 32} y={y0 + fs * 1.05 + 10} fontSize={fs * 1.08} fontWeight={700} fill={INK}>{m}</text>
-              <text x={x0 + panelW - 14} y={y0 + fs * 1.05 + 10} fontSize={fs * 0.85} textAnchor="end" fill={MUTED}>{cs.length} concept{cs.length === 1 ? "" : "s"}</text>
+              <text className="se-fig-note" x={x0 + panelW - 14} y={y0 + fs * 1.05 + 10} fontSize={fs * 0.85} textAnchor="end" fill={MUTED}>{cs.length} concept{cs.length === 1 ? "" : "s"}</text>
               {yTicks.map((t) => (
                 <g key={`y${t}`}>
                   <line x1={px(0)} x2={px(maxIt)} y1={py(t)} y2={py(t)} stroke={Math.abs(t) < 1e-9 ? FIG.zero : GRID} strokeWidth={Math.abs(t) < 1e-9 ? 1 : 1} strokeDasharray={Math.abs(t) < 1e-9 ? undefined : "3 3"} />
@@ -228,7 +228,7 @@ export function ConvergenceChart({ series, concepts, converged, diverged, iterat
             </g>
           );
         })}
-        <text x={2} y={H - fs * 0.7} fontSize={fs * 0.9} fill={MUTED}>{converged ? `Settled after ${iterationsRun} iteration${iterationsRun === 1 ? "" : "s"}. The number at the end of each line is where the concept settles.` : diverged ? "The run ran away and was stopped. The number at the end of each line is where the concept was when it stopped." : `Did not settle within ${iterationsRun} iterations. The number at the end of each line is where the concept was at the end.`}</text>
+        <text className="se-fig-note" x={2} y={H - fs * 0.7} fontSize={fs * 0.9} fill={MUTED}>{converged ? `Settled after ${iterationsRun} iteration${iterationsRun === 1 ? "" : "s"}. The number at the end of each line is where the concept settles.` : diverged ? "The run ran away and was stopped. The number at the end of each line is where the concept was when it stopped." : `Did not settle within ${iterationsRun} iterations. The number at the end of each line is where the concept was at the end.`}</text>
       </svg>
     </div>
   );
