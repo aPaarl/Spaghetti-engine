@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import {
-  Plus, Trash2, Play, RotateCcw, Download, Upload, GitCompare,
+  Gamepad2, Plus, Trash2, Play, RotateCcw, Download, Upload, GitCompare,
   Table2, Share2, ChevronDown, ChevronRight,
   X, Lock, Unlock, Info, ClipboardPaste, Check,
   Undo2, Redo2, Copy, Maximize2, HelpCircle, SlidersHorizontal,
@@ -27,6 +27,7 @@ import ExcelJS from "exceljs";
 // the approach React Flow's own docs recommend for exporting the canvas.
 import { toBlob as domNodeToPngBlob } from "html-to-image";
 import AboutTab, { APP_VERSION, CONTACT } from "./AboutTab.jsx";
+import SeriousGame from "./SeriousGame.jsx";
 import PathwayMetroMap from "./PathwayMetroMap.jsx";
 import TransitionSmallMultiples from "./TransitionSmallMultiples.jsx";
 import { ConvergenceChart, SteadyStateBars, ScenarioComparisonFigure, ScenarioGroupedBars, SensitivityCurves, PrioritizationMatrix, RankedBars, QUADRANTS, quadrantOf, SCENARIO_COLORS, FIG, setFigureExporting } from "./AnalysisFigures.jsx";
@@ -13124,6 +13125,9 @@ function SpaghettiEngineApp() {
     try { localStorage.setItem(GUIDE_KEY, JSON.stringify(next)); } catch { /* storage unavailable */ }
     return next;
   });
+  // The Veldmeer serious game: a guided tutorial panel beside the content.
+  const [gameOpen, setGameOpenState] = useState(() => { try { return localStorage.getItem("se.game.open") === "1"; } catch { return false; } });
+  const setGameOpen = (v) => { setGameOpenState(v); try { localStorage.setItem("se.game.open", v ? "1" : "0"); } catch { /* storage unavailable */ } };
   const [edgeInspected, setEdgeInspected] = useState(false);
   const [concepts, setConcepts] = useState(() => restored?.concepts ?? []);
   const [edges, setEdges] = useState(() => restored?.edges ?? []);
@@ -13949,6 +13953,7 @@ function SpaghettiEngineApp() {
     switchToModel(r.id, null);
     setLibraryOpen(false);
     setTab("network");
+    return r.id;
   };
   const renameActiveOr = (id, name) => setLibrary(renameModel(id, name));
   const duplicateInLibrary = (id) => { if (id === activeModelId) saveNow(); setLibrary(duplicateModel(id)); };
@@ -14099,6 +14104,12 @@ function SpaghettiEngineApp() {
               className={`px-2.5 py-1.5 border-l border-slate-600 ${!basic ? "bg-citrus-400 text-ink font-semibold" : "bg-slate-800 text-slate-200 hover:bg-slate-700"}`}
             >Advanced</button>
           </div>
+          <button
+            onClick={() => setGameOpen(!gameOpen)}
+            aria-pressed={gameOpen}
+            title="The Veldmeer game: a 30-minute tutorial in modelling, fuzzy cognitive maps and this tool, in which you build your own model of a lake in trouble"
+            className={`inline-flex items-center gap-1.5 rounded-md border text-xs px-2.5 py-1.5 ${gameOpen ? "bg-citrus-400 text-ink border-citrus-400 font-semibold" : "bg-slate-800 text-slate-100 border-slate-600 hover:bg-slate-700"}`}
+          ><Gamepad2 size={14} className={gameOpen ? "text-ink" : "text-citrus-400"} />Game</button>
           {!guide.open && (
             <button onClick={() => setGuide({ open: true, collapsed: false })} className="inline-flex items-center gap-1 text-xs text-slate-200 hover:text-white px-1.5 py-1.5" title="Show the Getting started guide again">
               <Compass size={14} className="text-citrus-400" /><span className="hidden sm:inline">Guide</span>
@@ -14189,7 +14200,7 @@ function SpaghettiEngineApp() {
         </div>
       )}
 
-      {guide.open && (
+      {guide.open && !gameOpen && (
         <GettingStartedGuide
           steps={gettingStartedSteps({ concepts, edges, tab, edgeInspected, hasResults: !!baselineResult || Object.keys(results).length > 0 })}
           tab={tab}
@@ -14260,7 +14271,8 @@ function SpaghettiEngineApp() {
 
       {tab !== "about" && !basic && <AnalysisScopeBar viewInfo={viewInfo} modules={modules} networkView={networkView} setNetworkView={setNetworkView} />}
 
-      <div className="se-content flex-1 overflow-auto p-3 sm:p-6 bg-[#f7f5f0]" data-tone={activeGroup.tone || "about"}>
+      <div className="flex-1 min-h-0 flex">
+      <div className="se-content flex-1 min-w-0 overflow-auto p-3 sm:p-6 bg-[#f7f5f0]" data-tone={activeGroup.tone || "about"}>
         {/* A display error in one tab stays in that tab: the rest of the app,
             the tab bar, and the model are unaffected, and switching tabs
             (the key) starts that tab fresh. */}
@@ -14909,6 +14921,14 @@ function SpaghettiEngineApp() {
           />
         )}
         </ErrorBoundary>
+      </div>
+      <SeriousGame
+        open={gameOpen} onClose={() => setGameOpen(false)}
+        concepts={concepts} edges={edges} scenarios={scenarios} results={results} baselineResult={baselineResult}
+        tab={tab} onGoTab={(t) => { if (basic && !BASIC_TABS.has(t)) setUiLevel("advanced"); setTab(t); }}
+        activeModelId={activeModelId} onStartModel={(name) => newModel(name)} onOpenModel={openModel}
+        modelExists={(id) => !!library?.models?.some((m) => m.id === id)}
+      />
       </div>
 
       <div className="px-3 sm:px-5 py-2 border-t border-stone-200 bg-[#f7f5f0] text-[12.5px] text-stone-600 flex items-center gap-1.5">
