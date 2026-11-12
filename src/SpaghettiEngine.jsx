@@ -1279,7 +1279,7 @@ function Btn({ children, onClick, variant = "default", disabled, title, classNam
 
 // A small drop-down menu for the dark top bar: one button that opens a list
 // of actions. Closes on a click outside, on Escape, or after a choice.
-function TopBarMenu({ button, buttonClass, title, items, align = "right" }) {
+function TopBarMenu({ button, buttonClass, title, items, align = "right", footer = null, width = "w-80" }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
@@ -1296,7 +1296,7 @@ function TopBarMenu({ button, buttonClass, title, items, align = "right" }) {
         {button}
       </button>
       {open && (
-        <div role="menu" className={`absolute ${align === "left" ? "left-0" : "right-0"} top-full mt-1.5 z-[70] w-80 max-w-[calc(100vw-1.5rem)] rounded-lg border border-slate-200 bg-white text-neutral-900 shadow-xl py-1`}>
+        <div role="menu" className={`absolute ${align === "left" ? "left-0" : "right-0"} top-full mt-1.5 z-[70] ${width} max-w-[calc(100vw-1.5rem)] max-h-[calc(100vh-5rem)] overflow-auto rounded-lg border border-slate-200 bg-white text-neutral-900 shadow-xl py-1`}>
           {items.map((it, i) => it.divider ? <div key={`d${i}`} className="my-1 border-t border-slate-100" /> : (
             <button
               key={it.label} role="menuitem" disabled={it.disabled}
@@ -1310,8 +1310,40 @@ function TopBarMenu({ button, buttonClass, title, items, align = "right" }) {
               </span>
             </button>
           ))}
+          {footer}
         </div>
       )}
+    </div>
+  );
+}
+
+// How to build a map and the keyboard shortcuts of the map. Shown inside the
+// Help menu (it used to fill the Inspector while nothing was selected).
+function MapHelpSection() {
+  return (
+    <div className="mt-1 border-t border-slate-100 px-3.5 pt-2.5 pb-2 text-neutral-900">
+      <p className="text-sm font-semibold flex items-center gap-2"><Share2 size={15} className="text-cobalt-700" />Building a map</p>
+      <ol className="list-decimal pl-5 mt-1.5 space-y-1 text-xs text-neutral-800">
+        <li><strong>Add a concept:</strong> double-click an empty spot on the map, or use Add concept.</li>
+        <li><strong>Name it and choose its module</strong> in the Inspector, which opens beside the map when you click a concept.</li>
+        <li><strong>Connect concepts:</strong> drag from a dot on a concept's edge onto another concept, or use "Add a relationship" in the Inspector.</li>
+        <li><strong>Click the relationship</strong> to say whether it increases or decreases the other concept, and how strongly.</li>
+      </ol>
+      <p className="mt-1.5 text-xs text-neutral-600">Mistake? Undo with Ctrl+Z. Your model is saved in this browser automatically.</p>
+      <details className="mt-2">
+        <summary className="cursor-pointer text-sm font-semibold flex items-center gap-2"><MousePointer2 size={14} className="text-cobalt-700" />Keyboard shortcuts</summary>
+        <table className="w-full mt-1.5 text-xs">
+          <tbody>
+            {[
+              ["Scroll", "Zoom"], ["Shift + scroll", "Pan horizontally"], ["Right or middle drag, or hold Space", "Pan the map"],
+              ["Double-click the map", "Add a concept"], ["Delete or Backspace", "Delete the selection"],
+              ["Ctrl+C, Ctrl+V", "Copy and paste a concept"], ["Ctrl+Z, Ctrl+Y", "Undo, redo"], ["Click an empty spot", "Close the Inspector"],
+            ].map(([k, v]) => (
+              <tr key={k} className="border-b border-slate-100"><td className="py-0.5 pr-2 font-mono text-neutral-800">{k}</td><td className="py-0.5 text-neutral-600">{v}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </details>
     </div>
   );
 }
@@ -4353,7 +4385,7 @@ function NetworkTabInner({
   // Inspector is column, not chart, so its own state is remembered only for
   // this browser session (a fresh visit starts with it open, guide visible).
   // Starts hidden on a narrow window, where the map needs the width more.
-  const [inspectorCollapsed, setInspectorCollapsed] = useState(() => typeof window !== "undefined" && window.innerWidth < 1100);
+  const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
   // Quick "find a concept by name" for a large model (state only here;
   // collapsedSet isn't computed until further down, so the function that
   // uses it — focusOnConceptId — is defined there too).
@@ -5360,9 +5392,17 @@ function NetworkTabInner({
   // The Inspector only changes when the selection or the model does, so it
   // is built once per such change instead of on every frame of a drag or a
   // hover on the canvas.
-  const inspectorPanel = useMemo(() => (inspectorCollapsed ? null : (
+  // The Inspector opens only while something on the map is selected, so the
+  // map has the full width otherwise. How to build a map, and the keyboard
+  // shortcuts, are under Help in the top bar.
+  const nothingSelected = !selectedConcept && !selectedEdge && selected?.kind !== "module" && selected?.kind !== "aggregate";
+  const showInspector = !inspectorCollapsed && !nothingSelected;
+  const inspectorPanel = useMemo(() => (!showInspector ? null : (
       <div className="bg-white rounded-lg border border-slate-200 p-4 overflow-auto flex flex-col">
-        <h3 className="font-semibold text-sm mb-3">Inspector</h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold text-sm">Inspector</h3>
+          <button onClick={() => setSelected(null)} className="text-neutral-500 hover:text-neutral-900" title="Close the Inspector (deselect)"><X size={15} /></button>
+        </div>
         {selectedConcept && (() => {
           const c = selectedConcept;
           const outgoing = edges.filter((e) => e.source === c.id);
@@ -5647,41 +5687,15 @@ function NetworkTabInner({
             </div>
           );
         })()}
-        {!selectedConcept && !selectedEdge && selected?.kind !== "module" && selected?.kind !== "aggregate" && (
-          <div className="text-xs text-neutral-700 space-y-2">
-            <p className="text-neutral-600">Nothing selected. Click a concept or a relationship on the map to see and edit it here.</p>
-            <p className="font-medium text-neutral-900">Building a map in four steps</p>
-            <ol className="list-decimal pl-4 space-y-1">
-              <li><strong>Add a concept:</strong> double-click an empty spot on the map, or use Add concept.</li>
-              <li><strong>Name it and choose its module</strong> here, in the Inspector.</li>
-              <li><strong>Connect concepts:</strong> drag from a dot on a concept's edge onto another concept, or use "Add a relationship" here.</li>
-              <li><strong>Click the relationship</strong> to say whether it increases or decreases the other concept, and how strongly.</li>
-            </ol>
-            <p className="text-neutral-600">Mistake? Undo with Ctrl+Z. Your model is saved in this browser automatically.</p>
-          </div>
-        )}
-
-        <div className="mt-auto pt-4 border-t border-slate-100">
-          <h4 className="text-xs font-semibold text-neutral-700 mb-1.5 flex items-center gap-1"><MousePointer2 size={12} />Keyboard shortcuts</h4>
-          <ul className="text-[14px] text-neutral-600 space-y-0.5 font-mono">
-            <li>Scroll: zoom</li>
-            <li>Shift+scroll: pan horizontally</li>
-            <li>Right/middle-drag, or hold Space: pan canvas</li>
-            <li>Double-click canvas: add concept</li>
-            <li>Delete / Backspace: delete selection</li>
-            <li>Ctrl+C / Ctrl+V: copy / paste concept</li>
-            <li>Ctrl+Z / Ctrl+Y: undo / redo</li>
-          </ul>
-        </div>
       </div>
   )),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  [inspectorCollapsed, selected, selectedConcept, selectedEdge, concepts, edges, conceptById, moduleList, linkDir, linkTarget, hasRun,
+  [showInspector, selected, selectedConcept, selectedEdge, concepts, edges, conceptById, moduleList, linkDir, linkTarget, hasRun,
     viewInfo, displayMode, collapsedSet, folded, updateConcept, updateEdge, removeConcept, removeEdge, createEdge, copyConcept,
     commitHistory, setSelected, expandModule, openModuleAsModel, setCollapsedModules]);
 
   return (
-    <div className={`grid gap-4 lg:h-[calc(100vh-160px)] lg:min-h-[460px] grid-cols-1 ${inspectorCollapsed ? "" : "lg:grid-cols-[1fr_260px] 2xl:grid-cols-[1fr_300px]"}`}>
+    <div className={`grid gap-4 lg:h-[calc(100vh-160px)] lg:min-h-[460px] grid-cols-1 ${showInspector ? "lg:grid-cols-[1fr_280px] 2xl:grid-cols-[1fr_320px]" : ""}`}>
       <div className="bg-white rounded-lg border border-slate-200 p-2 sm:p-3 flex flex-col relative h-[78dvh] min-h-[440px] lg:h-auto lg:min-h-0">
         {/* One row, grouped by what you are doing: build (add, undo, redo),
             tidy (Arrange), look (View, and which part of a modular model is
@@ -5807,9 +5821,6 @@ function NetworkTabInner({
             <Btn variant="outline" onClick={exportDiagram} disabled={exportingPng} title={figureStyle ? "Export PNG: download the whole map as a high-resolution image" : "Export PNG: download the map exactly as shown (layout, colors, zoom)"}>
               <Download size={14} /><span className="hidden 2xl:inline">{exportingPng ? "Exporting..." : "Export PNG"}</span>
             </Btn>
-            <Btn variant="outline" onClick={() => setInspectorCollapsed((v) => !v)} title={inspectorCollapsed ? "Show the Inspector panel" : "Hide the Inspector panel, so the map fills the width"}>
-              <PanelLeftClose size={14} className={inspectorCollapsed ? "rotate-180" : ""} />
-            </Btn>
           </span>
         </div>
 
@@ -5865,7 +5876,7 @@ function NetworkTabInner({
                 <p className="text-sm font-semibold text-neutral-900">Your map is empty</p>
                 <p className="text-xs text-neutral-700 mt-1">
                   Double-click anywhere here to add your first concept, or use <strong>Add concept</strong> above.
-                  The <strong>Getting started</strong> guide (bottom left) walks you through your first map step by step.
+                  The <strong>Getting started</strong> guide (under Help, top right) walks you through your first map step by step.
                 </p>
               </div>
             </div>
@@ -12907,7 +12918,7 @@ function GettingStartedGuide({ steps, tab, collapsed, setCollapsed, onClose, onG
         <span className="text-sm font-semibold text-neutral-900 flex-1">Getting started</span>
         <span className="text-[13px] text-neutral-600">{doneCount} of {steps.length}</span>
         <button onClick={() => setCollapsed(true)} className="text-neutral-600 hover:text-neutral-900" title="Make smaller"><ChevronDown size={15} /></button>
-        <button onClick={onClose} className="text-neutral-600 hover:text-neutral-900" title="Close the guide (reopen it from Guide at the top)"><X size={14} /></button>
+        <button onClick={onClose} className="text-neutral-600 hover:text-neutral-900" title="Close the guide (reopen it from Help at the top right)"><X size={14} /></button>
       </div>
       <div className="h-1 bg-slate-100"><div className="h-1 bg-citrus-400 transition-all" style={{ width: `${(100 * doneCount) / steps.length}%` }} /></div>
       <ol className="px-3.5 py-2.5 space-y-1.5 max-h-[50vh] overflow-auto">
@@ -13150,7 +13161,7 @@ function SpaghettiEngineApp() {
   // Getting started guide: shown until closed (remembered in this browser).
   const [guide, setGuideState] = useState(() => {
     try { const g = JSON.parse(localStorage.getItem(GUIDE_KEY) || "null"); if (g) return g; } catch { /* storage unavailable */ }
-    // It starts as the small pill at the bottom left, so it does not cover the
+    // It starts folded into the Help menu, so it does not cover the
     // page; one click unfolds it.
     return { open: !boot.migrated && !(boot.restored?.edges?.length), collapsed: true };
   });
@@ -14098,6 +14109,10 @@ function SpaghettiEngineApp() {
     .map((g) => ({ ...g, tabs: basic ? g.tabs.filter((t) => BASIC_TABS.has(t.id)) : g.tabs }))
     .filter((g) => g.tabs.length);
   const activeGroup = visibleGroups.find((g) => g.tabs.some((t) => t.id === tab)) || visibleGroups[0];
+  // The step whose tabs are unfolded in the side menu: the one you are in,
+  // until you open another.
+  const [openStep, setOpenStep] = useState(activeGroup.id);
+  useEffect(() => { setOpenStep(activeGroup.id); }, [activeGroup.id]);
   const goToGroup = (g) => {
     if (g.id === activeGroup.id) return;
     lastTabInGroup.current[activeGroup.id] = tab;
@@ -14160,7 +14175,8 @@ function SpaghettiEngineApp() {
           </label>
           <TopBarMenu
             buttonClass={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm ${gameOpen ? "bg-citrus-400 text-ink border-citrus-400 font-semibold" : "border-slate-600 text-slate-100 hover:bg-slate-800"}`}
-            title="Help: the Getting started guide, the Veldmeer game, and the documentation"
+            title="Help: the Getting started guide, how to build a map, the Veldmeer game, and the documentation"
+            width="w-96" footer={<MapHelpSection />}
             button={<>
               <HelpCircle size={15} className={gameOpen ? "text-ink" : "text-citrus-400"} /><span className="hidden sm:inline">Help</span><ChevronDown size={13} />
             </>}
@@ -14317,23 +14333,28 @@ function SpaghettiEngineApp() {
       )}
 
       <div className="flex-1 min-h-0 flex">
-      {/* Side menu (laptop and desktop): every step and its tabs in one
-          list, so each tab is one click away and you can see where you are. */}
+      {/* Side menu (laptop and desktop): the four steps, each a fold-out
+          with its tabs. The step you are in is open; click another step to
+          see its tabs. */}
       <nav aria-label="Workspace sections" className="se-sidenav hidden lg:flex flex-col w-56 shrink-0 border-r border-stone-200 bg-white overflow-y-auto py-3">
         {visibleGroups.filter((g) => !g.accent).map((g, gi) => {
           const tone = GROUP_TONES[g.tone] || GROUP_TONES.about;
           return (
-            <div key={g.id} className="mb-3" title={g.hint}>
-              <div className="flex items-center gap-2 px-4 pb-1.5">
-                <span className={`w-5 h-5 rounded-md flex items-center justify-center text-[12px] font-bold shrink-0 ${tone.chip}`}>{gi + 1}</span>
-                <span className="text-[13.5px] font-semibold text-stone-600 leading-tight">{g.label}</span>
-              </div>
-              {g.tabs.map(({ id, label, icon: Icon }) => {
+            <div key={g.id} className="mb-1" title={g.hint}>
+              <button
+                onClick={() => setOpenStep(openStep === g.id ? null : g.id)} aria-expanded={openStep === g.id}
+                className={`w-full flex items-center gap-2.5 px-4 py-2 text-left rounded-none hover:bg-stone-50 ${g.id === activeGroup.id ? "text-ink" : "text-stone-700"}`}
+              >
+                <span className={`w-6 h-6 rounded-md flex items-center justify-center text-[13px] font-bold shrink-0 ${g.id === activeGroup.id ? tone.chipOn : tone.chip}`}>{gi + 1}</span>
+                <span className="flex-1 text-[15px] font-semibold leading-tight">{g.label}</span>
+                <ChevronDown size={15} className={`shrink-0 text-stone-500 transition-transform ${openStep === g.id ? "rotate-180" : ""}`} />
+              </button>
+              {openStep === g.id && g.tabs.map(({ id, label, icon: Icon }) => {
                 const on = tab === id;
                 return (
                   <button
                     key={id} onClick={() => setTab(id)} aria-current={on ? "page" : undefined}
-                    className={`w-full flex items-center gap-2.5 pl-5 pr-2 py-1.5 text-left text-[15px] leading-snug border-l-[3px] transition-colors ${
+                    className={`w-full flex items-center gap-2.5 pl-8 pr-2 py-1.5 text-left text-[15px] leading-snug border-l-[3px] transition-colors ${
                       on ? `bg-stone-100 font-semibold text-ink ${tone.ring}` : "border-transparent text-stone-700 hover:bg-stone-50 hover:text-ink"
                     }`}
                   >
