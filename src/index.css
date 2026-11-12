@@ -1,34 +1,34 @@
 @import "tailwindcss";
 @import "@xyflow/react/dist/style.css";
 
-/* Brand tokens (see src/brand.jsx): cobalt is the primary color and citrus the
-   one accent. Slate stays the neutral scale. */
+/* Brand tokens (see src/brand.jsx): lagoon is the primary colour and coral
+   the one accent. Slate stays the neutral scale. */
 @theme {
-  --color-cobalt-50: #f2f6ff;
-  --color-cobalt-100: #e5edfe;
-  --color-cobalt-200: #d3e0fd;
-  --color-cobalt-300: #b3c8fb;
-  --color-cobalt-400: #86a8f8;
-  --color-cobalt-500: #5a87f5;
-  --color-cobalt-600: #3b6ef0;
-  --color-cobalt-700: #2456d6;
-  --color-cobalt-800: #1b44b0;
-  --color-cobalt-900: #16388f;
-  --color-cobalt-950: #0f1b3d;
-  --color-citrus-50: #fffbea;
-  --color-citrus-100: #fff3bf;
-  --color-citrus-200: #ffe88a;
-  --color-citrus-300: #ffde5c;
-  --color-citrus-400: #ffd23f;
-  --color-citrus-500: #f0bc15;
-  --color-citrus-600: #b58900;
-  --color-citrus-700: #8a6b00;
-  --color-ink: #0f1b3d;
-  --color-cloud: #f6f8fc;
+  --color-lagoon-50: #eefbfa;
+  --color-lagoon-100: #d3f4f1;
+  --color-lagoon-200: #a9e8e2;
+  --color-lagoon-300: #73d4cc;
+  --color-lagoon-400: #3fb8b0;
+  --color-lagoon-500: #1f9a93;
+  --color-lagoon-600: #137d78;
+  --color-lagoon-700: #0f6863;
+  --color-lagoon-800: #0f5350;
+  --color-lagoon-900: #0f4442;
+  --color-lagoon-950: #072b2a;
+  --color-coral-50: #fff4ef;
+  --color-coral-100: #ffe5da;
+  --color-coral-200: #ffcab4;
+  --color-coral-300: #ffa984;
+  --color-coral-400: #ff8a5b;
+  --color-coral-500: #f76b3c;
+  --color-coral-600: #dd5223;
+  --color-coral-700: #b6401a;
+  --color-ink: #0d2326;
+  --color-cloud: #f5f7f7;
   --color-poppy-500: #e5484d;
   --font-sans: 'Inter', system-ui, sans-serif;
   --font-display: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
-  --color-paper: #f7f5f0;
+  --color-paper: #f5f7f7;
   /* Readability: the small text sizes the interface uses most are larger than
      Tailwind's defaults (12 and 14 px), so that every tab reads comfortably on
      an ordinary laptop screen without zooming. */
@@ -86,28 +86,28 @@ body {
 }
 .se-content table tbody td { border-bottom: 1px solid #eef0f3; }
 .se-content table tbody tr:nth-child(even) { background-color: #f9fafb; }
-.se-content table tbody tr:hover { background-color: #eef2ff; }
+.se-content table tbody tr:hover { background-color: #eefbfa; }
 
 
 /* ------------------------------------------------------------------------
-   Look of the workspace: warm paper background, white cards with soft
+   Look of the workspace: cool paper background, white cards with soft
    shadows and rounder corners, a display face for headings. Only the look
    changes here; no element is added or removed.
    ------------------------------------------------------------------------ */
 .se-display { font-family: var(--font-display); letter-spacing: -0.01em; }
 .se-topbar::after {
-  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px;
-  background: linear-gradient(90deg, #ffd23f 0%, #ffd23f 22%, #5a87f5 60%, #2dd4bf 100%);
+  content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px;
+  background: linear-gradient(90deg, #137d78 0%, #3fb8b0 55%, #ff8a5b 100%);
 }
 .se-content .bg-white.rounded-lg.border,
 .se-content .bg-white.rounded-lg.border-slate-200 {
   border-radius: 14px;
-  border-color: #e7e2d8;
-  box-shadow: 0 1px 2px rgba(15, 27, 61, 0.04), 0 8px 24px -16px rgba(15, 27, 61, 0.18);
+  border-color: #e3e8e8;
+  box-shadow: 0 1px 2px rgba(13, 35, 38, 0.04), 0 8px 24px -16px rgba(13, 35, 38, 0.18);
 }
 .se-content .rounded-md.border { border-radius: 10px; }
 .se-content h3,
-.se-content h4 { font-family: var(--font-display); letter-spacing: -0.01em; color: #0f1b3d; }
+.se-content h4 { font-family: var(--font-display); letter-spacing: -0.01em; color: #0d2326; }
 .se-content h3.text-sm,
 .se-content h4.text-sm { font-size: 1.0625rem; line-height: 1.625rem; }
 .se-content h3.font-semibold.text-sm:only-child { margin-bottom: 0.1rem; }
@@ -117,7 +117,7 @@ body {
 .se-content input[type="number"],
 .se-content input:not([type]) {
   border-radius: 8px;
-  border-color: #d8d2c4;
+  border-color: #cfd8d8;
   background-color: #ffffff;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
@@ -127,18 +127,18 @@ body {
 .se-content input[type="number"]:focus,
 .se-content input:not([type]):focus {
   outline: none;
-  border-color: #5a87f5;
-  box-shadow: 0 0 0 3px rgba(90, 135, 245, 0.18);
+  border-color: #3fb8b0;
+  box-shadow: 0 0 0 3px rgba(63, 184, 176, 0.22);
 }
-.se-content input[type="range"] { accent-color: #2456d6; }
+.se-content input[type="range"] { accent-color: #137d78; }
 /* Status boxes: softer tints and rounder corners. */
 .se-content .rounded-md.border.bg-amber-50,
 .se-content .rounded-lg.border.bg-amber-50 { background-color: #fff8e6; border-color: #f6d88f; }
 .se-content .bg-slate-50.rounded,
-.se-content .bg-slate-50.rounded-md { background-color: #faf8f3; }
+.se-content .bg-slate-50.rounded-md { background-color: #f6f9f9; }
 /* Scroll bars that do not shout. */
 .se-content ::-webkit-scrollbar { width: 10px; height: 10px; }
-.se-content ::-webkit-scrollbar-thumb { background: #d8d2c4; border-radius: 10px; border: 2px solid transparent; background-clip: content-box; }
+.se-content ::-webkit-scrollbar-thumb { background: #cfd8d8; border-radius: 10px; border: 2px solid transparent; background-clip: content-box; }
 .se-content ::-webkit-scrollbar-track { background: transparent; }
 /* A short entrance for the content of a tab. */
 @media (prefers-reduced-motion: no-preference) {
@@ -146,9 +146,9 @@ body {
   @keyframes se-rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 }
 /* The colour of the active group of tabs carries into its fold-outs. */
-.se-content[data-tone="teal"] { --tone: #0f766e; --tone-soft: #f0fdfa; }
-.se-content[data-tone="cobalt"] { --tone: #2456d6; --tone-soft: #f2f6ff; }
+.se-content[data-tone="lagoon"] { --tone: #0f6863; --tone-soft: #eefbfa; }
+.se-content[data-tone="sky"] { --tone: #0369a1; --tone-soft: #f0f9ff; }
 .se-content[data-tone="violet"] { --tone: #6d28d9; --tone-soft: #f5f3ff; }
 .se-content[data-tone="amber"] { --tone: #b45309; --tone-soft: #fffbeb; }
-.se-content[data-tone="about"] { --tone: #8a6b00; --tone-soft: #fffbea; }
+.se-content[data-tone="about"] { --tone: #b6401a; --tone-soft: #fff4ef; }
 .se-content .se-tone-chip { background-color: var(--tone-soft); color: var(--tone); }
