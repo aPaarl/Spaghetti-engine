@@ -1326,7 +1326,7 @@ function MapHelpSection() {
       <ol className="list-decimal pl-5 mt-1.5 space-y-1 text-xs text-neutral-800">
         <li><strong>Add a concept:</strong> double-click an empty spot on the map, or use Add concept.</li>
         <li><strong>Name it and choose its module</strong> in the Inspector, which opens beside the map when you click a concept.</li>
-        <li><strong>Connect concepts:</strong> drag from a dot on a concept's edge onto another concept, or use "Add a relationship" in the Inspector.</li>
+        <li><strong>Connect concepts:</strong> drag from a dot on a concept's edge onto another concept. In the Inspector, New effect and New cause add a connected concept in one step, and "Link to a concept already on the map" connects two existing ones.</li>
         <li><strong>Click the relationship</strong> to say whether it increases or decreases the other concept, and how strongly.</li>
       </ol>
       <p className="mt-1.5 text-xs text-neutral-600">Mistake? Undo with Ctrl+Z. Your model is saved in this browser automatically.</p>

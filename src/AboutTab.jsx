@@ -49,7 +49,7 @@ const AUDIENCES = [
   },
   {
     icon: GraduationCap, title: "Students and teachers",
-    text: "A step-by-step guide to a first map, a Basic mode with just the essentials, and documentation that explains the method as well as the buttons.",
+    text: "A step-by-step guide to a first map, the Veldmeer game as a 30-minute tutorial, a simple view with just the essentials (switch on Advanced tools for the rest), and documentation that explains the method as well as the buttons.",
   },
 ];
 
@@ -194,7 +194,7 @@ export default function AboutTab({ onOpenTab }) {
           })}
         </div>
         <p className="text-xs text-neutral-700">
-          Help is also built into the tool: foldable explanation boxes at the top of each tab, and a Method &amp; diagnostics panel with every calculated result.
+          Help is also built into the tool: the Help menu at the top right holds the Getting started guide, the Veldmeer game and a short guide to building a map with its keyboard shortcuts. Each tab has foldable explanation boxes, and a Method &amp; diagnostics panel lists every calculated result.
         </p>
       </section>
 
