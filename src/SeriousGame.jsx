@@ -394,13 +394,13 @@ export default function SeriousGame({
         <>
           {!onGameModel && needModel}
           <Card tone="story">
-            <p>Time to draw. Open the <strong>Network</strong> tab: double-click an empty spot (or click <em>Add concept</em>) to add a concept, then type its name in the Inspector on the right. Give each concept a <strong>module</strong> (for example Water, Farming, Tourism) so the map is coloured by theme.</p>
+            <p>Time to draw. Open the <strong>Network</strong> tab: double-click an empty spot (or click <em>Add concept</em>) to add a concept. Click a concept to open the <strong>Inspector</strong> beside the map, and type its name there. Give each concept a <strong>module</strong> (for example Water, Farming, Tourism) so the map is coloured by theme.</p>
           </Card>
           <Mission done={missions.model} title="Open a fresh model for your map" detail={onGameModel ? "Your game map is open. Everything you build in it counts." : "Use the button above."} />
           <Mission done={missions.concepts8} title="Add at least 8 concepts" detail={`${stats.nConcepts} so far. Stay within the boundaries; 20 is the upper limit.`}>
             {tab !== "network" && <GoButton onClick={() => onGoTab("network")}>Go to the Network tab</GoButton>}
           </Mission>
-          <Mission done={missions.modules3} title="Sort them into at least 3 modules" detail={stats.modules.length ? `Modules so far: ${stats.modules.join(", ")}.` : "Select a concept and type a module name in the Inspector."} />
+          <Mission done={missions.modules3} title="Sort them into at least 3 modules" detail={stats.modules.length ? `Modules so far: ${stats.modules.join(", ")}.` : "Click a concept and pick or type a module in the Inspector."} />
           {stats.actorLike.length > 0 && (
             <Card tone="tip">
               <p><strong>Analyst's tip.</strong> {stats.actorLike.map((c) => `"${c.name}"`).join(", ")} {stats.actorLike.length === 1 ? "sounds" : "sound"} like a group or a sector rather than a quantity. What about it goes up or down? For example the number, the income, or the satisfaction.</p>
@@ -419,7 +419,7 @@ export default function SeriousGame({
         <>
           {!onGameModel && needModel}
           <Card tone="story">
-            <p>Now draw the arrows. Hover a concept to see its small dots, then drag from a dot to the concept it affects. Click the arrow and choose in the Inspector whether it <strong>increases</strong> or <strong>decreases</strong> the other concept, and how strongly. Use what the stakeholders told you, and your own judgement.</p>
+            <p>Now draw the arrows. Hover a concept to see its small dots, then drag from a dot to the concept it affects. You can also click a concept and use <em>Link to a concept already on the map</em> in the Inspector. Then click the arrow and choose whether it <strong>increases</strong> or <strong>decreases</strong> the other concept, and how strongly. Use what the stakeholders told you, and your own judgement.</p>
           </Card>
           <Mission done={missions.edges12} title="Draw at least 12 relationships" detail={`${stats.nEdges} so far.`}>
             {tab !== "network" && <GoButton onClick={() => onGoTab("network")}>Go to the Network tab</GoButton>}
@@ -447,7 +447,7 @@ export default function SeriousGame({
             <p>Let us see what your map does. First describe <strong>today's situation</strong>: if every concept starts at 0, nothing can move. Then open <strong>Baseline Equilibrium</strong> (step 2, Explore) and click <strong>Run</strong>. The chart shows how every concept moves until the system settles.</p>
           </Card>
           <Mission done={missions.start3} title="Give at least 3 concepts a starting value"
-            detail={stats.started.length ? `Set so far: ${stats.started.slice(0, 4).map((c) => `${c.name} ${fmt(Number(c.initialValue))}`).join(", ")}${stats.started.length > 4 ? ` and ${stats.started.length - 4} more` : ""}.` : "Select a concept on the Network tab and move its Starting value slider in the Inspector (or use the Start column in the Model editor). For example: algal blooms high (+0.7), reed bed area low (-0.5)."}>
+            detail={stats.started.length ? `Set so far: ${stats.started.slice(0, 4).map((c) => `${c.name} ${fmt(Number(c.initialValue))}`).join(", ")}${stats.started.length > 4 ? ` and ${stats.started.length - 4} more` : ""}.` : "Click a concept on the Network tab and move its Starting value slider in the Inspector (or use the Starting value column in the Model editor). For example: algal blooms high (+0.7), reed bed area low (-0.5)."}>
             {tab !== "network" && tab !== "editor" && <GoButton onClick={() => onGoTab("network")}>Go to the Network tab</GoButton>}
           </Mission>
           <Mission done={missions.baseline} title="Run the baseline">
@@ -537,7 +537,7 @@ export default function SeriousGame({
             <button onClick={report} className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-ink text-white text-[14.5px] font-semibold px-3 py-1.5 hover:bg-slate-800"><Download size={14} />Download my advice</button>
           </div>
           <Card>
-            <p className="mb-1"><strong>Where to go next.</strong> Switch to <em>Advanced</em> at the top for the deeper analyses:</p>
+            <p className="mb-1"><strong>Where to go next.</strong> Turn on <em>Advanced tools</em> at the top right for the deeper analyses:</p>
             <ul className="list-disc pl-5 space-y-0.5">
               <li><strong>Transition Point Analysis</strong>: from what intensity does extra effort pay off less?</li>
               <li><strong>Transition Pathways</strong>: in which order should measures be taken?</li>
