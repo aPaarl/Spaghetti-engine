@@ -5136,9 +5136,56 @@ function NetworkTabInner({
   // they were hidden, so it doesn't vanish the moment it's added.
   const addVisibleConcept = useCallback((pos, category) => {
     commitHistory();
-    addConceptAt(pos, category ?? newConceptCategory);
+    const id = addConceptAt(pos, category ?? newConceptCategory);
     if (setNetworkView && !networkView.showIsolated) setNetworkView((v) => ({ ...v, showIsolated: true }));
+    return id;
   }, [commitHistory, addConceptAt, newConceptCategory, setNetworkView, networkView.showIsolated]);
+
+  // Add concept (toolbar) puts the new card in the middle of what is on
+  // screen, nudged off any card already there, so it is never added out of view.
+  const freeSpotNear = useCallback((pos) => {
+    const taken = (p) => concepts.some((o) => o.position && Math.abs(o.position.x - p.x) < 150 && Math.abs(o.position.y - p.y) < 60);
+    let p = { ...pos };
+    for (let i = 0; i < 12 && taken(p); i++) p = { x: pos.x + ((i % 3) - 1) * 40, y: pos.y + 70 * Math.ceil((i + 1) / 2) * (i % 2 ? -1 : 1) };
+    return p;
+  }, [concepts]);
+  const addConceptInView = useCallback(() => {
+    const r = wrapperRef.current?.getBoundingClientRect();
+    const centre = r ? rf.screenToFlowPosition({ x: r.left + r.width / 2, y: r.top + r.height / 2 }) : { x: 300, y: 200 };
+    addVisibleConcept(freeSpotNear({ x: centre.x - 60, y: centre.y - 18 }));
+  }, [rf, addVisibleConcept, freeSpotNear]);
+  // A new concept beside the selected one, already connected to it (or
+  // feeding into it), in the same module, ready to be named.
+  const addConnectedConcept = useCallback((c, dir = "out") => {
+    const base = c.position || { x: 300, y: 200 };
+    const pos = freeSpotNear({ x: base.x + (dir === "out" ? 260 : -260), y: base.y });
+    const id = addVisibleConcept(pos, c.category || "");
+    if (dir === "out") createEdge(c.id, id, undefined, undefined, { select: false });
+    else createEdge(id, c.id, undefined, undefined, { select: false });
+    // Keep the new card in view: pan to it when it lands off screen (the
+    // Inspector opening beside the map also narrows the view).
+    setTimeout(() => {
+      const r = wrapperRef.current?.getBoundingClientRect();
+      if (!r) return;
+      const tl = rf.screenToFlowPosition({ x: r.left + 40, y: r.top + 40 });
+      const br = rf.screenToFlowPosition({ x: r.right - 40, y: r.bottom - 40 });
+      if (pos.x < tl.x || pos.x + 160 > br.x || pos.y < tl.y || pos.y + 40 > br.y) {
+        rf.setCenter((base.x + pos.x) / 2 + 70, (base.y + pos.y) / 2 + 18, { zoom: rf.getZoom(), duration: 300 });
+      }
+    }, 80);
+  }, [rf, addVisibleConcept, freeSpotNear, createEdge]);
+
+  // One hint at a time for whoever is building the map: the next step that
+  // is still missing, or what can be done with the current selection.
+  const buildHint = (() => {
+    if (!concepts.length) return null;
+    if (selected?.kind === "edge") return "Set in the Inspector whether this relationship increases or decreases the other concept, and how strongly.";
+    if (concepts.length === 1) return "Add a second concept: double-click an empty spot, or select the concept and use New effect or New cause in the Inspector.";
+    if (!edges.length) return "Connect two concepts: drag from a dot on the edge of one card onto another card, or select a concept and use Connect in the Inspector.";
+    if (selected?.kind === "concept") return "New effect and New cause add a connected concept in one step. Drag a card to move it; Arrange tidies the whole map.";
+    if (!categoriesPresent.length && concepts.length >= 3) return "Optional: give concepts a module (select one, then pick or type a module in the Inspector) to colour the map by subsystem.";
+    return "Click a concept to edit or connect it, or an arrow to set its strength. Double-click an empty spot to add a concept.";
+  })();
 
   const onPaneDoubleClick = useCallback((e) => {
     const pos = rf.screenToFlowPosition({ x: e.clientX, y: e.clientY });
@@ -5470,6 +5517,75 @@ function NetworkTabInner({
                 )}
               </div>
 
+              {/* Connect: the most frequent next step after naming a concept. */}
+              <div className="rounded-md border border-cobalt-200 bg-cobalt-50/60 p-2.5 space-y-2">
+                <div className="text-sm font-semibold text-neutral-900">Connect</div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    onClick={() => addConnectedConcept(c, "out")}
+                    className="inline-flex items-center justify-center gap-1 rounded-md bg-cobalt-700 px-2 py-1.5 text-[13.5px] font-medium text-white hover:bg-cobalt-800"
+                    title={`Add a new concept that ${c.name} affects, already connected, and name it`}
+                  ><Plus size={14} />New effect</button>
+                  <button
+                    onClick={() => addConnectedConcept(c, "in")}
+                    className="inline-flex items-center justify-center gap-1 rounded-md border border-cobalt-300 bg-white px-2 py-1.5 text-[13.5px] font-medium text-cobalt-800 hover:bg-cobalt-50"
+                    title={`Add a new concept that affects ${c.name}, already connected, and name it`}
+                  ><Plus size={14} />New cause</button>
+                </div>
+                {linkOptions.length > 0 && (
+                  <details className="group">
+                  <summary className="cursor-pointer text-[13.5px] text-cobalt-800 flex items-center gap-1"><ChevronRight size={13} className="group-open:rotate-90 transition-transform" />Link to a concept already on the map</summary>
+                  <div className="space-y-1.5 mt-1.5">
+                    <div className="flex items-center gap-1 text-[14px]">
+                      <span className="text-neutral-700 shrink-0">This concept</span>
+                      <select value={linkDir} onChange={(e) => setLinkDir(e.target.value)} className="border border-slate-300 rounded px-1 py-0.5 bg-white text-[14px]">
+                        <option value="out">affects</option>
+                        <option value="in">is affected by</option>
+                      </select>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <select value={linkTarget} onChange={(e) => setLinkTarget(e.target.value)} className="flex-1 min-w-0 border border-slate-300 rounded px-1 py-0.5 bg-white text-[14px]">
+                        <option value="">choose a concept</option>
+                        {linkOptions.map((o) => <option key={o.id} value={o.id}>{o.name}{linked.has(o.id) ? " (already linked)" : ""}</option>)}
+                      </select>
+                      <button
+                        disabled={!linkTarget}
+                        onClick={() => {
+                          commitHistory();
+                          const otherModule = moduleKey(conceptById.get(linkTarget)?.category);
+                          if (collapsedSet.has(otherModule)) expandModule(otherModule);
+                          if (linkDir === "out") createEdge(c.id, linkTarget); else createEdge(linkTarget, c.id);
+                          setLinkTarget("");
+                        }}
+                        className="px-2 py-0.5 rounded bg-cobalt-700 text-white text-[14px] disabled:opacity-40"
+                      >Add</button>
+                    </div>
+                    <p className="text-[13px] text-neutral-600">You can also drag from a dot on the card's edge onto another card. Then click the arrow to set how strongly it acts.</p>
+                  </div>
+                  </details>
+                )}
+              </div>
+
+              <div className="pt-2 border-t border-slate-100">
+                <div className="text-xs font-semibold text-neutral-900 mb-1">Relationships</div>
+                {outgoing.length + incoming.length === 0 ? (
+                  <p className="text-[14px] text-neutral-500 italic">None yet.</p>
+                ) : (
+                  <>
+                    <div className="text-[14px] text-neutral-600">Affects ({outgoing.length})</div>
+                    {outgoing.length ? outgoing.map((e) => relRow(e, e.target, "→")) : <p className="text-[14px] text-neutral-500 italic px-1.5">nothing yet</p>}
+                    <div className="text-[14px] text-neutral-600 mt-1">Affected by ({incoming.length})</div>
+                    {incoming.length ? incoming.map((e) => relRow(e, e.source, "←")) : <p className="text-[14px] text-neutral-500 italic px-1.5">nothing yet</p>}
+                  </>
+                )}
+              </div>
+
+              <details className="pt-2 border-t border-slate-100 group">
+                <summary className="cursor-pointer text-xs font-semibold text-neutral-900 flex items-center gap-1">
+                  <ChevronRight size={13} className="group-open:rotate-90 transition-transform" />Definition and starting value
+                  <span className="ml-auto font-normal text-neutral-600">start {round2(c.initialValue ?? 0)}</span>
+                </summary>
+                <div className="space-y-2.5 mt-2">
               <div>
                 <label className="text-xs text-neutral-700">Definition</label>
                 <textarea
@@ -5500,43 +5616,8 @@ function NetworkTabInner({
                 </div>
               </div>
 
-              <div className="pt-2 border-t border-slate-100">
-                <div className="text-xs font-semibold text-neutral-900 mb-1">Relationships</div>
-                <div className="text-[14px] text-neutral-600">Affects ({outgoing.length})</div>
-                {outgoing.length ? outgoing.map((e) => relRow(e, e.target, "→")) : <p className="text-[14px] text-neutral-500 italic px-1.5">nothing yet</p>}
-                <div className="text-[14px] text-neutral-600 mt-1">Affected by ({incoming.length})</div>
-                {incoming.length ? incoming.map((e) => relRow(e, e.source, "←")) : <p className="text-[14px] text-neutral-500 italic px-1.5">nothing yet</p>}
-                {linkOptions.length > 0 && (
-                  <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 p-2 space-y-1.5">
-                    <div className="text-[14px] font-medium text-neutral-900">Add a relationship</div>
-                    <div className="flex items-center gap-1 text-[14px]">
-                      <span className="text-neutral-700 shrink-0">This concept</span>
-                      <select value={linkDir} onChange={(e) => setLinkDir(e.target.value)} className="border border-slate-300 rounded px-1 py-0.5 bg-white text-[14px]">
-                        <option value="out">affects</option>
-                        <option value="in">is affected by</option>
-                      </select>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <select value={linkTarget} onChange={(e) => setLinkTarget(e.target.value)} className="flex-1 min-w-0 border border-slate-300 rounded px-1 py-0.5 bg-white text-[14px]">
-                        <option value="">choose a concept</option>
-                        {linkOptions.map((o) => <option key={o.id} value={o.id}>{o.name}{linked.has(o.id) ? " (already linked)" : ""}</option>)}
-                      </select>
-                      <button
-                        disabled={!linkTarget}
-                        onClick={() => {
-                          commitHistory();
-                          const otherModule = moduleKey(conceptById.get(linkTarget)?.category);
-                          if (collapsedSet.has(otherModule)) expandModule(otherModule);
-                          if (linkDir === "out") createEdge(c.id, linkTarget); else createEdge(linkTarget, c.id);
-                          setLinkTarget("");
-                        }}
-                        className="px-2 py-0.5 rounded bg-cobalt-700 text-white text-[14px] disabled:opacity-40"
-                      >Add</button>
-                    </div>
-                    <p className="text-[13px] text-neutral-600">You can then set whether it increases or decreases, and how strongly. Or drag from a dot on the concept's edge to another concept.</p>
-                  </div>
-                )}
-              </div>
+                </div>
+              </details>
 
               <div className="flex items-center gap-3 pt-1">
                 <button onClick={() => copyConcept(c)} className="inline-flex items-center gap-1 text-xs text-neutral-700 hover:text-black"><Copy size={13} /> Copy (Ctrl+C)</button>
@@ -5573,30 +5654,38 @@ function NetworkTabInner({
               </div>
               <div>
                 <div className="text-xs text-neutral-700 mb-1">Strength</div>
-                <div className="grid grid-cols-4 gap-1">
+                <div className="grid grid-cols-2 gap-1">
                   {STRENGTH_PRESETS.map((p) => (
                     <button
                       key={p.label}
                       onClick={() => setWeight((w < 0 ? -1 : 1) * p.value)}
-                      className={`py-1 rounded border text-[14px] leading-tight ${Math.abs(Math.abs(w) - p.value) < 1e-9 ? "bg-slate-900 border-slate-900 text-white" : "bg-white border-slate-300 text-neutral-900 hover:bg-slate-50"}`}
+                      className={`py-1.5 rounded border text-[14px] leading-tight ${Math.abs(Math.abs(w) - p.value) < 1e-9 ? "bg-slate-900 border-slate-900 text-white" : "bg-white border-slate-300 text-neutral-900 hover:bg-slate-50"}`}
                       title={`Weight ${w < 0 ? "−" : "+"}${p.value}`}
                     >{p.label}</button>
                   ))}
                 </div>
               </div>
-              <div>
-                <label className="text-xs text-neutral-700 block">Fine-tune the weight</label>
-                <WeightSlider value={w} onChange={(v) => updateEdge(e.id, { weight: v })} />
-              </div>
-              <div>
-                <label className="text-xs text-neutral-700">Description</label>
-                <textarea
-                  value={e.description || ""}
-                  onChange={(ev) => updateEdge(e.id, { description: ev.target.value })}
-                  placeholder="Why does this relationship exist? (evidence, source, stakeholder)"
-                  className="w-full text-xs border border-slate-200 rounded p-1.5 h-14"
-                />
-              </div>
+              <details className="pt-2 border-t border-slate-100 group">
+                <summary className="cursor-pointer text-xs font-semibold text-neutral-900 flex items-center gap-1">
+                  <ChevronRight size={13} className="group-open:rotate-90 transition-transform" />Exact weight and description
+                  <span className="ml-auto font-mono font-normal text-neutral-600">{w > 0 ? "+" : ""}{round2(w)}</span>
+                </summary>
+                <div className="space-y-2.5 mt-2">
+                  <div>
+                    <label className="text-xs text-neutral-700 block">Fine-tune the weight</label>
+                    <WeightSlider value={w} onChange={(v) => updateEdge(e.id, { weight: v })} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-neutral-700">Description</label>
+                    <textarea
+                      value={e.description || ""}
+                      onChange={(ev) => updateEdge(e.id, { description: ev.target.value })}
+                      placeholder="Why does this relationship exist? (evidence, source, stakeholder)"
+                      className="w-full text-xs border border-slate-200 rounded p-1.5 h-14"
+                    />
+                  </div>
+                </div>
+              </details>
               <div className="flex items-center gap-3 flex-wrap">
                 <button
                   disabled={reverseExists}
@@ -5690,7 +5779,7 @@ function NetworkTabInner({
       </div>
   )),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  [showInspector, selected, selectedConcept, selectedEdge, concepts, edges, conceptById, moduleList, linkDir, linkTarget, hasRun,
+  [showInspector, addConnectedConcept, selected, selectedConcept, selectedEdge, concepts, edges, conceptById, moduleList, linkDir, linkTarget, hasRun,
     viewInfo, displayMode, collapsedSet, folded, updateConcept, updateEdge, removeConcept, removeEdge, createEdge, copyConcept,
     commitHistory, setSelected, expandModule, openModuleAsModel, setCollapsedModules]);
 
@@ -5703,7 +5792,7 @@ function NetworkTabInner({
             the map is drawn lives in the View menu instead of its own row of
             buttons. */}
         <div className="flex items-center gap-2 mb-2 flex-wrap">
-          <Btn variant="outline" onClick={() => addVisibleConcept({ x: 200 + Math.random() * 200, y: 150 + Math.random() * 150 })} title="Add a concept (or double-click empty space on the map)">
+          <Btn variant="outline" onClick={addConceptInView} title="Add a concept in the middle of the map (or double-click an empty spot to place it there)">
             <Plus size={14} /><span className="max-sm:hidden">Add concept</span>
           </Btn>
           <Btn variant="outline" onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)"><Undo2 size={14} /></Btn>
@@ -5940,7 +6029,13 @@ function NetworkTabInner({
           </ErrorBoundary>
         </div>
 
-        <div className="flex items-center gap-4 text-[14px] text-neutral-700 mt-2 px-1 flex-wrap">
+        {/* The next useful step while building, in one line under the map. */}
+        {!present && buildHint && (
+          <p className="mt-2 px-1 flex items-start gap-1.5 text-[14px] text-cobalt-900">
+            <Sparkles size={14} className="text-cobalt-600 shrink-0 mt-0.5" /><span>{buildHint}</span>
+          </p>
+        )}
+        <div className="flex items-center gap-4 text-[14px] text-neutral-700 mt-1.5 px-1 flex-wrap">
           {categoriesPresent.length > 0 ? (
             categoriesPresent.map((cat) => {
               const s = categoryStyle(cat);
@@ -5951,9 +6046,7 @@ function NetworkTabInner({
                 </span>
               );
             })
-          ) : (
-            <span className="italic text-neutral-600">Give a concept a module (select it, then pick or type one in the Inspector) to colour-code the map by module.</span>
-          )}
+          ) : null}
           <span className="flex items-center gap-1 ml-2"><span className="w-4 h-0.5 inline-block bg-green-600" /> positive influence</span>
           <span className="flex items-center gap-1"><span className="w-4 h-0.5 inline-block bg-orange-600" /> negative influence</span>
         </div>
@@ -13551,6 +13644,7 @@ function SpaghettiEngineApp() {
     }]);
     setSelected({ kind: "concept", id });
     setNewConceptId(id);
+    return id;
   };
   const pasteConcept = useCallback(() => {
     setClipboard((cb) => {
@@ -13613,16 +13707,17 @@ function SpaghettiEngineApp() {
   // instead of always auto-picking the geometrically "best" one. Edges
   // created without a manual drag (matrix paste, dropdown, import) get no
   // handle info and fall back to automatic routing.
-  const createEdge = useCallback((sourceId, targetId, sourceHandle, targetHandle) => {
+  const createEdge = useCallback((sourceId, targetId, sourceHandle, targetHandle, opts = {}) => {
     if (!sourceId || !targetId || sourceId === targetId) return;
+    const select = opts.select !== false;
     setEdges((es) => {
       const existing = es.find((e) => e.source === sourceId && e.target === targetId);
       if (existing) {
-        setSelected({ kind: "edge", id: existing.id });
+        if (select) setSelected({ kind: "edge", id: existing.id });
         return es.map((e) => (e.id === existing.id ? { ...e, sourceHandle, targetHandle } : e));
       }
       const id = uid("e");
-      setSelected({ kind: "edge", id });
+      if (select) setSelected({ kind: "edge", id });
       return [...es, { id, source: sourceId, target: targetId, weight: 0.5, description: "", sourceHandle, targetHandle }];
     });
   }, []);
