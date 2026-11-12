@@ -4,7 +4,7 @@
 
 The Spaghetti Engine is a visual system modelling workspace for Fuzzy Cognitive Maps (FCMs) and nexus systems. It runs entirely in the browser: a model is built on a network canvas, simulated, and analyzed (equilibrium, scenarios, sensitivity, Monte Carlo, transition points, and transition pathways). Nothing is sent to a server, and the model is saved in the browser only.
 
-Developer and contact: Alfred Paarlberg, Wageningen University & Research, alfred.paarlberg@wur.nl.
+Developer and contact: Alfred Paarlberg, alfred.paarlberg@wur.nl.
 
 Version 0.5.5. The tool opens on an About & documentation page, which offers the user manual, the methodological annex, and the development log as PDF downloads.
 
@@ -33,7 +33,7 @@ Netlify builds and deploys the site from the `main` branch.
 | `src/AboutTab.jsx` | The About & documentation page (also exports `APP_VERSION` and `CONTACT`). |
 | `src/brand.jsx` | Brand colors, the logo mark, and the hero artwork. |
 | `src/docs-manifest.json` | Page count and size of each PDF, shown on the About page. Generated. |
-| `src/index.css` | Tailwind theme: the `cobalt-*` and `citrus-*` scales, `ink`, `cloud`, `poppy-500`. |
+| `src/index.css` | Tailwind theme: the `lagoon-*` and `coral-*` scales, `ink`, `cloud`, `paper`, `poppy-500`. |
 | `public/docs/` | The three PDFs that the About page links to. |
 | `public/favicon.svg`, `public/apple-touch-icon.png` | Site icons. |
 | `brand-assets/` | Logo files (SVG and PNG) for use in documents and slides. Not deployed. |
@@ -56,4 +56,6 @@ Netlify builds and deploys the site from the `main` branch.
 
 ## Colors
 
-Cobalt `#2456D6` (primary), navy `#0F1B3D`, citrus `#FFD23F` (the one accent), deep citrus `#8A6B00` (yellow text on white), cloud `#F6F8FC`, poppy `#E5484D` (alerts only). Font: Inter.
+Lagoon `#0F6863` (primary), bright lagoon `#1F9A93`, ink `#0D2326` (text and dark surfaces), coral `#FF8A5B` (the one accent), deep coral `#B6401A` (accent text on white), paper `#F5F7F7` (page background), poppy `#E5484D` (alerts only). Fonts: Inter for text and Plus Jakarta Sans for headings.
+
+The logo is one strand of spaghetti that runs from a concept to the coral concept in focus and ties itself into a feedback loop on the way.

@@ -120,7 +120,7 @@ function rankedOptions(concepts, score) {
 // ---- small building blocks -------------------------------------------------------------
 
 function Card({ children, tone = "plain" }) {
-  const cls = tone === "story" ? "bg-cobalt-50 border-cobalt-200" : tone === "tip" ? "bg-citrus-50 border-citrus-200" : tone === "done" ? "bg-emerald-50 border-emerald-200" : "bg-white border-slate-200";
+  const cls = tone === "story" ? "bg-lagoon-50 border-lagoon-200" : tone === "tip" ? "bg-coral-50 border-coral-200" : tone === "done" ? "bg-emerald-50 border-emerald-200" : "bg-white border-slate-200";
   return <div className={`rounded-lg border p-3 text-[14.5px] leading-relaxed text-neutral-900 ${cls}`}>{children}</div>;
 }
 
@@ -152,7 +152,7 @@ function Quiz({ id, question, options, correct, explain, state, answer }) {
           const wrong = picked && i !== correct;
           return (
             <button key={i} disabled={solved} onClick={() => answer(id, i, correct)}
-              className={`w-full text-left text-[14.5px] rounded-md border px-2.5 py-1.5 transition-colors ${right ? "bg-emerald-50 border-emerald-400 text-emerald-900 font-medium" : wrong ? "bg-rose-50 border-rose-300 text-rose-900 line-through" : "bg-white border-slate-300 hover:border-cobalt-400 hover:bg-cobalt-50"} disabled:cursor-default`}>
+              className={`w-full text-left text-[14.5px] rounded-md border px-2.5 py-1.5 transition-colors ${right ? "bg-emerald-50 border-emerald-400 text-emerald-900 font-medium" : wrong ? "bg-rose-50 border-rose-300 text-rose-900 line-through" : "bg-white border-slate-300 hover:border-lagoon-400 hover:bg-lagoon-50"} disabled:cursor-default`}>
               {o}
             </button>
           );
@@ -171,7 +171,7 @@ function Reflection({ id, label, hint, state, setText, rows = 3 }) {
       <span className="block text-[14.5px] font-semibold text-neutral-900 mb-1">{label}</span>
       {hint && <span className="block text-xs text-neutral-700 mb-1.5">{hint}</span>}
       <textarea value={v} onChange={(e) => setText(id, e.target.value)} rows={rows}
-        className="w-full text-[14.5px] border border-slate-300 rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-cobalt-300" placeholder="Write your answer here" />
+        className="w-full text-[14.5px] border border-slate-300 rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-lagoon-300" placeholder="Write your answer here" />
       <span className="block text-[13px] text-neutral-600 mt-0.5">{v.trim().length >= 25 ? "Saved. +5 points." : "A sentence or two is enough (saved as you type)."}</span>
     </label>
   );
@@ -179,7 +179,7 @@ function Reflection({ id, label, hint, state, setText, rows = 3 }) {
 
 function GoButton({ onClick, children }) {
   return (
-    <button onClick={onClick} className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-cobalt-800 bg-cobalt-50 hover:bg-cobalt-100 rounded-full px-2.5 py-1">
+    <button onClick={onClick} className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-lagoon-800 bg-lagoon-50 hover:bg-lagoon-100 rounded-full px-2.5 py-1">
       {children} <ChevronRight size={12} />
     </button>
   );
@@ -271,7 +271,7 @@ export default function SeriousGame({
   if (collapsed) {
     return (
       <button onClick={() => setCollapsed(false)} className="fixed bottom-14 right-4 z-40 inline-flex items-center gap-2 rounded-full bg-ink text-white text-xs font-medium px-3.5 py-2 shadow-lg hover:bg-slate-800" data-game-pill>
-        <Gamepad2 size={14} className="text-citrus-400" />Veldmeer game · chapter {state.chapter + 1} of {CHAPTERS.length} · {points} points
+        <Gamepad2 size={14} className="text-coral-400" />Veldmeer game · chapter {state.chapter + 1} of {CHAPTERS.length} · {points} points
       </button>
     );
   }
@@ -367,15 +367,15 @@ export default function SeriousGame({
           {INTERVIEWS.map((iv) => {
             const read = state.interviewsRead.includes(iv.id);
             return (
-              <div key={iv.id} className={`rounded-lg border p-3 ${read ? "bg-stone-50 border-stone-200" : "bg-white border-slate-200"}`}>
+              <div key={iv.id} className={`rounded-lg border p-3 ${read ? "bg-slate-50 border-slate-200" : "bg-white border-slate-200"}`}>
                 <div className="flex items-center gap-2 mb-1">
-                  <MessageSquareQuote size={15} className="text-cobalt-600 shrink-0" />
+                  <MessageSquareQuote size={15} className="text-lagoon-600 shrink-0" />
                   <span className="text-[14.5px] font-semibold text-neutral-900">{iv.who}</span>
                   <span className="text-[13px] text-neutral-600 truncate">{iv.role}</span>
                 </div>
                 <p className="text-[14.5px] text-neutral-900 italic leading-relaxed">"{iv.quote}"</p>
                 {!read
-                  ? <button onClick={() => setState((s) => ({ ...s, interviewsRead: [...s.interviewsRead, iv.id] }))} className="mt-1.5 text-xs font-medium text-cobalt-800 hover:underline">Mark as read (+2 points)</button>
+                  ? <button onClick={() => setState((s) => ({ ...s, interviewsRead: [...s.interviewsRead, iv.id] }))} className="mt-1.5 text-xs font-medium text-lagoon-800 hover:underline">Mark as read (+2 points)</button>
                   : <span className="mt-1.5 inline-flex items-center gap-1 text-xs text-emerald-800"><CheckCircle2 size={12} />Read</span>}
               </div>
             );
@@ -384,7 +384,7 @@ export default function SeriousGame({
             <span className="block text-[14.5px] font-semibold text-neutral-900 mb-1">Your notebook</span>
             <span className="block text-xs text-neutral-700 mb-1.5">Jot down the quantities you heard, in your own words. You will turn them into concepts in the next chapter.</span>
             <textarea value={state.notes} onChange={(e) => setState({ notes: e.target.value })} rows={4}
-              className="w-full text-[14.5px] border border-slate-300 rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-cobalt-300" placeholder="For example: cows per hectare, ..." />
+              className="w-full text-[14.5px] border border-slate-300 rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-lagoon-300" placeholder="For example: cows per hectare, ..." />
           </label>
         </>
       );
@@ -530,8 +530,8 @@ export default function SeriousGame({
           <Reflection id="q2" state={state} setText={setText} label={`Board question 2. ${QUESTIONS[1].text}`}
             hint={allLoops.length ? `Your map holds, for example: ${allLoops.join("; ")}.` : "Your map has no feedback loop yet. Is that realistic for a lake?"} />
           <Reflection id="q4" state={state} setText={setText} label={`Board question 4. ${QUESTIONS[3].text}`} hint="Think of the boundaries you were given, the stakeholders you did not hear, and the weights you were unsure about." />
-          <div className="rounded-lg border border-citrus-300 bg-citrus-50 p-3 text-center">
-            <Trophy size={26} className="mx-auto text-citrus-600 mb-1" />
+          <div className="rounded-lg border border-coral-300 bg-coral-50 p-3 text-center">
+            <Trophy size={26} className="mx-auto text-coral-600 mb-1" />
             <div className="se-display text-[17.5px] font-bold text-neutral-900">{rank}</div>
             <div className="text-[14.5px] text-neutral-800">{points} of {maxPoints} points · {done} of 11 missions · {minutes} min</div>
             <button onClick={report} className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-ink text-white text-[14.5px] font-semibold px-3 py-1.5 hover:bg-slate-800"><Download size={14} />Download my advice</button>
@@ -554,12 +554,12 @@ export default function SeriousGame({
     <aside className="fixed z-40 bg-white border border-slate-200 shadow-2xl flex flex-col inset-x-2 bottom-2 max-h-[62vh] rounded-xl md:static md:z-auto md:w-[400px] md:shrink-0 md:max-h-none md:rounded-none md:shadow-none md:border-0 md:border-l"
       role="complementary" aria-label="Veldmeer serious game">
       <div className="flex items-center gap-2 px-3.5 py-2.5 bg-ink text-white rounded-t-xl md:rounded-none">
-        <Gamepad2 size={17} className="text-citrus-400 shrink-0" />
+        <Gamepad2 size={17} className="text-coral-400 shrink-0" />
         <div className="min-w-0 flex-1">
           <div className="se-display text-[15.5px] font-semibold leading-tight">The Veldmeer game</div>
           <div className="text-[13px] text-slate-300">A 30-minute tutorial in modelling</div>
         </div>
-        <span className="inline-flex items-center gap-1 text-[13.5px] text-citrus-300" title="Points"><Trophy size={13} />{points}</span>
+        <span className="inline-flex items-center gap-1 text-[13.5px] text-coral-300" title="Points"><Trophy size={13} />{points}</span>
         {state.startedAt && <span className="inline-flex items-center gap-1 text-[13.5px] text-slate-300" title="Time played"><Timer size={13} />{minutes}′</span>}
         <button onClick={() => setCollapsed(true)} className="text-slate-300 hover:text-white" title="Make smaller"><ChevronDown size={16} /></button>
         <button onClick={onClose} className="text-slate-300 hover:text-white" title="Close the game (your progress is kept)"><X size={16} /></button>
@@ -567,7 +567,7 @@ export default function SeriousGame({
       <div className="flex gap-0.5 px-3.5 pt-2.5" aria-label="Chapters">
         {CHAPTERS.map((c, i) => (
           <button key={c.id} onClick={() => state.startedAt && go(i)} title={`${i + 1}. ${c.title} (${c.minutes} min)`}
-            className={`h-1.5 flex-1 rounded-full ${i < state.chapter ? "bg-emerald-500" : i === state.chapter ? "bg-citrus-400" : "bg-slate-200"}`} />
+            className={`h-1.5 flex-1 rounded-full ${i < state.chapter ? "bg-emerald-500" : i === state.chapter ? "bg-coral-400" : "bg-slate-200"}`} />
         ))}
       </div>
       {!state.startedAt ? (
@@ -579,11 +579,11 @@ export default function SeriousGame({
           <ul className="space-y-1">
             {CHAPTERS.map((c, i) => {
               const Icon = c.icon;
-              return <li key={c.id} className="flex items-center gap-2 text-[14.5px] text-neutral-900"><Icon size={14} className="text-cobalt-600 shrink-0" /><span className="flex-1">{i + 1}. {c.title}</span><span className="text-[13px] text-neutral-600">{c.minutes} min</span></li>;
+              return <li key={c.id} className="flex items-center gap-2 text-[14.5px] text-neutral-900"><Icon size={14} className="text-lagoon-600 shrink-0" /><span className="flex-1">{i + 1}. {c.title}</span><span className="text-[13px] text-neutral-600">{c.minutes} min</span></li>;
             })}
           </ul>
           <p className="text-xs text-neutral-700">The case is fictional. You score points for missions, quiz answers and written answers. Your map is built in a separate model, so your own models are not touched.</p>
-          <button onClick={start} className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-citrus-400 text-ink text-[15.5px] font-semibold px-3 py-2 hover:bg-citrus-300">Start the game <ChevronRight size={15} /></button>
+          <button onClick={start} className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-coral-400 text-ink text-[15.5px] font-semibold px-3 py-2 hover:bg-coral-300">Start the game <ChevronRight size={15} /></button>
         </div>
       ) : (
         <>
@@ -593,7 +593,7 @@ export default function SeriousGame({
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto px-3.5 pb-3 space-y-2.5" data-game-body>{body}</div>
           <div className="flex items-center gap-2 px-3.5 py-2.5 border-t border-slate-200">
-            <button onClick={() => go(state.chapter - 1)} disabled={state.chapter === 0} className="inline-flex items-center gap-1 text-[14.5px] text-neutral-800 px-2 py-1 rounded-md hover:bg-stone-100 disabled:opacity-40"><ChevronLeft size={14} />Back</button>
+            <button onClick={() => go(state.chapter - 1)} disabled={state.chapter === 0} className="inline-flex items-center gap-1 text-[14.5px] text-neutral-800 px-2 py-1 rounded-md hover:bg-slate-100 disabled:opacity-40"><ChevronLeft size={14} />Back</button>
             <button onClick={restart} className="text-neutral-500 hover:text-neutral-800" title="Start the game again"><RotateCcw size={14} /></button>
             <span className="flex-1" />
             {state.chapter < CHAPTERS.length - 1 && (

@@ -75,6 +75,41 @@ export function moduleColorMap(concepts) {
   return map;
 }
 
+// Concept -> colour: a shade of its module colour, the same in every figure.
+function conceptColorMap(concepts, colors) {
+  const out = new Map();
+  [...colors.keys()].forEach((m) => {
+    const cs = concepts.filter((c) => moduleOf(c) === m);
+    cs.forEach((c, i) => out.set(c.id, shade(colors.get(m), i, cs.length)));
+  });
+  return out;
+}
+
+// Module key laid out in rows that fit the width: [{ m, color, x, row }].
+function legendLayout(colors, px, maxW) {
+  const items = [];
+  let x = 0, row = 0;
+  [...colors.entries()].forEach(([m, color]) => {
+    const w = 15 + textW(m, px) + 16;
+    if (x > 0 && x + w > maxW) { x = 0; row++; }
+    items.push({ m, color, x, row });
+    x += w;
+  });
+  return { items, rows: items.length ? row + 1 : 0 };
+}
+function ModuleLegend({ layout, x, y, px, lineH }) {
+  return (
+    <g fontSize={px} fill={INK}>
+      {layout.items.map((it) => (
+        <g key={it.m}>
+          <rect x={x + it.x} y={y + it.row * lineH} width={10} height={10} rx={2} fill={it.color} />
+          <text x={x + it.x + 15} y={y + it.row * lineH + 9}>{it.m}</text>
+        </g>
+      ))}
+    </g>
+  );
+}
+
 let measureCtx = null;
 const textW = (s, px, bold = false) => {
   try {
@@ -119,7 +154,9 @@ function spreadLabels(items, minGap, lo, hi) {
   const over = s.length ? s[s.length - 1].y - hi : 0;
   if (over > 0) { for (let i = s.length - 1; i >= 0; i--) { s[i].y -= over; if (i && s[i].y - s[i - 1].y >= minGap) break; } }
   for (let i = s.length - 2; i >= 0; i--) if (s[i + 1].y - s[i].y < minGap) s[i].y = s[i + 1].y - minGap;
-  s.forEach((it) => { it.y = Math.max(lo, it.y); });
+  // Never overlap: when the labels need more room than the plot has, the
+  // last ones run a little past the bottom rather than onto each other.
+  s.forEach((it, i) => { it.y = i ? Math.max(it.y, s[i - 1].y + minGap) : Math.max(lo, it.y); });
   return s;
 }
 
@@ -128,11 +165,16 @@ function spreadLabels(items, minGap, lo, hi) {
 // One panel per module: each concept's activation per iteration, with grid
 // lines on both axes, markers along every line, and the end value and name
 // at the end of each line (labels spread so they never overlap).
-export function ConvergenceChart({ series, concepts, converged, diverged, iterationsRun, linear = false, fontSize = 12 }) {
+// layout "modules" draws a panel per module; "all" draws every concept in
+// one panel, coloured by module, with the module key above the plot.
+export function ConvergenceChart({ series, concepts, converged, diverged, iterationsRun, linear = false, fontSize = 12, layout = "modules" }) {
   const [ref, W] = useBoxWidth();
   const fs = fontSize;
   const colors = moduleColorMap(concepts);
-  const modules = [...colors.keys()];
+  const lineColor = conceptColorMap(concepts, colors);
+  const one = layout === "all";
+  const modules = one ? ["All concepts"] : [...colors.keys()];
+  const conceptsOf = (m) => (one ? concepts : concepts.filter((c) => moduleOf(c) === m));
   // On screen a narrow box stacks the panels. For a figure export two columns
   // are kept down to a smaller width, so a double-column figure stays shorter
   // than a printed page.
@@ -143,10 +185,12 @@ export function ConvergenceChart({ series, concepts, converged, diverged, iterat
   const lfs = fs * 0.9;
   const need = Math.max(90, ...concepts.map((c) => textW(`${signed(0.5)}  ${c.name}`, lfs, true) + 22));
   const labelW = Math.min(need, panelW * 0.44);
-  const padL = 46, padT = fs * 3.4, padB = fs * 3.2;
+  const key = one ? legendLayout(colors, fs * 0.85, panelW - 28) : { items: [], rows: 0 };
+  const keyLineH = fs * 1.35;
+  const padL = 46, padT = fs * 3.4 + key.rows * keyLineH, padB = fs * 3.2;
   const plotW = Math.max(120, panelW - padL - labelW - 14);
-  const nPer = Math.max(1, ...modules.map((m) => concepts.filter((c) => moduleOf(c) === m).length));
-  const plotH = Math.max(170, nPer * lfs * 1.25 + 10);
+  const nPer = Math.max(1, ...modules.map((m) => conceptsOf(m).length));
+  const plotH = Math.max(170, nPer * lfs * 1.3 + 16);
   const panelH = padT + plotH + padB;
   const nRows = Math.ceil(modules.length / cols);
   const noteH = fs * 2.4;
@@ -169,22 +213,23 @@ export function ConvergenceChart({ series, concepts, converged, diverged, iterat
   return (
     <div ref={ref} className="w-full">
       <svg width={W} height={H} style={{ display: "block" }} fontFamily={FONT} role="img"
-        aria-label="How every concept moves until the baseline run settles, one panel per module">
+        aria-label={one ? "How every concept moves until the baseline run settles, in one figure coloured by module" : "How every concept moves until the baseline run settles, one panel per module"}>
         <rect x="0" y="0" width={W} height={H} fill="#ffffff" />
         {modules.map((m, mi) => {
           const x0 = (mi % cols) * (panelW + gap), y0 = Math.floor(mi / cols) * (panelH + gap);
           const px = (it) => x0 + padL + (it / maxIt) * plotW;
           const py = (v) => y0 + padT + ((hi - v) / (hi - lo)) * plotH;
-          const cs = concepts.filter((c) => moduleOf(c) === m);
-          const base = colors.get(m);
-          const lines = cs.map((c, i) => ({ c, color: shade(base, i, cs.length), last: series[series.length - 1]?.values[c.id] ?? 0 }));
+          const cs = conceptsOf(m);
+          const base = one ? null : colors.get(m);
+          const lines = cs.map((c) => ({ c, color: lineColor.get(c.id), last: series[series.length - 1]?.values[c.id] ?? 0 }));
           const labels = spreadLabels(lines.map((l) => ({ ...l, y: py(l.last) })), lfs * 1.2, y0 + padT, y0 + padT + plotH);
           const lx = px(maxIt) + 14;
           return (
             <g key={m}>
               <rect x={x0 + 0.5} y={y0 + 0.5} width={panelW - 1} height={panelH - 1} rx={8} fill="#ffffff" stroke={FIG.border} />
-              <rect x={x0 + 14} y={y0 + fs * 1.05} width={11} height={11} rx={2} fill={base} />
-              <text x={x0 + 32} y={y0 + fs * 1.05 + 10} fontSize={fs * 1.08} fontWeight={700} fill={INK}>{m}</text>
+              {base && <rect x={x0 + 14} y={y0 + fs * 1.05} width={11} height={11} rx={2} fill={base} />}
+              <text x={x0 + (base ? 32 : 14)} y={y0 + fs * 1.05 + 10} fontSize={fs * 1.08} fontWeight={700} fill={INK}>{m}</text>
+              {one && <ModuleLegend layout={key} x={x0 + 14} y={y0 + fs * 2.6} px={fs * 0.85} lineH={keyLineH} />}
               <text className="se-fig-note" x={x0 + panelW - 14} y={y0 + fs * 1.05 + 10} fontSize={fs * 0.85} textAnchor="end" fill={MUTED}>{cs.length} concept{cs.length === 1 ? "" : "s"}</text>
               {yTicks.map((t) => (
                 <g key={`y${t}`}>
@@ -239,11 +284,17 @@ export function ConvergenceChart({ series, concepts, converged, diverged, iterat
 // Where each concept settles: bars from 0, grouped by module, with the
 // modules split over two columns on a wide screen. The open circle is where
 // the concept started, so the bar and circle together show how far it moved.
-export function SteadyStateBars({ concepts, final, initial = {}, fontSize = 12 }) {
+// layout "all" puts every concept in one list, sorted from highest to lowest
+// steady state, with each bar in its module colour and a module key below.
+export function SteadyStateBars({ concepts, final, initial = {}, fontSize = 12, layout = "modules" }) {
   const [ref, W] = useBoxWidth();
   const fs = fontSize;
   const colors = moduleColorMap(concepts);
-  const groups = [...colors.keys()].map((m) => ({ m, rows: concepts.filter((c) => moduleOf(c) === m).map((c) => ({ c, v: final[c.id] ?? 0, s: initial[c.id] ?? 0 })) }));
+  const one = layout === "all";
+  const rowOf = (c) => ({ c, v: final[c.id] ?? 0, s: initial[c.id] ?? 0, col: colors.get(moduleOf(c)) });
+  const groups = one
+    ? [{ m: "All concepts, from highest to lowest", rows: concepts.map(rowOf).sort((a, b) => b.v - a.v) }]
+    : [...colors.keys()].map((m) => ({ m, rows: concepts.filter((c) => moduleOf(c) === m).map(rowOf) }));
   const cols = groups.length > 1 && W >= 900 ? 2 : 1;
   // Balance the modules over the columns by number of rows, in model order.
   const total = groups.reduce((a, g) => a + g.rows.length + 2, 0);
@@ -262,10 +313,13 @@ export function SteadyStateBars({ concepts, final, initial = {}, fontSize = 12 }
   const colH = [0, 0];
   const placed = groups.map((g, gi) => { const c = colOf[gi]; const y = colH[c]; colH[c] += headH + g.rows.length * rowH + fs * 0.6; return { ...g, col: c, y }; });
   const plotBottom = Math.max(...colH.slice(0, cols));
-  const H = plotBottom + axisH + legendH;
+  const key = one ? legendLayout(colors, fs * 0.85, W - 8) : { items: [], rows: 0 };
+  const keyLineH = fs * 1.35;
+  const keyH = key.rows ? key.rows * keyLineH + fs * 0.4 : 0;
+  const H = plotBottom + axisH + keyH + legendH;
   return (
     <div ref={ref} className="w-full">
-      <svg width={W} height={H} style={{ display: "block" }} fontFamily={FONT} role="img" aria-label="Where every concept settles in the baseline, as bars from 0, grouped by module">
+      <svg width={W} height={H} style={{ display: "block" }} fontFamily={FONT} role="img" aria-label={one ? "Where every concept settles in the baseline, as bars from 0, sorted and coloured by module" : "Where every concept settles in the baseline, as bars from 0, grouped by module"}>
         <rect x="0" y="0" width={W} height={H} fill="#ffffff" />
         {Array.from({ length: cols }, (_, c) => {
           const ox = c * (colW + gap);
@@ -286,11 +340,11 @@ export function SteadyStateBars({ concepts, final, initial = {}, fontSize = 12 }
         })}
         {placed.map((g) => {
           const ox = g.col * (colW + gap);
-          const col = colors.get(g.m);
+          const col = one ? null : colors.get(g.m);
           return (
             <g key={g.m}>
-              <rect x={ox} y={g.y + fs * 0.7} width={11} height={11} rx={2} fill={col} />
-              <text x={ox + 17} y={g.y + fs * 0.7 + 10} fontSize={fs * 1.02} fontWeight={700} fill={INK}>{g.m}</text>
+              {col && <rect x={ox} y={g.y + fs * 0.7} width={11} height={11} rx={2} fill={col} />}
+              <text x={ox + (col ? 17 : 0)} y={g.y + fs * 0.7 + 10} fontSize={fs * 1.02} fontWeight={700} fill={INK}>{g.m}</text>
               {g.rows.map((r, i) => {
                 const y = g.y + headH + i * rowH, cy = y + rowH / 2;
                 const bx = Math.min(sx(0), sx(r.v)), bw = Math.max(1.5, Math.abs(sx(r.v) - sx(0)));
@@ -298,7 +352,7 @@ export function SteadyStateBars({ concepts, final, initial = {}, fontSize = 12 }
                   <g key={r.c.id}>
                     {i % 2 === 0 && <rect x={ox} y={y} width={colW} height={rowH} fill={FIG.band} opacity={0.7} />}
                     <text x={ox + 6} y={cy + fs * 0.35} fontSize={fs} fill={INK}>{fitText(r.c.name, fs, labelW - 10)}<title>{r.c.name}</title></text>
-                    <rect x={ox + bx} y={cy - rowH * 0.29} width={bw} height={rowH * 0.58} fill={col} rx={2}>
+                    <rect x={ox + bx} y={cy - rowH * 0.29} width={bw} height={rowH * 0.58} fill={r.col} rx={2}>
                       <title>{`${r.c.name}: starts at ${signed(r.s)}, settles at ${signed(r.v)}`}</title>
                     </rect>
                     <circle cx={ox + sx(r.s)} cy={cy} r={4} fill="#ffffff" stroke={INK} strokeWidth={1.4} />
@@ -309,6 +363,7 @@ export function SteadyStateBars({ concepts, final, initial = {}, fontSize = 12 }
             </g>
           );
         })}
+        {one && <ModuleLegend layout={key} x={4} y={plotBottom + axisH} px={fs * 0.85} lineH={keyLineH} />}
         <g fontSize={fs * 0.9} fill={MUTED}>
           <rect x={4} y={H - fs * 1.55} width={16} height={fs * 0.8} rx={2} fill="#9ca3af" />
           <text x={26} y={H - fs * 0.85}>Where the concept settles</text>
