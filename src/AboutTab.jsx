@@ -81,7 +81,7 @@ export default function AboutTab({ onOpenTab }) {
           <h1 className="text-3xl md:text-4xl font-bold tracking-tight leading-tight pt-2">
             Untangle complex systems, <span className="text-citrus-400">together.</span>
           </h1>
-          <p className="text-slate-300 text-[15px] leading-relaxed">
+          <p className="text-slate-300 text-[16.5px] leading-relaxed">
             The Spaghetti Engine is a workspace in your browser for building, simulating, and stress-testing fuzzy cognitive maps of complex systems, with every method documented.
           </p>
           <div className="flex flex-wrap gap-2.5 pt-1">
@@ -92,7 +92,7 @@ export default function AboutTab({ onOpenTab }) {
               <BookOpen size={15} /> Read the documentation
             </a>
           </div>
-          <p className="text-[12.5px] text-slate-300 pt-1">Version {APP_VERSION} (prototype). Runs entirely in your browser: no account, no installation, and your model stays on your computer.</p>
+          <p className="text-[14px] text-slate-300 pt-1">Version {APP_VERSION} (prototype). Runs entirely in your browser: no account, no installation, and your model stays on your computer.</p>
         </div>
       </section>
 
@@ -175,7 +175,7 @@ export default function AboutTab({ onOpenTab }) {
                   <div className="w-9 h-9 rounded-lg bg-ink text-citrus-400 flex items-center justify-center"><Icon size={18} /></div>
                   <div>
                     <div className="text-sm font-semibold text-neutral-900 leading-tight">{title}</div>
-                    <div className="text-[12.5px] text-neutral-700">{audience}</div>
+                    <div className="text-[14px] text-neutral-700">{audience}</div>
                   </div>
                 </div>
                 <p className="text-xs text-neutral-900 leading-relaxed flex-1">{blurb}</p>
@@ -186,9 +186,9 @@ export default function AboutTab({ onOpenTab }) {
                   >
                     <Download size={13} /> Download PDF
                   </a>
-                  <span className="text-[12.5px] text-neutral-600 text-right"><SizeLabel doc={doc} /></span>
+                  <span className="text-[14px] text-neutral-600 text-right"><SizeLabel doc={doc} /></span>
                 </div>
-                <a href={docUrl(doc.file)} target="_blank" rel="noreferrer" className="mt-2 text-[12.5px] text-neutral-700 hover:text-cobalt-700 hover:underline">Open in a new tab</a>
+                <a href={docUrl(doc.file)} target="_blank" rel="noreferrer" className="mt-2 text-[14px] text-neutral-700 hover:text-cobalt-700 hover:underline">Open in a new tab</a>
               </div>
             );
           })}
@@ -219,7 +219,7 @@ export default function AboutTab({ onOpenTab }) {
         </div>
       </section>
 
-      <p className="text-[12.5px] text-neutral-700 text-center pb-2">
+      <p className="text-[14px] text-neutral-700 text-center pb-2">
         The Spaghetti Engine, version {APP_VERSION} (prototype). Results are implications of the map as drawn, not forecasts.
       </p>
     </div>

@@ -29,12 +29,15 @@
   --font-sans: 'Inter', system-ui, sans-serif;
   --font-display: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
   --color-paper: #f7f5f0;
-  /* Readability: the two small text sizes the interface uses most are one step
-     larger than Tailwind's defaults (12 and 14 px). */
-  --text-xs: 0.8125rem;
-  --text-xs--line-height: 1.25rem;
-  --text-sm: 0.9375rem;
-  --text-sm--line-height: 1.375rem;
+  /* Readability: the small text sizes the interface uses most are larger than
+     Tailwind's defaults (12 and 14 px), so that every tab reads comfortably on
+     an ordinary laptop screen without zooming. */
+  --text-xs: 0.875rem;
+  --text-xs--line-height: 1.375rem;
+  --text-sm: 1rem;
+  --text-sm--line-height: 1.5rem;
+  --text-base: 1.0625rem;
+  --text-base--line-height: 1.625rem;
 }
 
 html, body, #root {
@@ -62,7 +65,7 @@ body {
 .recharts-default-tooltip {
   border-radius: 6px;
   border-color: #d1d5db !important;
-  font-size: 12.5px;
+  font-size: 14px;
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
 }
 
@@ -106,7 +109,7 @@ body {
 .se-content h3,
 .se-content h4 { font-family: var(--font-display); letter-spacing: -0.01em; color: #0f1b3d; }
 .se-content h3.text-sm,
-.se-content h4.text-sm { font-size: 1rem; line-height: 1.5rem; }
+.se-content h4.text-sm { font-size: 1.0625rem; line-height: 1.625rem; }
 .se-content h3.font-semibold.text-sm:only-child { margin-bottom: 0.1rem; }
 .se-content select,
 .se-content textarea,
