@@ -49,7 +49,7 @@ const AUDIENCES = [
   },
   {
     icon: GraduationCap, title: "Students and teachers",
-    text: "A step-by-step guide to a first map, a Basic mode with just the essentials, and documentation that explains the method as well as the buttons.",
+    text: "A step-by-step guide to a first map, the Veldmeer game as a 30-minute tutorial, a simple view with just the essentials (switch on Advanced tools for the rest), and documentation that explains the method as well as the buttons.",
   },
 ];
 
@@ -81,7 +81,7 @@ export default function AboutTab({ onOpenTab }) {
           <h1 className="text-3xl md:text-4xl font-bold tracking-tight leading-tight pt-2">
             Untangle complex systems, <span className="text-citrus-400">together.</span>
           </h1>
-          <p className="text-slate-300 text-[15px] leading-relaxed">
+          <p className="text-slate-300 text-[16.5px] leading-relaxed">
             The Spaghetti Engine is a workspace in your browser for building, simulating, and stress-testing fuzzy cognitive maps of complex systems, with every method documented.
           </p>
           <div className="flex flex-wrap gap-2.5 pt-1">
@@ -92,7 +92,7 @@ export default function AboutTab({ onOpenTab }) {
               <BookOpen size={15} /> Read the documentation
             </a>
           </div>
-          <p className="text-[12.5px] text-slate-300 pt-1">Version {APP_VERSION} (prototype). Runs entirely in your browser: no account, no installation, and your model stays on your computer.</p>
+          <p className="text-[14px] text-slate-300 pt-1">Version {APP_VERSION} (prototype). Runs entirely in your browser: no account, no installation, and your model stays on your computer.</p>
         </div>
       </section>
 
@@ -175,7 +175,7 @@ export default function AboutTab({ onOpenTab }) {
                   <div className="w-9 h-9 rounded-lg bg-ink text-citrus-400 flex items-center justify-center"><Icon size={18} /></div>
                   <div>
                     <div className="text-sm font-semibold text-neutral-900 leading-tight">{title}</div>
-                    <div className="text-[12.5px] text-neutral-700">{audience}</div>
+                    <div className="text-[14px] text-neutral-700">{audience}</div>
                   </div>
                 </div>
                 <p className="text-xs text-neutral-900 leading-relaxed flex-1">{blurb}</p>
@@ -186,15 +186,15 @@ export default function AboutTab({ onOpenTab }) {
                   >
                     <Download size={13} /> Download PDF
                   </a>
-                  <span className="text-[12.5px] text-neutral-600 text-right"><SizeLabel doc={doc} /></span>
+                  <span className="text-[14px] text-neutral-600 text-right"><SizeLabel doc={doc} /></span>
                 </div>
-                <a href={docUrl(doc.file)} target="_blank" rel="noreferrer" className="mt-2 text-[12.5px] text-neutral-700 hover:text-cobalt-700 hover:underline">Open in a new tab</a>
+                <a href={docUrl(doc.file)} target="_blank" rel="noreferrer" className="mt-2 text-[14px] text-neutral-700 hover:text-cobalt-700 hover:underline">Open in a new tab</a>
               </div>
             );
           })}
         </div>
         <p className="text-xs text-neutral-700">
-          Help is also built into the tool: foldable explanation boxes at the top of each tab, and a Method &amp; diagnostics panel with every calculated result.
+          Help is also built into the tool: the Help menu at the top right holds the Getting started guide, the Veldmeer game and a short guide to building a map with its keyboard shortcuts. Each tab has foldable explanation boxes, and a Method &amp; diagnostics panel lists every calculated result.
         </p>
       </section>
 
@@ -219,7 +219,7 @@ export default function AboutTab({ onOpenTab }) {
         </div>
       </section>
 
-      <p className="text-[12.5px] text-neutral-700 text-center pb-2">
+      <p className="text-[14px] text-neutral-700 text-center pb-2">
         The Spaghetti Engine, version {APP_VERSION} (prototype). Results are implications of the map as drawn, not forecasts.
       </p>
     </div>
