@@ -122,17 +122,17 @@ function rankedOptions(concepts, score) {
 
 function Card({ children, tone = "plain" }) {
   const cls = tone === "story" ? "bg-lagoon-50 border-lagoon-200" : tone === "tip" ? "bg-coral-50 border-coral-200" : tone === "done" ? "bg-emerald-50 border-emerald-200" : "bg-white border-slate-200";
-  return <div className={`rounded-lg border p-3 text-[14.5px] leading-relaxed text-neutral-900 ${cls}`}>{children}</div>;
+  return <div className={`rounded-xl border p-4 text-[16px] leading-[1.7] text-neutral-900 ${cls}`}>{children}</div>;
 }
 
 function Mission({ done, title, detail, children }) {
   return (
-    <div className={`rounded-lg border p-3 ${done ? "bg-emerald-50 border-emerald-200" : "bg-white border-slate-200"}`}>
+    <div className={`rounded-xl border p-4 ${done ? "bg-emerald-50 border-emerald-200" : "bg-white border-slate-200"}`}>
       <div className="flex items-start gap-2">
         {done ? <CheckCircle2 size={17} className="text-emerald-600 shrink-0 mt-px" /> : <Circle size={17} className="text-slate-300 shrink-0 mt-px" />}
         <div className="min-w-0 flex-1">
-          <div className={`text-[14.5px] font-semibold ${done ? "text-emerald-900" : "text-neutral-900"}`}>{title}</div>
-          {detail && <div className="text-xs text-neutral-700 mt-0.5">{detail}</div>}
+          <div className={`text-[16px] font-semibold ${done ? "text-emerald-900" : "text-neutral-900"}`}>{title}</div>
+          {detail && <div className="text-[15px] text-neutral-700 mt-0.5">{detail}</div>}
           {children}
         </div>
       </div>
@@ -144,23 +144,24 @@ function Quiz({ id, question, options, correct, explain, state, answer }) {
   const a = state.answers[id];
   const solved = a?.correct;
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-3" data-game-quiz={id}>
-      <div className="text-[14.5px] font-semibold text-neutral-900 mb-2">{question}</div>
-      <div className="space-y-1.5" role="group" aria-label={question}>
+    <div className="rounded-xl border border-slate-200 bg-white p-4" data-game-quiz={id}>
+      <div className="text-[13px] font-semibold uppercase tracking-wide text-lagoon-700 mb-1">Quiz</div>
+      <div className="text-[16px] font-semibold leading-snug text-neutral-900 mb-3">{question}</div>
+      <div className="space-y-2" role="group" aria-label={question}>
         {options.map((o, i) => {
           const picked = a?.tried?.includes(i);
           const right = solved && i === correct;
           const wrong = picked && i !== correct;
           return (
             <button key={i} disabled={solved} onClick={() => answer(id, i, correct)}
-              className={`w-full text-left text-[14.5px] rounded-md border px-2.5 py-1.5 transition-colors ${right ? "bg-emerald-50 border-emerald-400 text-emerald-900 font-medium" : wrong ? "bg-rose-50 border-rose-300 text-rose-900 line-through" : "bg-white border-slate-300 hover:border-lagoon-400 hover:bg-lagoon-50"} disabled:cursor-default`}>
+              className={`w-full text-left text-[16px] rounded-lg border px-3 py-2 leading-snug transition-colors ${right ? "bg-emerald-50 border-emerald-400 text-emerald-900 font-medium" : wrong ? "bg-rose-50 border-rose-300 text-rose-900 line-through" : "bg-white border-slate-300 hover:border-lagoon-400 hover:bg-lagoon-50"} disabled:cursor-default`}>
               {o}
             </button>
           );
         })}
       </div>
-      {a && !solved && <p className="text-xs text-rose-700 mt-2">Not quite. Read the question again and try another answer.</p>}
-      {solved && <p className="text-xs text-emerald-900 mt-2"><strong>{a.tried.length === 1 ? "Right first time, +10 points." : "Right, +5 points."}</strong> {explain}</p>}
+      {a && !solved && <p className="text-[15px] text-rose-700 mt-2">Not quite. Read the question again and try another answer.</p>}
+      {solved && <p className="text-[15px] leading-relaxed text-emerald-900 mt-3 bg-emerald-50 rounded-lg px-3 py-2"><strong>{a.tried.length === 1 ? "Right first time, +10 points." : "Right, +5 points."}</strong> {explain}</p>}
     </div>
   );
 }
@@ -169,18 +170,18 @@ function Reflection({ id, label, hint, state, setText, rows = 3 }) {
   const v = state.texts[id] || "";
   return (
     <label className="block">
-      <span className="block text-[14.5px] font-semibold text-neutral-900 mb-1">{label}</span>
-      {hint && <span className="block text-xs text-neutral-700 mb-1.5">{hint}</span>}
+      <span className="block text-[16px] font-semibold text-neutral-900 mb-1">{label}</span>
+      {hint && <span className="block text-[15px] text-neutral-700 mb-1.5">{hint}</span>}
       <textarea value={v} onChange={(e) => setText(id, e.target.value)} rows={rows}
-        className="w-full text-[14.5px] border border-slate-300 rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-lagoon-300" placeholder="Write your answer here" />
-      <span className="block text-[14px] text-neutral-600 mt-0.5">{v.trim().length >= 25 ? "Saved. +5 points." : "A sentence or two is enough (saved as you type)."}</span>
+        className="w-full text-[16px] leading-relaxed border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-lagoon-300" placeholder="Write your answer here" />
+      <span className="block text-[15px] text-neutral-600 mt-0.5">{v.trim().length >= 25 ? "Saved. +5 points." : "A sentence or two is enough (saved as you type)."}</span>
     </label>
   );
 }
 
 function GoButton({ onClick, children }) {
   return (
-    <button onClick={onClick} className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-lagoon-800 bg-lagoon-50 hover:bg-lagoon-100 rounded-full px-2.5 py-1">
+    <button onClick={onClick} className="mt-2 inline-flex items-center gap-1 text-[15px] font-semibold text-lagoon-800 bg-lagoon-50 hover:bg-lagoon-100 rounded-full px-2.5 py-1">
       {children} <ChevronRight size={12} />
     </button>
   );
@@ -273,7 +274,7 @@ export default function SeriousGame({
 
   if (collapsed) {
     return (
-      <button onClick={() => setCollapsed(false)} className="fixed bottom-14 right-4 z-40 inline-flex items-center gap-2 rounded-full bg-ink text-white text-xs font-medium px-3.5 py-2 shadow-lg hover:bg-slate-800" data-game-pill>
+      <button onClick={() => setCollapsed(false)} className="fixed bottom-14 right-4 z-40 inline-flex items-center gap-2 rounded-full bg-ink text-white text-[15px] font-medium px-3.5 py-2 shadow-lg hover:bg-slate-800" data-game-pill>
         <Gamepad2 size={14} className="text-coral-400" />Meinweg game · chapter {state.chapter + 1} of {CHAPTERS.length} · {points} points
       </button>
     );
@@ -305,21 +306,37 @@ export default function SeriousGame({
       body = (
         <>
           <Card tone="story">
-            <p className="mb-2"><strong>Welcome to the Meinweg Park Board.</strong> You start today as its systems analyst.</p>
-            <p className="mb-2">The Meinweg is a national park of heath, forest and fens in Limburg, on the border with Germany. Farms, a village and holiday parks lie along its edge. In recent dry summers the fens fell dry, grass replaced the heather, and the fire risk closed the park for a week. The province meets soon and has asked the board for advice. The case is fictional: the people and events are invented.</p>
-            <p>Your job: build a causal map of the Meinweg system with the Spaghetti Engine, use it to answer the board's four questions, and give advice. Nobody tells you which factors to include. That is your call as the analyst.</p>
+            <p className="text-[18px] font-semibold mb-2">Welcome to the Meinweg Park Board.</p>
+            <p className="mb-3">You start today as its systems analyst.</p>
+            <p className="mb-3">The Meinweg is a national park of heath, forest and fens in Limburg, on the border with Germany. Farms, a village and holiday parks lie along its edge.</p>
+            <p className="mb-3">In recent dry summers the fens fell dry and grass replaced the heather. The fire risk closed the park for a week. The province has asked the board for advice.</p>
+            <p className="text-[15px] text-neutral-600">The case is fictional: the people and events are invented.</p>
+          </Card>
+          <Card>
+            <p className="font-semibold mb-1">Your task</p>
+            <p>Build a causal map of the Meinweg with the Spaghetti Engine, use it to answer the board's four questions, and give advice. Nobody tells you which factors to include. That is your call.</p>
           </Card>
           <div>
-            <h4 className="se-display text-[15.5px] font-semibold mb-1.5">The boundaries of the system</h4>
-            <ul className="space-y-1.5">
-              {BOUNDARIES.map((b) => <li key={b.label} className="text-[14.5px] text-neutral-900"><strong>{b.label}.</strong> {b.text}</li>)}
-            </ul>
+            <h4 className="se-display text-[18px] font-semibold mb-2">The questions your map must answer</h4>
+            <ol className="space-y-2">
+              {QUESTIONS.map((q, i) => (
+                <li key={q.id} className="flex gap-3 text-[16px] leading-relaxed text-neutral-900">
+                  <span className="w-7 h-7 rounded-full bg-lagoon-100 text-lagoon-800 text-[14px] font-semibold flex items-center justify-center shrink-0">{i + 1}</span>
+                  <span>{q.text}</span>
+                </li>
+              ))}
+            </ol>
           </div>
           <div>
-            <h4 className="se-display text-[15.5px] font-semibold mb-1.5">The questions your map must answer</h4>
-            <ol className="space-y-1 list-decimal pl-5 text-[14.5px] text-neutral-900">
-              {QUESTIONS.map((q) => <li key={q.id}>{q.text}</li>)}
-            </ol>
+            <h4 className="se-display text-[18px] font-semibold mb-2">The boundaries of the system</h4>
+            <dl className="rounded-xl border border-slate-200 divide-y divide-slate-100">
+              {BOUNDARIES.map((b) => (
+                <div key={b.label} className="px-4 py-3">
+                  <dt className="text-[14px] font-semibold uppercase tracking-wide text-lagoon-700">{b.label}</dt>
+                  <dd className="text-[16px] leading-relaxed text-neutral-900 mt-0.5">{b.text}</dd>
+                </div>
+              ))}
+            </dl>
           </div>
           <Quiz id="b1" state={state} answer={answer}
             question="A nature group wants the Veluwe, a large heath 150 km to the north, in your map. Does it belong inside the boundary?"
@@ -370,24 +387,26 @@ export default function SeriousGame({
           {INTERVIEWS.map((iv) => {
             const read = state.interviewsRead.includes(iv.id);
             return (
-              <div key={iv.id} className={`rounded-lg border p-3 ${read ? "bg-slate-50 border-slate-200" : "bg-white border-slate-200"}`}>
-                <div className="flex items-center gap-2 mb-1">
-                  <MessageSquareQuote size={15} className="text-lagoon-600 shrink-0" />
-                  <span className="text-[14.5px] font-semibold text-neutral-900">{iv.who}</span>
-                  <span className="text-[14px] text-neutral-600 truncate">{iv.role}</span>
+              <div key={iv.id} className={`rounded-xl border p-4 ${read ? "bg-slate-50 border-slate-200" : "bg-white border-slate-200"}`}>
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="w-10 h-10 rounded-full bg-lagoon-100 text-lagoon-800 font-semibold text-[15px] flex items-center justify-center shrink-0">{iv.who.replace(/^Dr\. /, "").split(" ").map((w) => w[0]).slice(0, 2).join("")}</span>
+                  <div className="min-w-0">
+                    <div className="text-[16px] font-semibold text-neutral-900 leading-tight">{iv.who}</div>
+                    <div className="text-[15px] text-neutral-600 leading-tight">{iv.role}</div>
+                  </div>
                 </div>
-                <p className="text-[14.5px] text-neutral-900 italic leading-relaxed">"{iv.quote}"</p>
+                <p className="text-[16px] text-neutral-900 leading-[1.7] border-l-[3px] border-lagoon-200 pl-3">{iv.quote}</p>
                 {!read
-                  ? <button onClick={() => setState((s) => ({ ...s, interviewsRead: [...s.interviewsRead, iv.id] }))} className="mt-1.5 text-xs font-medium text-lagoon-800 hover:underline">Mark as read (+2 points)</button>
-                  : <span className="mt-1.5 inline-flex items-center gap-1 text-xs text-emerald-800"><CheckCircle2 size={12} />Read</span>}
+                  ? <button onClick={() => setState((s) => ({ ...s, interviewsRead: [...s.interviewsRead, iv.id] }))} className="mt-3 text-[15px] font-medium text-lagoon-800 hover:underline">Mark as read (+2 points)</button>
+                  : <span className="mt-1.5 inline-flex items-center gap-1 text-[15px] text-emerald-800"><CheckCircle2 size={12} />Read</span>}
               </div>
             );
           })}
           <label className="block">
-            <span className="block text-[14.5px] font-semibold text-neutral-900 mb-1">Your notebook</span>
-            <span className="block text-xs text-neutral-700 mb-1.5">Jot down the quantities you heard, in your own words. You will turn them into concepts in the next chapter.</span>
+            <span className="block text-[16px] font-semibold text-neutral-900 mb-1">Your notebook</span>
+            <span className="block text-[15px] text-neutral-700 mb-1.5">Jot down the quantities you heard, in your own words. You will turn them into concepts in the next chapter.</span>
             <textarea value={state.notes} onChange={(e) => setState({ notes: e.target.value })} rows={4}
-              className="w-full text-[14.5px] border border-slate-300 rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-lagoon-300" placeholder="For example: groundwater level, ..." />
+              className="w-full text-[16px] border border-slate-300 rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-lagoon-300" placeholder="For example: groundwater level, ..." />
           </label>
         </>
       );
@@ -536,8 +555,8 @@ export default function SeriousGame({
           <div className="rounded-lg border border-coral-300 bg-coral-50 p-3 text-center">
             <Trophy size={26} className="mx-auto text-coral-600 mb-1" />
             <div className="se-display text-[17.5px] font-bold text-neutral-900">{rank}</div>
-            <div className="text-[14.5px] text-neutral-800">{points} of {maxPoints} points · {done} of 11 missions · {minutes} min</div>
-            <button onClick={report} className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-ink text-white text-[14.5px] font-semibold px-3 py-1.5 hover:bg-slate-800"><Download size={14} />Download my advice</button>
+            <div className="text-[16px] text-neutral-800">{points} of {maxPoints} points · {done} of 11 missions · {minutes} min</div>
+            <button onClick={report} className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-ink text-white text-[16px] font-semibold px-3 py-1.5 hover:bg-slate-800"><Download size={14} />Download my advice</button>
           </div>
           <Card>
             <p className="mb-1"><strong>Where to go next.</strong> Turn on <em>Advanced tools</em> at the top right for the deeper analyses:</p>
@@ -586,20 +605,20 @@ export default function SeriousGame({
   }
 
   return (
-    <aside className="fixed z-40 bg-white border border-slate-200 shadow-2xl flex flex-col inset-x-2 bottom-2 max-h-[62vh] rounded-xl md:static md:z-auto md:order-first md:w-[480px] lg:w-[520px] md:shrink-0 md:max-h-none md:rounded-none md:shadow-none md:border-0 md:border-r"
+    <aside className="fixed z-40 bg-white border border-slate-200 shadow-2xl flex flex-col inset-x-2 bottom-2 max-h-[62vh] rounded-xl md:static md:z-auto md:order-first md:w-[540px] lg:w-[600px] md:shrink-0 md:max-h-none md:rounded-none md:shadow-none md:border-0 md:border-r"
       role="complementary" aria-label="Meinweg serious game">
       <div className="flex items-center gap-2 px-3.5 py-2.5 bg-ink text-white rounded-t-xl md:rounded-none">
         <Gamepad2 size={17} className="text-coral-400 shrink-0" />
         <div className="min-w-0 flex-1">
-          <div className="se-display text-[15.5px] font-semibold leading-tight">The Meinweg game</div>
-          <div className="text-[14px] text-slate-300">A 30-minute tutorial in modelling</div>
+          <div className="se-display text-[18px] font-semibold leading-tight">The Meinweg game</div>
+          <div className="text-[15px] text-slate-300">A 30-minute tutorial in modelling</div>
         </div>
-        <span className="inline-flex items-center gap-1 text-[14.5px] text-coral-300" title="Points"><Trophy size={13} />{points}</span>
-        {state.startedAt && <span className="inline-flex items-center gap-1 text-[14.5px] text-slate-300" title="Time played"><Timer size={13} />{minutes}′</span>}
+        <span className="inline-flex items-center gap-1 text-[16px] text-coral-300" title="Points"><Trophy size={13} />{points}</span>
+        {state.startedAt && <span className="inline-flex items-center gap-1 text-[16px] text-slate-300" title="Time played"><Timer size={13} />{minutes}′</span>}
         <button onClick={() => setCollapsed(true)} className="text-slate-300 hover:text-white" title="Make smaller"><ChevronDown size={16} /></button>
         <button onClick={onClose} className="text-slate-300 hover:text-white" title="Close the game (your progress is kept)"><X size={16} /></button>
       </div>
-      <div className="flex gap-0.5 px-3.5 pt-2.5" aria-label="Chapters">
+      <div className="flex gap-1 px-5 pt-3" aria-label="Chapters">
         {CHAPTERS.map((c, i) => (
           <button key={c.id} onClick={() => state.startedAt && go(i)} title={`${i + 1}. ${c.title} (${c.minutes} min)`}
             className={`h-1.5 flex-1 rounded-full ${i < state.chapter ? "bg-emerald-500" : i === state.chapter ? "bg-coral-400" : "bg-slate-200"}`} />
@@ -607,17 +626,17 @@ export default function SeriousGame({
       </div>
       {!state.startedAt ? null : (
         <>
-          <div className="px-3.5 pt-2 pb-1">
-            <div className="text-[14px] uppercase tracking-wide text-neutral-600">Chapter {state.chapter + 1} of {CHAPTERS.length} · about {ch.minutes} min</div>
-            <h3 className="se-display text-[17.5px] font-bold text-neutral-900">{ch.title}</h3>
+          <div className="px-5 pt-3 pb-2">
+            <div className="text-[15px] uppercase tracking-wide text-neutral-600">Chapter {state.chapter + 1} of {CHAPTERS.length} · about {ch.minutes} min</div>
+            <h3 className="se-display text-[22px] font-bold leading-tight text-neutral-900 mt-0.5">{ch.title}</h3>
           </div>
-          <div className="flex-1 min-h-0 overflow-y-auto px-3.5 pb-3 space-y-2.5" data-game-body>{body}</div>
-          <div className="flex items-center gap-2 px-3.5 py-2.5 border-t border-slate-200">
-            <button onClick={() => go(state.chapter - 1)} disabled={state.chapter === 0} className="inline-flex items-center gap-1 text-[14.5px] text-neutral-800 px-2 py-1 rounded-md hover:bg-slate-100 disabled:opacity-40"><ChevronLeft size={14} />Back</button>
+          <div className="flex-1 min-h-0 overflow-y-auto px-5 pt-1 pb-6 space-y-4" data-game-body>{body}</div>
+          <div className="flex items-center gap-2 px-5 py-3 border-t border-slate-200">
+            <button onClick={() => go(state.chapter - 1)} disabled={state.chapter === 0} className="inline-flex items-center gap-1 text-[16px] text-neutral-800 px-2 py-1 rounded-md hover:bg-slate-100 disabled:opacity-40"><ChevronLeft size={14} />Back</button>
             <button onClick={restart} className="text-neutral-500 hover:text-neutral-800" title="Start the game again"><RotateCcw size={14} /></button>
             <span className="flex-1" />
             {state.chapter < CHAPTERS.length - 1 && (
-              <button onClick={() => go(state.chapter + 1)} className="inline-flex items-center gap-1 rounded-lg bg-ink text-white text-[14.5px] font-semibold px-3 py-1.5 hover:bg-slate-800">Next chapter<ChevronRight size={14} /></button>
+              <button onClick={() => go(state.chapter + 1)} className="inline-flex items-center gap-1 rounded-lg bg-ink text-white text-[16px] font-semibold px-3 py-1.5 hover:bg-slate-800">Next chapter<ChevronRight size={14} /></button>
             )}
           </div>
         </>
