@@ -147,8 +147,28 @@ body {
 }
 /* The colour of the active group of tabs carries into its fold-outs. */
 .se-content[data-tone="lagoon"] { --tone: #0f6863; --tone-soft: #eefbfa; }
+.se-content[data-tone="emerald"] { --tone: #047857; --tone-soft: #ecfdf5; }
 .se-content[data-tone="sky"] { --tone: #0369a1; --tone-soft: #f0f9ff; }
 .se-content[data-tone="violet"] { --tone: #6d28d9; --tone-soft: #f5f3ff; }
 .se-content[data-tone="amber"] { --tone: #b45309; --tone-soft: #fffbeb; }
 .se-content[data-tone="about"] { --tone: #b6401a; --tone-soft: #fff4ef; }
 .se-content .se-tone-chip { background-color: var(--tone-soft); color: var(--tone); }
+
+/* Explanations inside fold-out boxes read as prose: a larger size, more
+   line height, and a comfortable line length. Tables and charts inside the
+   same boxes keep their own sizes. */
+.se-fold-body p,
+.se-fold-body li,
+.se-fold-body dd,
+.se-fold-body dt {
+  font-size: 15.5px;
+  line-height: 1.7;
+  color: #1f2d30;
+}
+.se-fold-body p,
+.se-fold-body ol,
+.se-fold-body ul { max-width: 82ch; }
+.se-fold-body li + li { margin-top: 0.3em; }
+.se-fold-body strong { color: #0d2326; }
+.se-fold-body td p,
+.se-fold-body th p { font-size: inherit; line-height: inherit; max-width: none; }
