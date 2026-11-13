@@ -1713,6 +1713,9 @@ const FIGURE_FONTS = [
   { id: "arial", label: "Arial / Helvetica", stack: "Arial, Helvetica, 'Liberation Sans', sans-serif" },
   { id: "times", label: "Times New Roman", stack: "'Times New Roman', Times, 'Liberation Serif', serif" },
   { id: "georgia", label: "Georgia", stack: "Georgia, 'Times New Roman', 'Liberation Serif', serif" },
+  { id: "calibri", label: "Calibri (as in Word)", stack: "Calibri, Carlito, 'Segoe UI', Arial, sans-serif" },
+  { id: "garamond", label: "Garamond", stack: "Garamond, 'EB Garamond', 'Times New Roman', serif" },
+  { id: "mono", label: "Monospace", stack: "Consolas, 'DejaVu Sans Mono', Menlo, monospace" },
 ];
 const EDITOR_PALETTES = [
   { id: "asShown", label: "As on screen" },
@@ -1743,12 +1746,13 @@ const FIGURE_TEMPLATES = [
 // look is one click away.
 const EDITOR_DEFAULTS = {
   widthMm: 174, heightMm: 100, panelLabel: "", trimTop: 0, trimRight: 0, trimBottom: 0, trimLeft: 0,
+  titleAlign: "left", titleScale: 1.2, colorMap: {}, labelMap: {},
   ...FIGURE_TEMPLATES[0].set, template: FIGURE_TEMPLATES[0].id,
 };
 // Version 2: the journal template became the default, so earlier saved
 // choices (the screen style by default) are not carried over.
 const EDITOR_PREF_KEY = "se.figureEditor.v2";
-const EDITOR_KEPT = ["template", "widthMm", "fontId", "textPt", "palette", "lineScale", "showTitle", "frame", "background", "autoCrop", "marginMm", "format", "dpi", "clean", "grid"];
+const EDITOR_KEPT = ["template", "widthMm", "fontId", "textPt", "palette", "lineScale", "showTitle", "frame", "background", "autoCrop", "marginMm", "format", "dpi", "clean", "grid", "titleAlign", "titleScale"];
 function readEditorPrefs() {
   try { return { ...EDITOR_DEFAULTS, ...JSON.parse(localStorage.getItem(EDITOR_PREF_KEY) || "{}") }; } catch { return { ...EDITOR_DEFAULTS }; }
 }
@@ -1968,6 +1972,55 @@ function removeGridlines(root) {
 
 // Builds the finished figure from a layout copy and the editor settings.
 // Returns the SVG text plus its size in mm and the text size it prints at.
+// Colours and labels the editor lets the user change one by one. A colour
+// is named by its hex code as drawn after the palette is applied; a label
+// by its text as drawn. Numbers (tick values, results) are not offered.
+const PAINT_PROPS = ["fill", "stroke", "stop-color"];
+function paintHex(v) {
+  const c = parseCssColor(v);
+  if (!c || c.a === 0) return null;
+  return `#${[c.r, c.g, c.b].map((x) => Math.round(x).toString(16).padStart(2, "0")).join("")}`;
+}
+function figureColours(root) {
+  const n = new Map();
+  root.querySelectorAll("*").forEach((el) => PAINT_PROPS.forEach((p) => {
+    const h = paintHex(readPaint(el, p));
+    if (h && h !== "#ffffff") n.set(h, (n.get(h) || 0) + 1);
+  }));
+  return [...n.entries()].sort((a, b) => b[1] - a[1]).slice(0, 16).map(([h]) => h);
+}
+function applyColourMap(root, map) {
+  const keys = Object.keys(map || {});
+  if (!keys.length) return;
+  root.querySelectorAll("*").forEach((el) => PAINT_PROPS.forEach((p) => {
+    const v = readPaint(el, p);
+    const to = map[paintHex(v)];
+    if (!to) return;
+    if (new RegExp(`(?:^|;)\\s*${p}\\s*:`).test(el.getAttribute("style") || "")) setStyleProp(el, p, to);
+    if (el.hasAttribute(p)) el.setAttribute(p, to);
+  }));
+}
+// The text a <text> or <tspan> draws itself: its own text nodes, not those
+// of a nested tspan or of a <title> tooltip.
+const ownTextNodes = (el) => [...el.childNodes].filter((n) => n.nodeType === 3);
+const ownText = (el) => ownTextNodes(el).map((n) => n.nodeValue).join("").trim();
+const textEls = (root) => [...root.querySelectorAll("text, tspan")];
+const isNumberLabel = (t) => /^[-+\u2212]?[\d.,]+\s*(%|×|x)?$/.test(t);
+function figureLabels(root) {
+  const seen = new Set();
+  textEls(root).forEach((t) => { const v = ownText(t); if (v.length > 1 && !isNumberLabel(v)) seen.add(v); });
+  return [...seen].slice(0, 120);
+}
+function applyLabelMap(root, map) {
+  if (!map || !Object.keys(map).length) return;
+  textEls(root).forEach((t) => {
+    const v = ownText(t);
+    if (!(v in map)) return;
+    const nodes = ownTextNodes(t);
+    nodes.forEach((n, i) => { n.nodeValue = i === 0 ? map[v] : ""; });
+  });
+}
+
 async function buildEditedFigure(raw, s, { title, subtitle, isViewBox }) {
   const NS = "http://www.w3.org/2000/svg";
   const font = FIGURE_FONTS.find((f) => f.id === s.fontId) || FIGURE_FONTS[0];
@@ -1977,9 +2030,13 @@ async function buildEditedFigure(raw, s, { title, subtitle, isViewBox }) {
   const texts = [...drawing.querySelectorAll("text")];
   const textParts = [...drawing.querySelectorAll("text, tspan")];
   textParts.forEach((t) => setStyleProp(t, "font-family", font.stack));
+  const labels = figureLabels(drawing);
+  applyLabelMap(drawing, s.labelMap);
   recolourFigure(drawing, s.palette);
   if (s.clean) cleanFigureForPrint(drawing);
   if (!s.grid) removeGridlines(drawing);
+  const colours = figureColours(drawing);
+  applyColourMap(drawing, s.colorMap);
   if (Math.abs(s.lineScale - 1) > 1e-3) {
     drawing.querySelectorAll("path, line, polyline, polygon, circle, ellipse, rect").forEach((el) => {
       const st = el.getAttribute("style") || "";
@@ -2037,7 +2094,7 @@ async function buildEditedFigure(raw, s, { title, subtitle, isViewBox }) {
   const keptW = b.w - trimX * u, keptH = Math.max(10, b.h - trimY * u);
   // Title band, sized in points like the rest of the text.
   const pt = (v) => (v / 0.75) * u;
-  const titleFs = pt(s.textPt * 1.2), subFs = pt(s.textPt), labelFs = pt(s.textPt * 1.5);
+  const titleFs = pt(s.textPt * (s.titleScale || 1.2)), subFs = pt(s.textPt), labelFs = pt(s.textPt * 1.5);
   const measureCtx = (exportMeasureCtx ||= document.createElement("canvas").getContext("2d"));
   const wrap = (text, fs, weight, maxW) => {
     measureCtx.font = `${weight} ${fs}px ${font.stack}`;
@@ -2063,9 +2120,10 @@ async function buildEditedFigure(raw, s, { title, subtitle, isViewBox }) {
     bg.setAttribute("x", x0); bg.setAttribute("y", y0); bg.setAttribute("width", W); bg.setAttribute("height", H); bg.setAttribute("fill", "#ffffff");
     root.insertBefore(bg, content);
   }
-  const addText = (text, x, y, fs, weight, fill) => {
+  const addText = (text, x, y, fs, weight, fill, anchor = "start") => {
     const t = document.createElementNS(NS, "text");
     t.setAttribute("x", x.toFixed(2)); t.setAttribute("y", y.toFixed(2));
+    if (anchor !== "start") t.setAttribute("text-anchor", anchor);
     t.setAttribute("style", `font-family:${font.stack};font-size:${fs.toFixed(2)}px;font-weight:${weight};fill:${fill}`);
     t.textContent = text;
     root.appendChild(t);
@@ -2073,8 +2131,10 @@ async function buildEditedFigure(raw, s, { title, subtitle, isViewBox }) {
   const hx = left + labelW;
   let y = top0 - headerH;
   if (label) addText(label, left, y + labelFs * 0.95, labelFs, 700, "#000000");
-  tLines.forEach((l) => { y += titleFs * 1.25; addText(l, hx, y - titleFs * 0.22, titleFs, 700, "#111827"); });
-  sLines.forEach((l) => { y += subFs * 1.3; addText(l, hx, y - subFs * 0.25, subFs, 400, "#374151"); });
+  const centre = s.titleAlign === "center";
+  const tx = centre ? hx + (keptW - labelW) / 2 : hx, ta = centre ? "middle" : "start";
+  tLines.forEach((l) => { y += titleFs * 1.25; addText(l, tx, y - titleFs * 0.22, titleFs, 700, "#111827", ta); });
+  sLines.forEach((l) => { y += subFs * 1.3; addText(l, tx, y - subFs * 0.25, subFs, 400, "#374151", ta); });
   if (s.frame) {
     const sw = pt(0.5);
     const fr = document.createElementNS(NS, "rect");
@@ -2090,7 +2150,7 @@ async function buildEditedFigure(raw, s, { title, subtitle, isViewBox }) {
   root.setAttribute("width", `${s.widthMm.toFixed(2)}mm`);
   root.setAttribute("height", `${heightMm.toFixed(2)}mm`);
   const text = '<?xml version="1.0" encoding="UTF-8"?>\n' + new XMLSerializer().serializeToString(root);
-  return { svgText: text, widthMm: s.widthMm, heightMm, printedPt, minLinePt: Number.isFinite(minLinePt) ? minLinePt : null, aspect: H / W, isViewBox };
+  return { svgText: text, widthMm: s.widthMm, heightMm, printedPt, minLinePt: Number.isFinite(minLinePt) ? minLinePt : null, aspect: H / W, isViewBox, colours, labels };
 }
 
 function renderFigurePng(svgText, widthMm, heightMm, dpi, transparent) {
@@ -2163,6 +2223,24 @@ function EditorStep({ n, title, children }) {
 }
 // A row with a label. Rows of buttons are a labelled group rather than a
 // <label>, which would hand its text to the first button.
+// The labels of a figure as a short searchable list of text boxes.
+function FigureLabelList({ labels, map, onChange }) {
+  const [q, setQ] = useState("");
+  const [all, setAll] = useState(false);
+  const hits = labels.filter((l) => !q || l.toLowerCase().includes(q.toLowerCase()) || (map[l] || "").toLowerCase().includes(q.toLowerCase()));
+  const shown = all || q ? hits : hits.slice(0, 8);
+  return (
+    <div className="space-y-1.5">
+      {labels.length > 8 && <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a label" aria-label="Find a label" className="w-full border border-slate-300 rounded px-2 py-1 text-xs" />}
+      {shown.map((l) => (
+        <input key={l} defaultValue={map[l] ?? l} onBlur={(e) => onChange(l, e.target.value.trim())} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+          aria-label={`Label ${l}`} title={l} className={`w-full border rounded px-2 py-1 text-xs ${map[l] ? "border-lagoon-400 bg-lagoon-50" : "border-slate-300"}`} />
+      ))}
+      {!q && !all && hits.length > 8 && <button onClick={() => setAll(true)} className="text-xs text-lagoon-800 underline">Show all {hits.length} labels</button>}
+    </div>
+  );
+}
+
 function EditorRow({ label, group = false, children }) {
   const Tag = group ? "div" : "label";
   return <Tag className="flex items-center justify-between gap-2 text-xs text-neutral-900" {...(group ? { role: "group", "aria-label": label } : {})}><span>{label}</span><span className="flex items-center gap-1">{children}</span></Tag>;
@@ -2335,6 +2413,15 @@ function FigureEditor({ req }) {
                 <>
                   <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" aria-label="Title" className="w-full border border-slate-300 rounded px-2 py-1 text-xs" />
                   <input value={subtitle} onChange={(e) => setSubtitle(e.target.value)} placeholder="Subtitle (optional)" aria-label="Subtitle" className="w-full border border-slate-300 rounded px-2 py-1 text-xs" />
+                  <EditorRow group label="Title position">
+                    <span className="inline-flex border border-slate-300 rounded overflow-hidden">
+                      {[["left", "Left"], ["center", "Centred"]].map(([v, l], i) => <button key={v} onClick={() => set({ titleAlign: v })} className={`${seg(s.titleAlign === v)} ${i ? "border-l border-slate-300" : ""}`}>{l}</button>)}
+                    </span>
+                  </EditorRow>
+                  <EditorRow label="Title size">
+                    <input type="range" min={1} max={2} step={0.1} value={s.titleScale} onChange={(e) => set({ titleScale: Number(e.target.value) })} className="w-24" aria-label="Title size" />
+                    <span className="w-9 text-right font-mono">×{Number(s.titleScale).toFixed(1)}</span>
+                  </EditorRow>
                 </>
               ) : (
                 <p className="text-[14px] text-neutral-600 leading-snug">Journals put the title in the caption, so it is left out.</p>
@@ -2360,7 +2447,7 @@ function FigureEditor({ req }) {
             <details className="border-t border-slate-100 pt-3 group">
               <summary className="cursor-pointer text-[14.5px] font-semibold text-neutral-800 flex items-center gap-1.5">
                 <ChevronRight size={14} className="group-open:rotate-90 transition-transform" />Fine-tune
-                <span className="font-normal text-neutral-500">font, colours, lines, cropping</span>
+                <span className="font-normal text-neutral-500">font, colours, labels, lines, cropping</span>
               </summary>
               <div className="space-y-3 mt-3">
                 <EditorSection title="Text">
@@ -2392,6 +2479,29 @@ function FigureEditor({ req }) {
                     </span>
                   </EditorRow>
                 </EditorSection>
+                {built?.colours?.length > 0 && (
+                  <EditorSection title="Colours in this figure">
+                    <p className="text-[14px] text-neutral-600 leading-snug">Click a colour to replace it everywhere in this figure.</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {built.colours.map((orig) => {
+                        const now = s.colorMap[orig] || orig;
+                        return (
+                          <label key={orig} className="relative w-8 h-8 rounded-md border border-slate-300 cursor-pointer shadow-sm" style={{ background: now }} title={now === orig ? orig : `${orig} → ${now}`}>
+                            <input type="color" value={now} onChange={(e) => setS((p) => ({ ...p, colorMap: { ...p.colorMap, [orig]: e.target.value } }))} className="absolute inset-0 opacity-0 cursor-pointer" aria-label={`Replace colour ${orig}`} />
+                            {now !== orig && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-lagoon-600 border border-white" />}
+                          </label>
+                        );
+                      })}
+                    </div>
+                    {Object.keys(s.colorMap).length > 0 && <button onClick={() => setS((p) => ({ ...p, colorMap: {} }))} className="text-xs text-neutral-700 underline hover:text-neutral-900">Undo colour changes</button>}
+                  </EditorSection>
+                )}
+                {built?.labels?.length > 0 && (
+                  <EditorSection title="Labels">
+                    <p className="text-[14px] text-neutral-600 leading-snug">Rename a label in the exported figure only. Your model keeps its names.</p>
+                    <FigureLabelList labels={built.labels} map={s.labelMap} onChange={(orig, v) => setS((p) => { const m = { ...p.labelMap }; if (v === orig || v === "") delete m[orig]; else m[orig] = v; return { ...p, labelMap: m }; })} />
+                  </EditorSection>
+                )}
                 <EditorSection title="Size and cropping">
                   <EditorRow label="Width (mm)">{mmInput("widthMm", 30, 400)}</EditorRow>
                   {req.isChart && <EditorRow label="Height (mm)">{mmInput("heightMm", 30, 400)}</EditorRow>}
@@ -6869,13 +6979,13 @@ function FoldableBox({ storageKey, title, icon: Icon = HelpCircle, summary, badg
         <span className="min-w-0">
           <span className="se-display text-[16.5px] font-semibold text-ink">{title}</span>
           {badge && <span className="ml-2 text-xs font-normal text-neutral-600">{badge}</span>}
-          {!open && summary && <span className="block text-xs text-neutral-700 mt-0.5">{summary}</span>}
+          {!open && summary && <span className="block text-[15px] leading-snug text-slate-600 mt-0.5">{summary}</span>}
         </span>
         <span className="ml-auto shrink-0 inline-flex items-center gap-1 text-[14px] font-medium text-lagoon-800 bg-lagoon-50 hover:bg-lagoon-100 rounded-full pl-2.5 pr-2 py-1">
           {open ? "Hide" : "Read more"}{open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
         </span>
       </button>
-      {open && <div className="px-4 pb-4 pt-1">{children}</div>}
+      {open && <div className="se-fold-body px-4 pb-5 pt-1">{children}</div>}
     </div>
   );
 }
@@ -12352,7 +12462,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
         <div className="rounded-md border border-slate-200">
           <button onClick={() => setSetupMore((v) => !v)} aria-expanded={setupMore} className="w-full flex items-center gap-2 px-3 py-2 text-left">
             {setupMore ? <ChevronDown size={14} className="text-neutral-700" /> : <ChevronRight size={14} className="text-neutral-700" />}
-            <span className="text-xs font-semibold text-neutral-900">More options</span>
+            <span className="text-sm font-semibold text-neutral-900">More options</span>
             <span className="text-[14px] text-neutral-600">{setupChanges.length ? `Changed: ${setupChanges.join(", ")}` : "Desired levels, effort weights, how pathways are built, order constraints, expert sequences, robustness"}</span>
           </button>
           {setupMore && (
@@ -13310,7 +13420,7 @@ export default function SpaghettiEngine() {
 // Tabs shown in Basic mode: building the map, and seeing where it settles and
 // what scenarios change. Everything else (routes, sensitivity, Monte Carlo,
 // transition analyses) appears in Advanced mode.
-const BASIC_TABS = new Set(["editor", "network", "metrics", "equilibrium", "scenarios", "about"]);
+const BASIC_TABS = new Set(["editor", "network", "metrics", "routes", "equilibrium", "scenarios", "about"]);
 const UI_LEVEL_KEY = "se.ui.level";
 const GUIDE_KEY = "se.guide";
 
@@ -13318,6 +13428,7 @@ const GUIDE_KEY = "se.guide";
 // the work they are. Written out in full so Tailwind finds the classes.
 const GROUP_TONES = {
   lagoon: { text: "text-lagoon-700", chip: "bg-lagoon-50 text-lagoon-700", chipOn: "bg-lagoon-700 text-white", ring: "border-lagoon-400" },
+  emerald: { text: "text-emerald-700", chip: "bg-emerald-50 text-emerald-700", chipOn: "bg-emerald-700 text-white", ring: "border-emerald-400" },
   sky: { text: "text-sky-700", chip: "bg-sky-50 text-sky-700", chipOn: "bg-sky-700 text-white", ring: "border-sky-400" },
   violet: { text: "text-violet-700", chip: "bg-violet-50 text-violet-700", chipOn: "bg-violet-600 text-white", ring: "border-violet-300" },
   amber: { text: "text-amber-700", chip: "bg-amber-50 text-amber-700", chipOn: "bg-amber-500 text-white", ring: "border-amber-300" },
@@ -13326,10 +13437,16 @@ const GROUP_TONES = {
 const TAB_GROUPS = [
   {
     id: "building", label: "Model building", short: "Build", icon: Share2, tone: "lagoon",
-    hint: "Build and explore the model. Well suited to working through with participants.",
+    hint: "Draw and edit the model. Well suited to working through with participants.",
     tabs: [
       { id: "editor", label: "Model editor", icon: Table2 },
       { id: "network", label: "Network", icon: Share2 },
+    ],
+  },
+  {
+    id: "structure", label: "Structural analysis", short: "Structure", icon: BarChart3, tone: "emerald",
+    hint: "Read the structure of the map: which concepts drive the system, and along which routes influence travels.",
+    tabs: [
       { id: "metrics", label: "Influence Metrics", icon: BarChart3 },
       { id: "routes", label: "Influence Routes", icon: Route },
     ],
@@ -15216,7 +15333,7 @@ function SpaghettiEngineApp() {
                 {showScenarioHelp ? <ChevronDown size={14} className="ml-auto text-neutral-600" /> : <ChevronRight size={14} className="ml-auto text-neutral-600" />}
               </button>
               {showScenarioHelp && (
-                <div className="mt-3 space-y-3 text-xs text-neutral-900">
+                <div className="se-fold-body mt-3 space-y-3 text-xs text-neutral-900">
                   <div className="space-y-2.5">
                     <p>A <ScenarioTerm term="Scenario">scenario</ScenarioTerm> is a "what if" copy of your model: the same concepts and causal relationships, but with one or more <ScenarioTerm term="Intervention">interventions</ScenarioTerm> applied, such as holding a concept at a fixed value or changing a relationship's strength. Running it re-computes where the system settles, reaching its new <ScenarioTerm term="Equilibrium">equilibrium</ScenarioTerm>, and compares that against the baseline.</p>
                     <p>Scenario analysis is useful because it lets you test a policy option, a shock, or a combination of measures entirely inside the model before anything is implemented in reality: does strengthening this driver actually move the outcome you care about, and by how much, given everything else the model says influences it?</p>
