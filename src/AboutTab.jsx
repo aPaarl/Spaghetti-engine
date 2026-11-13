@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import {
   BookOpen, FileText, ScrollText, Download, Mail, Copy, Check, Users, GraduationCap,
   Microscope, ArrowRight, Landmark, ExternalLink, Gamepad2, Compass, HelpCircle,
-  Share2, Activity, Sparkles, ShieldCheck, Laptop,
+  Share2, Activity, Sparkles,
 } from "lucide-react";
 import pkg from "../package.json";
 import manifest from "./docs-manifest.json";
@@ -38,10 +38,10 @@ const DOCS = [
 ];
 
 const AUDIENCES = [
-  { icon: Microscope, title: "Researchers and analysts", text: "Build causal models of nexus and socio-environmental systems, with every number traceable to a documented method." },
-  { icon: Users, title: "Workshop facilitators", text: "Draw a map live with stakeholders, see what it implies, and change it together." },
-  { icon: Landmark, title: "Policy and practice", text: "Explore what-if questions, tipping points, and the order in which interventions work best." },
-  { icon: GraduationCap, title: "Students and teachers", text: "Learn with the guided first map, the 30-minute Veldmeer game, and a simple view with only the essentials." },
+  { icon: Microscope, title: "Researchers", text: "Traceable models of complex systems", tint: "bg-lagoon-50 text-lagoon-700" },
+  { icon: Users, title: "Facilitators", text: "Build maps live with stakeholders", tint: "bg-coral-50 text-coral-600" },
+  { icon: Landmark, title: "Policy makers", text: "Test what-if questions and interventions", tint: "bg-sky-50 text-sky-700" },
+  { icon: GraduationCap, title: "Students and teachers", text: "Learn with the guide and the game", tint: "bg-violet-50 text-violet-700" },
 ];
 
 const STEPS = [
@@ -50,10 +50,6 @@ const STEPS = [
   { tab: "equilibrium", icon: Activity, title: "See what it implies", text: "Run the baseline to see where the system settles, then test interventions against it.", link: "Open Baseline Equilibrium" },
 ];
 
-const SECTIONS = [
-  ["about-what", "What it is"], ["about-start", "Get started"], ["documentation", "Documentation"],
-  ["about-who", "Who it is for"], ["about-contact", "Contact"],
-];
 const jump = (id) => (e) => { e.preventDefault(); document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }); };
 
 function SizeLabel({ doc }) {
@@ -106,22 +102,10 @@ export default function AboutTab({ onOpenTab, onOpenGuide, onOpenGame }) {
                 <BookOpen size={16} /> Read the documentation
               </a>
             </div>
-            <ul className="flex flex-wrap gap-x-5 gap-y-2 pt-1 text-[14px] text-slate-600">
-              <li className="inline-flex items-center gap-1.5"><Laptop size={15} className="text-lagoon-600" />Runs in your browser</li>
-              <li className="inline-flex items-center gap-1.5"><ShieldCheck size={15} className="text-lagoon-600" />No account, your model stays on your computer</li>
-              <li className="inline-flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-coral-500" />Version {APP_VERSION} (prototype)</li>
-            </ul>
           </div>
           <BrandHeroArt className="hidden md:block w-full max-w-[380px] justify-self-center" />
         </div>
       </section>
-
-      {/* On this page */}
-      <nav aria-label="On this page" className="flex flex-wrap gap-2 -mt-6">
-        {SECTIONS.map(([id, label]) => (
-          <a key={id} href={`#${id}`} onClick={jump(id)} className="px-3.5 py-1.5 rounded-full border border-slate-200 bg-white text-[14px] text-slate-700 hover:border-lagoon-300 hover:text-lagoon-800">{label}</a>
-        ))}
-      </nav>
 
       {/* What it is */}
       <section id="about-what" className="scroll-mt-4 space-y-5">
@@ -194,9 +178,6 @@ export default function AboutTab({ onOpenTab, onOpenGuide, onOpenGame }) {
                   <Icon size={26} className="opacity-90" />
                   <div className="se-display mt-3 text-lg font-bold leading-tight">{title}</div>
                   <div className="text-[13px] text-white/80">Version {manifest.version} · PDF · <SizeLabel doc={doc} /></div>
-                  <svg viewBox="0 0 64 64" className="absolute right-3 top-3 w-14 h-14 opacity-20" aria-hidden="true">
-                    <path d="M13 50 C24 50 25 40 28 33 C32 22 47 18 49 30 C51 42 35 45 31 36 C27 27 37 14 51 14" fill="none" stroke="#fff" strokeWidth="4" strokeLinecap="round" />
-                  </svg>
                 </div>
                 <div className="p-5 flex flex-col flex-1 gap-3">
                   <div className="text-[13px] font-semibold uppercase tracking-wide text-slate-500">{audience}</div>
@@ -214,20 +195,17 @@ export default function AboutTab({ onOpenTab, onOpenGuide, onOpenGame }) {
             );
           })}
         </div>
-        <p className="text-sm text-slate-600">
-          Help is also built into the tool. The Help menu at the top right holds the Getting started guide, the Veldmeer game, and a short guide to building a map with its keyboard shortcuts. Each tab has foldable explanation boxes, and a Method &amp; diagnostics panel lists every calculated result.
-        </p>
       </section>
 
       {/* Who */}
       <section id="about-who" className="scroll-mt-4 space-y-5">
         <SectionTitle kicker="Audience" title="Who it is for" />
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {AUDIENCES.map(({ icon: Icon, title, text }) => (
-            <div key={title} className="rounded-2xl bg-white border border-slate-200 p-5 space-y-3">
-              <div className="w-10 h-10 rounded-xl bg-lagoon-50 text-lagoon-700 flex items-center justify-center"><Icon size={19} /></div>
-              <div className="text-sm font-semibold text-ink">{title}</div>
-              <p className="text-sm text-slate-700 leading-relaxed">{text}</p>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {AUDIENCES.map(({ icon: Icon, title, text, tint }) => (
+            <div key={title} className="rounded-2xl bg-white border border-slate-200 p-5 flex flex-col items-center text-center gap-3 transition-shadow hover:shadow-md">
+              <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${tint}`}><Icon size={26} /></div>
+              <div className="se-display text-[16px] font-bold text-ink leading-tight">{title}</div>
+              <p className="text-[14px] text-slate-600 leading-snug">{text}</p>
             </div>
           ))}
         </div>

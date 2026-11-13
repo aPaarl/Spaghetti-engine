@@ -58,4 +58,4 @@ Netlify builds and deploys the site from the `main` branch.
 
 Lagoon `#0F6863` (primary), bright lagoon `#1F9A93`, ink `#0D2326` (text and dark surfaces), coral `#FF8A5B` (the one accent), deep coral `#B6401A` (accent text on white), paper `#F5F7F7` (page background), poppy `#E5484D` (alerts only). Fonts: Inter for text and Plus Jakarta Sans for headings.
 
-The logo is one strand of spaghetti that runs from a concept to the coral concept in focus and ties itself into a feedback loop on the way.
+The logo is a fork with spaghetti twirled around it. One loose strand runs through two nodes, the last one coral, so the noodle becomes a causal link in a small model.

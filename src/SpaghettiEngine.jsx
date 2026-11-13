@@ -14458,17 +14458,13 @@ function SpaghettiEngineApp() {
       <ModuleSuggestions concepts={concepts} />
 
       {restoreNotice && (
-        <div className="flex items-center gap-3 flex-wrap px-5 py-2 text-xs bg-gradient-to-r from-lagoon-50 via-white to-[#f5f7f7] border-b border-slate-200 text-lagoon-900">
-          <Check size={14} className="text-lagoon-700" />
-          <span>
-            <strong>Welcome back.</strong> &ldquo;{activeModelName}&rdquo; ({concepts.length} concept{concepts.length === 1 ? "" : "s"}, {edges.length} relationship{edges.length === 1 ? "" : "s"}) was opened from this browser
-            {restored?.savedAt ? `, as saved on ${new Date(restored.savedAt).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}` : ""}.
-            Analysis results are not saved, so re-run any analysis you need.
-          </span>
-          <span className="ml-auto flex items-center gap-3">
-            <button onClick={() => setRestoreNotice(false)} className="font-medium underline hover:no-underline">Continue with this model</button>
-            <button onClick={() => { setRestoreNotice(false); saveNow(); setLibraryOpen(true); }} className="underline hover:no-underline">Open another model</button>
-            <button onClick={() => newModel()} className="underline hover:no-underline">Start a new model</button>
+        <div className="flex items-center gap-2 px-3 sm:px-5 py-1.5 text-[14px] bg-lagoon-50 border-b border-lagoon-100 text-ink"
+          title={`Opened from this browser${restored?.savedAt ? `, as saved on ${new Date(restored.savedAt).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}` : ""}. Analysis results are not saved, so re-run any analysis you need.`}>
+          <span className="min-w-0 truncate">Welcome back to <strong>{activeModelName}</strong> <span className="text-slate-500">({concepts.length} concept{concepts.length === 1 ? "" : "s"})</span></span>
+          <span className="ml-auto flex items-center gap-1.5 shrink-0">
+            <button onClick={() => { setRestoreNotice(false); saveNow(); setLibraryOpen(true); }} className="px-2.5 py-0.5 rounded-full border border-lagoon-200 bg-white text-lagoon-800 hover:border-lagoon-400">Other model</button>
+            <button onClick={() => newModel()} className="hidden sm:inline px-2.5 py-0.5 rounded-full border border-lagoon-200 bg-white text-lagoon-800 hover:border-lagoon-400">New model</button>
+            <button onClick={() => setRestoreNotice(false)} className="p-1 rounded-full text-slate-500 hover:text-ink hover:bg-white" aria-label="Dismiss" title="Continue with this model"><X size={15} /></button>
           </span>
         </div>
       )}
