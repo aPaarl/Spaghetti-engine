@@ -151,8 +151,8 @@ export default function AboutTab({ onOpenTab, onOpenGuide, onOpenGame }) {
           <button onClick={onOpenGame} className="group text-left rounded-2xl border border-coral-200 bg-coral-50 p-5 flex items-start gap-4 hover:border-coral-400">
             <span className="w-11 h-11 rounded-xl bg-white text-coral-600 flex items-center justify-center shrink-0 shadow-sm"><Gamepad2 size={20} /></span>
             <span className="space-y-1">
-              <span className="block text-sm font-semibold text-ink">Play the Veldmeer game</span>
-              <span className="block text-sm text-slate-700">A 30-minute tutorial: build your own model of a lake in trouble and answer its questions.</span>
+              <span className="block text-sm font-semibold text-ink">Play the Meinweg game</span>
+              <span className="block text-sm text-slate-700">A 30-minute tutorial: build your own model of a national park in trouble and answer its questions.</span>
             </span>
           </button>
         </div>

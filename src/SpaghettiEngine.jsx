@@ -13522,7 +13522,7 @@ function SpaghettiEngineApp() {
     try { localStorage.setItem(GUIDE_KEY, JSON.stringify(next)); } catch { /* storage unavailable */ }
     return next;
   });
-  // The Veldmeer serious game: a guided tutorial panel beside the content.
+  // The Meinweg serious game: a guided tutorial panel beside the content.
   const [gameOpen, setGameOpenState] = useState(() => { try { return localStorage.getItem("se.game.open") === "1"; } catch { return false; } });
   // Opening the game asks the browser for full screen (it needs the click
   // that opened it); closing or minimising the game leaves full screen.
@@ -14545,14 +14545,14 @@ function SpaghettiEngineApp() {
           </label>
           <TopBarMenu
             buttonClass={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm ${gameOpen ? "bg-coral-500 text-white border-coral-500 font-semibold" : "border-slate-200 text-ink hover:bg-slate-50"}`}
-            title="Help: the Getting started guide, the Veldmeer game, and the documentation"
+            title="Help: the Getting started guide, the Meinweg game, and the documentation"
             width="w-96"
             button={<>
               <HelpCircle size={15} className={gameOpen ? "text-white" : "text-coral-600"} /><span className="hidden sm:inline">Help</span><ChevronDown size={13} />
             </>}
             items={[
               { icon: Compass, label: `Getting started guide (${guideSteps.filter((st) => st.done).length} of ${guideSteps.length} done)`, hint: "The first steps of building a map, one at a time", onClick: () => { setGameOpen(false); setGuide({ open: true, collapsed: false }); } },
-              { icon: Gamepad2, label: gameOpen ? "Close the Veldmeer game" : "Play the Veldmeer game", hint: "A 30-minute tutorial: build your own model of a lake in trouble", onClick: () => setGameOpen(!gameOpen) },
+              { icon: Gamepad2, label: gameOpen ? "Close the Meinweg game" : "Play the Meinweg game", hint: "A 30-minute tutorial: build your own model of a national park in trouble", onClick: () => setGameOpen(!gameOpen) },
               { divider: true },
               { icon: Info, label: "About & documentation", hint: `What the tool is for, the user manual, and contact. Version ${APP_VERSION}`, onClick: () => setTab("about") },
             ]}
