@@ -6344,6 +6344,34 @@ const ROLE_STYLE = {
 // influential / most sensitive / most connected" lists with one table that
 // can answer any of those questions (and the equivalent for every other
 // measure). Numbers sort highest-first on the first click, text A-Z.
+// A small figure tile: a label, a number, an optional meter and a plain reading.
+function StatTile({ label, hint, value, unit, meter, meterColor = "#137d78", children }) {
+  const pct = Math.max(0, Math.min(100, Number(meter) || 0));
+  return (
+    <div className="rounded-lg border border-slate-200 p-3 flex flex-col gap-1" title={hint}>
+      <div className="text-[14px] text-neutral-600 flex items-center gap-1">{label}{hint && <HelpCircle size={11} className="text-neutral-400" />}</div>
+      <div className="flex items-baseline gap-1"><span className="text-2xl font-semibold text-neutral-900 tabular-nums">{value}</span>{unit && <span className="text-xs text-neutral-600">{unit}</span>}</div>
+      {meter !== undefined && (
+        <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden" aria-hidden><div className="h-full rounded-full" style={{ width: `${pct}%`, background: meterColor }} /></div>
+      )}
+      <div className="text-[14px] text-neutral-700 leading-snug">{children}</div>
+    </div>
+  );
+}
+
+// "Show all N" / "Show fewer" under a shortened list.
+function ShowAllButton({ shown, total, open, onToggle, noun = "rows" }) {
+  if (total <= shown && !open) return null;
+  return (
+    <button onClick={onToggle} className="mt-2 inline-flex items-center gap-1 text-[14px] font-medium text-lagoon-800 hover:underline">
+      {open ? "Show fewer" : `Show all ${total} ${noun}`}<ChevronDown size={14} className={open ? "rotate-180" : ""} />
+    </button>
+  );
+}
+
+// The columns shown before the reader asks for every measure.
+const METRIC_BASIC_KEYS = ["name", "moduleLabel", "role", "influence", "sensitivity"];
+
 const METRIC_TABLE_COLUMNS = [
   { key: "name", label: "Concept", type: "text" },
   { key: "moduleLabel", label: "Module", type: "text", help: "The concept's module (its category)." },
@@ -6361,6 +6389,7 @@ const METRIC_TABLE_COLUMNS = [
 
 function InfluenceMetricsTab({ concepts, edges, settings, onHighlight, multiScale = null, multiScaleFresh = true, viewInfo = null }) {
   const [sort, setSort] = useState({ key: "influence", dir: "desc" });
+  const [allColumns, setAllColumns] = useState(false);
   const structural = useMemo(() => computeMetrics(concepts, edges), [concepts, edges]);
   const advanced = useMemo(() => computeAdvancedMetrics(concepts, edges, settings), [concepts, edges, settings]);
   const moduleLabelOf = useMemo(() => {
@@ -6404,9 +6433,21 @@ function InfluenceMetricsTab({ concepts, edges, settings, onHighlight, multiScal
 
   // The Module column only earns its place once there is more than one module.
   const columns = useMemo(
-    () => METRIC_TABLE_COLUMNS.filter((c) => c.key !== "moduleLabel" || categoryStats.length > 1),
-    [categoryStats.length]
+    () => METRIC_TABLE_COLUMNS
+      .filter((c) => c.key !== "moduleLabel" || categoryStats.length > 1)
+      .filter((c) => allColumns || METRIC_BASIC_KEYS.includes(c.key))
+      .sort((a, b) => (allColumns ? 0 : METRIC_BASIC_KEYS.indexOf(a.key) - METRIC_BASIC_KEYS.indexOf(b.key))),
+    [categoryStats.length, allColumns]
   );
+  // Scores shown with a small bar, scaled to the highest value in the map.
+  const scoreMax = useMemo(() => ({
+    influence: Math.max(1e-9, ...metrics.map((m) => m.influence || 0)),
+    sensitivity: Math.max(1e-9, ...metrics.map((m) => m.sensitivity || 0)),
+  }), [metrics]);
+  const findings = useMemo(() => {
+    const top = (k) => [...metrics].filter((m) => (m[k] || 0) > 0).sort((a, b) => b[k] - a[k]).slice(0, 3);
+    return { levers: top("influence"), affected: top("sensitivity"), broker: top("betweenness")[0] || null };
+  }, [metrics]);
   const sortCol = columns.find((c) => c.key === sort.key) || columns.find((c) => c.key === "influence");
   const sortedRows = useMemo(() => {
     const k = sortCol.key;
@@ -6434,6 +6475,17 @@ function InfluenceMetricsTab({ concepts, edges, settings, onHighlight, multiScal
     if (key === "name") return m.name;
     if (key === "moduleLabel") return m.moduleLabel;
     if (key === "role") return <span className={`px-1.5 py-0.5 rounded text-[14px] ${ROLE_STYLE[m.role] || "bg-slate-100 text-neutral-900"}`}>{m.role}</span>;
+    if ((key === "influence" || key === "sensitivity") && !allColumns) {
+      const v = m[key] ?? 0;
+      return (
+        <span className="inline-flex items-center gap-2">
+          <span className="w-24 h-1.5 rounded-full bg-slate-100 overflow-hidden" aria-hidden>
+            <span className="block h-full rounded-full" style={{ width: `${Math.round((100 * v) / scoreMax[key])}%`, background: key === "influence" ? "#137d78" : "#dd5223" }} />
+          </span>
+          <span>{v}</span>
+        </span>
+      );
+    }
     if (key === "netInfluence") return <span className={m.netInfluence > 0 ? "text-blue-700" : m.netInfluence < 0 ? "text-orange-700" : ""}>{m.netInfluence > 0 ? "+" : ""}{m.netInfluence}</span>;
     return m[key];
   };
@@ -6441,15 +6493,46 @@ function InfluenceMetricsTab({ concepts, edges, settings, onHighlight, multiScal
   return (
     <div className="space-y-5">
 
+      {metrics.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3" data-metrics-findings>
+          {[
+            { title: "Strongest levers", note: "Pushing these moves the rest of the map most.", items: findings.levers, color: "#137d78" },
+            { title: "Most affected", note: "These respond most when other concepts change.", items: findings.affected, color: "#dd5223" },
+            { title: "Key broker", note: "Sits on the most routes between other concepts.", items: findings.broker ? [findings.broker] : [], color: "#7c3aed" },
+          ].map((f) => (
+            <div key={f.title} className="bg-white rounded-lg border border-slate-200 p-4">
+              <div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full" style={{ background: f.color }} /><h3 className="font-semibold text-sm">{f.title}</h3></div>
+              <p className="text-[14px] text-neutral-600 mt-0.5 mb-2">{f.note}</p>
+              {f.items.length ? (
+                <ol className="space-y-1">
+                  {f.items.map((m, i) => (
+                    <li key={m.id}>
+                      <button onClick={() => onHighlight(m.id)} className="text-left text-[15px] text-neutral-900 hover:text-lagoon-800 hover:underline">
+                        {f.items.length > 1 && <span className="text-neutral-500 mr-1.5">{i + 1}.</span>}{m.name}
+                      </button>
+                    </li>
+                  ))}
+                </ol>
+              ) : <p className="text-[14px] text-neutral-600 italic">None yet.</p>}
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="bg-white rounded-lg border border-slate-200 p-4">
-        <div className="flex items-baseline gap-3 flex-wrap mb-3">
-          <h3 className="font-semibold text-sm">Influence metrics: full table</h3>
-          <span className="text-[14px] text-neutral-600">
-            Ranked by <strong className="text-neutral-900">{sortDescription}</strong>. Click any column heading to rank by it; click it again to reverse the order.
-          </span>
+        <div className="flex items-start gap-3 flex-wrap mb-3">
+          <div className="flex-1 min-w-[240px]">
+            <h3 className="font-semibold text-sm">Every concept, ranked</h3>
+            <p className="text-[14px] text-neutral-600">
+              Ranked by <strong className="text-neutral-900">{sortDescription}</strong>. Click a column heading to rank by it, and a row to select the concept.
+            </p>
+          </div>
+          <button onClick={() => setAllColumns((v) => !v)} className="shrink-0 rounded-full border border-slate-300 bg-white px-3 py-1 text-[14px] text-neutral-900 hover:bg-slate-50">
+            {allColumns ? "Show the main measures only" : "Show all measures"}
+          </button>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-xs min-w-[900px]">
+          <table className={`w-full text-xs ${allColumns ? "min-w-[900px]" : "min-w-[560px]"}`}>
             <thead>
               <tr className="text-left text-neutral-600 border-b border-slate-100">
                 <th className="py-1.5 font-medium pr-2 w-8" title={`Rank by ${sortCol.label}`}>#</th>
@@ -6495,42 +6578,29 @@ function InfluenceMetricsTab({ concepts, edges, settings, onHighlight, multiScal
           its number, a meter where a share makes sense, and a plain reading. */}
       <div className="bg-white rounded-lg border border-slate-200 p-4">
         <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
-          <h3 className="font-semibold text-sm">System overview</h3>
+          <h3 className="font-semibold text-sm">The map as a whole</h3>
           <span className="text-[14px] text-neutral-600">Hover a tile for how it is computed.</span>
         </div>
         {(() => {
-          const pct = (v) => Math.max(0, Math.min(100, Number(v) || 0));
           const densityWord = stats.density < 10 ? "sparse: few of the possible links are drawn" : stats.density < 25 ? "moderately connected" : "densely connected";
-          const centralWord = stats.centralization < 20 ? "influence is spread over many concepts" : stats.centralization < 50 ? "a few concepts carry more of the links" : "a handful of hubs hold the map together";
           const loopTotal = stats.loops.total || 0;
           const rShare = loopTotal ? (100 * stats.loops.reinforcing) / loopTotal : 0;
-          const top = [...metrics].sort((x, y) => y.betweenness - x.betweenness)[0];
-          const Tile = ({ label, hint, value, unit, meter, meterColor = "#137d78", children }) => (
-            <div className="rounded-lg border border-slate-200 p-3 flex flex-col gap-1" title={hint}>
-              <div className="text-[14px] uppercase tracking-wide text-neutral-600 flex items-center gap-1">{label}{hint && <HelpCircle size={10} className="text-neutral-400" />}</div>
-              <div className="flex items-baseline gap-1"><span className="text-2xl font-semibold text-neutral-900 tabular-nums">{value}</span>{unit && <span className="text-xs text-neutral-600">{unit}</span>}</div>
-              {meter !== undefined && (
-                <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden" aria-hidden><div className="h-full rounded-full" style={{ width: `${pct(meter)}%`, background: meterColor }} /></div>
-              )}
-              <div className="text-[14px] text-neutral-700 leading-snug">{children}</div>
-            </div>
-          );
           return (
             <div className="space-y-4">
               <div>
                 <p className="text-xs font-semibold text-neutral-900 mb-1.5">Size</p>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <Tile label="Concepts" value={stats.concepts}>in the analysis scope</Tile>
-                  <Tile label="Relationships" value={stats.relationships}>{stats.interfaceEdges} cross a module border ({stats.interfaceShare}%)</Tile>
-                  <Tile label="Density" hint={SYSTEM_STAT_HELP.density} value={stats.density} unit="%" meter={stats.density}>{stats.actualConnections} of {stats.possibleConnections} possible links; {densityWord}</Tile>
-                  <Tile label="Links per concept" hint={SYSTEM_STAT_HELP.avgDegree} value={stats.avgDegree} unit="on average">from {stats.minDegree} to {stats.maxDegree}</Tile>
+                  <StatTile label="Concepts" value={stats.concepts}>in the analysis scope</StatTile>
+                  <StatTile label="Relationships" value={stats.relationships}>{stats.interfaceEdges} cross a module border ({stats.interfaceShare}%)</StatTile>
+                  <StatTile label="Density" hint={SYSTEM_STAT_HELP.density} value={stats.density} unit="%" meter={stats.density}>{stats.actualConnections} of {stats.possibleConnections} possible links; {densityWord}</StatTile>
+                  <StatTile label="Links per concept" hint={SYSTEM_STAT_HELP.avgDegree} value={stats.avgDegree} unit="on average">from {stats.minDegree} to {stats.maxDegree}</StatTile>
                 </div>
               </div>
               <div>
                 <p className="text-xs font-semibold text-neutral-900 mb-1.5">Feedback</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3">
                   <div className="rounded-lg border border-slate-200 p-3" title={SYSTEM_STAT_HELP.loops}>
-                    <div className="text-[14px] uppercase tracking-wide text-neutral-600 flex items-center gap-1">Feedback loops<HelpCircle size={10} className="text-neutral-400" /></div>
+                    <div className="text-[14px] text-neutral-600 flex items-center gap-1">Feedback loops<HelpCircle size={11} className="text-neutral-400" /></div>
                     <div className="flex items-baseline gap-1"><span className="text-2xl font-semibold text-neutral-900 tabular-nums">{loopTotal}</span><span className="text-xs text-neutral-600">{stats.loops.capped ? "(first 300 found)" : ""}</span></div>
                     {loopTotal > 0 ? (
                       <>
@@ -6545,18 +6615,6 @@ function InfluenceMetricsTab({ concepts, edges, settings, onHighlight, multiScal
                       </>
                     ) : <div className="text-[14px] text-neutral-700">No feedback loops: every effect runs one way.</div>}
                   </div>
-                  <Tile label="Key broker" hint={SYSTEM_STAT_HELP.betweenness} value={top && top.betweenness > 0 ? top.name : "none"}>
-                    {top && top.betweenness > 0 ? `lies on the most shortest paths between other concepts (betweenness ${top.betweenness})` : "no concept sits between others"}
-                  </Tile>
-                </div>
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-neutral-900 mb-1.5">Shape</p>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <Tile label="Centralization" hint={SYSTEM_STAT_HELP.centralization} value={stats.centralization} unit="%" meter={stats.centralization} meterColor="#7c3aed">{centralWord}</Tile>
-                  <Tile label="Clustering" hint={SYSTEM_STAT_HELP.clustering} value={stats.clusteringEligible ? stats.clustering : "n/a"} meter={stats.clusteringEligible ? 100 * stats.clustering : undefined} meterColor="#0f766e">how often a concept's neighbours are linked too</Tile>
-                  <Tile label="Modularity (Q)" hint={SYSTEM_STAT_HELP.modularity} value={stats.modularity === null ? "n/a" : stats.modularity}>{stats.modularity === null ? (stats.moduleCount < 2 ? "needs 2 or more modules in scope" : "no relationships") : `how separate the ${stats.moduleCount} modules are (higher: more separate)`}</Tile>
-                  <Tile label="Complexity" hint={SYSTEM_STAT_HELP.complexity} value={Number.isFinite(stats.complexity) ? stats.complexity : "n/a"}>receivers per driver; connectivity score {stats.connectivity}</Tile>
                 </div>
               </div>
             </div>
@@ -6564,8 +6622,23 @@ function InfluenceMetricsTab({ concepts, edges, settings, onHighlight, multiScal
         })()}
       </div>
 
-      <FoldableBox storageKey="se.fold.metricsAdvanced" title="Advanced results" icon={Layers} summary="The multi-scale analysis and the network metrics by category.">
+      <FoldableBox storageKey="se.fold.metricsAdvanced" title="Advanced results" icon={Layers} summary="The shape of the network, the multi-scale analysis and the network metrics by category.">
         <div className="space-y-5">
+          <div className="bg-white rounded-lg border border-slate-200 p-4">
+            <h3 className="font-semibold text-sm mb-1">Shape of the network</h3>
+            <p className="text-xs text-neutral-600 mb-3">Four measures of how the map is put together. Hover a tile for how it is computed.</p>
+            {(() => {
+              const centralWord = stats.centralization < 20 ? "influence is spread over many concepts" : stats.centralization < 50 ? "a few concepts carry more of the links" : "a handful of hubs hold the map together";
+              return (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <StatTile label="Centralization" hint={SYSTEM_STAT_HELP.centralization} value={stats.centralization} unit="%" meter={stats.centralization} meterColor="#7c3aed">{centralWord}</StatTile>
+                  <StatTile label="Clustering" hint={SYSTEM_STAT_HELP.clustering} value={stats.clusteringEligible ? stats.clustering : "n/a"} meter={stats.clusteringEligible ? 100 * stats.clustering : undefined} meterColor="#0f766e">how often a concept's neighbours are linked too</StatTile>
+                  <StatTile label="Modularity (Q)" hint={SYSTEM_STAT_HELP.modularity} value={stats.modularity === null ? "n/a" : stats.modularity}>{stats.modularity === null ? (stats.moduleCount < 2 ? "needs 2 or more modules in scope" : "no relationships") : `how separate the ${stats.moduleCount} modules are (higher: more separate)`}</StatTile>
+                  <StatTile label="Complexity" hint={SYSTEM_STAT_HELP.complexity} value={Number.isFinite(stats.complexity) ? stats.complexity : "n/a"}>receivers per driver; connectivity score {stats.connectivity}</StatTile>
+                </div>
+              );
+            })()}
+          </div>
           <MultiScaleSection report={multiScale} fresh={multiScaleFresh} scopeMetrics={metrics} viewInfo={viewInfo} onHighlight={onHighlight} />
 
           <div className="bg-white rounded-lg border border-slate-200 p-4">
@@ -6710,10 +6783,10 @@ function InfluenceMetricsTab({ concepts, edges, settings, onHighlight, multiScal
       <FoldableBox
         storageKey="se.fold.metricsMethod"
         title="How these metrics are computed"
-        summary="These metrics describe the structure of your map: which concepts drive the system, which absorb change, and which sit at its centre. Sort the table below by any column to rank the concepts on that measure, and click a row to select that concept."
+        summary="These metrics describe the structure of your map: which concepts drive the system, which absorb change, and which sit at its centre. Sort the table above by any column to rank the concepts on that measure, and click a row to select that concept."
       >
           <div className="space-y-3 text-xs text-neutral-900">
-            <p className="text-neutral-700">Sort the table below by any column to rank the concepts on that measure, and click a row to select that concept (open the Network tab to see it).</p>
+            <p className="text-neutral-700">Sort the table above by any column to rank the concepts on that measure, and click a row to select that concept (open the Network tab to see it).</p>
             <div className="space-y-2">
               <p><strong>Indegree, Outdegree, Centrality, Net Influence, and Role are purely structural</strong>: computed directly from the relationship weights you've drawn, with no simulation involved. Indegree is the sum of the absolute weights of a concept's incoming relationships; outdegree is the same for outgoing relationships; centrality is indegree + outdegree; net influence is outdegree minus indegree. Role is assigned from those numbers: <strong>Isolated</strong> has zero centrality (no relationships at all); <strong>Hub</strong> is in the top quartile of centrality among all concepts and has at least one relationship in each direction; <strong>Driver</strong> (not already a Hub) has outdegree more than 1.2&times; its indegree; <strong>Receiver</strong> (not already a Hub) has indegree more than 1.2&times; its outdegree; everything else is a <strong>Connector</strong>.</p>
               <p><strong>Driver score and Receiver score</strong> are the shares of a concept's total connection weight that are outgoing and incoming: outdegree / centrality and indegree / centrality. They always add up to 1, so they show a concept's balance between sending and receiving influence independently of how strongly connected it is overall.</p>
@@ -7082,8 +7155,8 @@ function InfluenceRoutesGuide() {
               <li><strong>Bridge concepts</strong> are the intermediate steps many routes depend on; their share is how much of the combined route strength passes through them.</li>
               <li><strong>Boundary crossings</strong> count how often a route changes module at a concept: these are the coupling points between subsystems.</li>
               <li><strong>Bottleneck</strong> marks a concept carrying at least half of the combined strength: the selected routes largely run through it.</li>
-              <li><strong>Transmission routes between modules</strong> group everything by the module a route starts in and the module it ends in.</li>
-              <li><strong>Feedback loops</strong> (bottom of the tab) are routes that return to where they started. They are counted for the whole system, inside each module, and across modules.</li>
+              <li><strong>Routes from module to module</strong> group everything by the module a route starts in and the module it ends in.</li>
+              <li><strong>Feedback loops</strong> (below the strongest routes) are routes that return to where they started. Advanced results counts them per module and between modules.</li>
             </ul>
             <p><strong>How to use it:</strong> set the analysis scope in the bar at the top, choose a route type, narrow it with From, To and Length if needed, then read the bridge table before the list of individual routes. Click any concept to select it, and open the Network tab to see it on the map.</p>
             <p className="rounded-md bg-slate-50 border border-slate-200 p-2">
@@ -7232,7 +7305,9 @@ function ModuleGuide({ concepts, edges, networkView, setNetworkView, viewInfo, d
 // whole analysed system, how many stay inside each module, and how many run
 // between modules (with the combinations of modules they connect), plus the
 // loops themselves.
-function FeedbackLoopsSection({ concepts, edges, onHighlight }) {
+// part: "main" (summary and the loops), "modules" (loops per module) or
+// "method" (how loops are counted), so each can sit in its own place.
+function FeedbackLoopsSection({ concepts, edges, onHighlight, part = "main" }) {
   const analysis = useMemo(() => analyseFeedbackLoops(concepts, edges), [concepts, edges]);
   const modules = useMemo(() => listModules(concepts), [concepts]);
   const moduleLabel = useMemo(() => new Map(modules.map((m) => [m.key, m.label])), [modules]);
@@ -7240,7 +7315,7 @@ function FeedbackLoopsSection({ concepts, edges, onHighlight }) {
   const conceptById = useMemo(() => new Map(concepts.map((c) => [c.id, c])), [concepts]);
   const [filter, setFilter] = useState("all");      // all | within | between
   const [moduleFilter, setModuleFilter] = useState(""); // "" = any module
-  const [showCount, setShowCount] = useState(25);
+  const [showCount, setShowCount] = useState(5);
 
   const moduleRows = useMemo(() => modules.map((m) => ({
     key: m.key, label: m.label, categoryValue: m.categoryValue,
@@ -7254,13 +7329,19 @@ function FeedbackLoopsSection({ concepts, edges, onHighlight }) {
     if (moduleFilter && !l.modules.includes(moduleFilter)) return false;
     return true;
   }), [analysis, filter, moduleFilter]);
-  useEffect(() => { setShowCount(25); }, [filter, moduleFilter, concepts, edges]);
+  useEffect(() => { setShowCount(5); }, [filter, moduleFilter, concepts, edges]);
 
   const Tally = ({ t }) => (
-    <span className="font-mono">
-      <span className="text-neutral-900 font-semibold">{t.count}</span>
-      <span className="text-neutral-600"> ({t.reinforcing} R / {t.balancing} B)</span>
+    <span>
+      <span className="text-neutral-900 font-semibold tabular-nums">{t.count}</span>
+      <span className="text-neutral-600"> ({t.reinforcing} R, {t.balancing} B)</span>
     </span>
+  );
+  const BigTally = ({ t }) => (
+    <div>
+      <div className="text-2xl font-semibold text-neutral-900 tabular-nums">{t.count}</div>
+      <div className="text-[14px] text-neutral-700">{t.reinforcing} reinforcing, {t.balancing} balancing</div>
+    </div>
   );
   const Chip = ({ id }) => {
     const c = conceptById.get(id);
@@ -7274,34 +7355,20 @@ function FeedbackLoopsSection({ concepts, edges, onHighlight }) {
   const ModuleTag = ({ k }) => <ModuleChip category={moduleCategory.get(k)} label={moduleLabel.get(k)} />;
   const pct = (a, b) => (b > 0 ? `${Math.round((a / b) * 100)}%` : "0%");
 
-  return (
-    <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-4">
-      <div>
-        <h3 className="font-semibold text-sm flex items-center gap-1.5"><RotateCcw size={15} className="text-lagoon-700" />Feedback loops</h3>
-        <p className="text-xs text-neutral-700 mt-1">
-          A feedback loop is a route that returns to where it started (A &rarr; B &rarr; C &rarr; A), so a change can amplify or dampen itself.
-          <strong> Reinforcing (R)</strong> loops amplify change; <strong>balancing (B)</strong> loops counteract it. Counted for the whole system in scope, inside each module, and between modules.
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-        <div className="rounded-md border border-slate-200 p-3">
-          <div className="text-neutral-600 mb-1">Whole system (in scope)</div>
-          <div className="text-lg"><Tally t={analysis.total} /></div>
-          <div className="text-neutral-600 mt-1">{analysis.capped ? "Enumeration capped at 300 loops: this is a lower bound." : "Every simple loop up to 8 relationships long."}</div>
+  if (part === "method") return (
+      <MethodPanel fold title="Method & diagnostics for the feedback loops">
+        <p><strong>What is counted.</strong> Every simple cycle in the network in scope: a closed route that visits no concept twice before returning to its start, up to 8 relationships long, stopping at 300 loops. These are the same loops, with the same limits, as the loop count on the Influence Metrics tab, so the totals match. If a limit is hit, every count here is a lower bound.</p>
+        <p><strong>Reinforcing or balancing</strong> is decided by sign parity: an even number of negative relationships around the loop makes it reinforcing (a change comes back with the same sign and grows), an odd number makes it balancing (a change comes back reversed and is dampened). Parity says nothing about how strong or fast the loop is; <strong>strength</strong>, the product of the absolute weights around the loop, gives a rough idea of that.</p>
+        <p><strong>Within versus between modules.</strong> A loop is within a module when every concept on it belongs to that module, and between modules otherwise. Between-module loops are the feedback that couples subsystems: a change in one module returns to it only after passing through another, which is where decisions in one sector can come back to affect that sector through others. In Nexus Interface mode only relationships between modules are kept, so no loop can stay inside a module there.</p>
+      </MethodPanel>
+  );
+  if (part === "modules") {
+    return (
+      <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-3">
+        <div>
+          <h3 className="font-semibold text-sm">Feedback loops by module</h3>
+          <p className="text-xs text-neutral-600 mt-1">How many loops stay inside each module, and which modules the other loops connect. R is reinforcing, B is balancing.</p>
         </div>
-        <div className="rounded-md border border-slate-200 p-3">
-          <div className="text-neutral-600 mb-1">Within modules</div>
-          <div className="text-lg"><Tally t={analysis.within} /></div>
-          <div className="text-neutral-600 mt-1">{pct(analysis.within.count, analysis.total.count)} of all loops stay inside a single module.</div>
-        </div>
-        <div className="rounded-md border border-slate-200 p-3">
-          <div className="text-neutral-600 mb-1">Between modules</div>
-          <div className="text-lg"><Tally t={analysis.between} /></div>
-          <div className="text-neutral-600 mt-1">{pct(analysis.between.count, analysis.total.count)} of all loops run through two or more modules.</div>
-        </div>
-      </div>
-
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
         <div>
           <h4 className="text-xs font-semibold text-neutral-900 mb-1.5">Per module</h4>
@@ -7315,7 +7382,7 @@ function FeedbackLoopsSection({ concepts, edges, onHighlight }) {
             </thead>
             <tbody>
               {moduleRows.map((r) => (
-                <tr key={r.key} className="border-b border-slate-50 cursor-pointer hover:bg-slate-50" onClick={() => { setModuleFilter(r.key); setFilter("all"); }} title={`Show the loops involving ${r.label}`}>
+                <tr key={r.key} className="border-b border-slate-50">
                   <td className="py-1.5 pr-3"><ModuleTag k={r.key} /></td>
                   <td className="py-1.5 pr-3"><Tally t={r.inside} /></td>
                   <td className="py-1.5"><Tally t={r.touching} /></td>
@@ -7358,9 +7425,40 @@ function FeedbackLoopsSection({ concepts, edges, onHighlight }) {
         </div>
       </div>
 
+      </div>
+    );
+  }
+  return (
+    <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-4">
+      <div>
+        <h3 className="font-semibold text-sm flex items-center gap-1.5"><RotateCcw size={15} className="text-lagoon-700" />Feedback loops</h3>
+        <p className="text-xs text-neutral-700 mt-1">
+          A feedback loop is a route that returns to where it started (A &rarr; B &rarr; C &rarr; A), so a change can amplify or dampen itself.
+          <strong> Reinforcing (R)</strong> loops amplify change; <strong>balancing (B)</strong> loops counteract it.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[14px]">
+        <div className="rounded-md border border-slate-200 p-3">
+          <div className="text-neutral-600 mb-1">Whole system (in scope)</div>
+          <BigTally t={analysis.total} />
+          <div className="text-neutral-600 mt-1">{analysis.capped ? "Enumeration capped at 300 loops: this is a lower bound." : "Every simple loop up to 8 relationships long."}</div>
+        </div>
+        <div className="rounded-md border border-slate-200 p-3">
+          <div className="text-neutral-600 mb-1">Within modules</div>
+          <BigTally t={analysis.within} />
+          <div className="text-neutral-600 mt-1">{pct(analysis.within.count, analysis.total.count)} of all loops stay inside a single module.</div>
+        </div>
+        <div className="rounded-md border border-slate-200 p-3">
+          <div className="text-neutral-600 mb-1">Between modules</div>
+          <BigTally t={analysis.between} />
+          <div className="text-neutral-600 mt-1">{pct(analysis.between.count, analysis.total.count)} of all loops run through two or more modules.</div>
+        </div>
+      </div>
+
       <div>
         <div className="flex items-center gap-2 flex-wrap mb-2">
-          <h4 className="text-xs font-semibold text-neutral-900 mr-1">Loops, strongest first</h4>
+          <h4 className="text-xs font-semibold text-neutral-900 mr-1">The strongest loops</h4>
           {[["all", "All"], ["within", "Within a module"], ["between", "Between modules"]].map(([k, label]) => (
             <button key={k} onClick={() => setFilter(k)}
               className={`px-2 py-0.5 rounded-md border text-xs ${filter === k ? "bg-slate-900 border-slate-900 text-white" : "bg-white border-slate-300 text-neutral-900 hover:bg-slate-50"}`}>
@@ -7385,8 +7483,6 @@ function FeedbackLoopsSection({ concepts, edges, onHighlight }) {
                 <tr className="text-left text-neutral-600 border-b border-slate-100">
                   <th className="py-1.5 font-medium pr-2">#</th>
                   <th className="py-1.5 font-medium pr-3">Loop</th>
-                  <th className="py-1.5 font-medium pr-3">Modules</th>
-                  <th className="py-1.5 font-medium pr-3">Length</th>
                   <th className="py-1.5 font-medium pr-3">Type</th>
                   <th className="py-1.5 font-medium" title="Product of the absolute weights around the loop">Strength</th>
                 </tr>
@@ -7410,10 +7506,6 @@ function FeedbackLoopsSection({ concepts, edges, onHighlight }) {
                       </div>
                     </td>
                     <td className="py-1.5 pr-3">
-                      <span className="inline-flex gap-1 flex-wrap">{l.modules.map((k) => <ModuleTag key={k} k={k} />)}</span>
-                    </td>
-                    <td className="py-1.5 pr-3 font-mono">{l.length}</td>
-                    <td className="py-1.5 pr-3">
                       <span className={`px-1.5 py-0.5 rounded text-[14px] ${l.type === "reinforcing" ? "bg-rose-50 text-rose-700" : "bg-sky-50 text-sky-700"}`}>
                         {l.type === "reinforcing" ? "Reinforcing" : "Balancing"}
                       </span>
@@ -7423,18 +7515,11 @@ function FeedbackLoopsSection({ concepts, edges, onHighlight }) {
                 ))}
               </tbody>
             </table>
-            {showCount < shown.length && (
-              <button onClick={() => setShowCount((n) => n + 50)} className="mt-2 text-xs text-lagoon-700 hover:underline">Show 50 more</button>
-            )}
+            <ShowAllButton shown={5} total={shown.length} open={showCount > 5} onToggle={() => setShowCount((n) => (n > 5 ? 5 : shown.length))} noun="loops" />
           </div>
         )}
       </div>
 
-      <MethodPanel title="Method & diagnostics for the feedback loops">
-        <p><strong>What is counted.</strong> Every simple cycle in the network in scope: a closed route that visits no concept twice before returning to its start, up to 8 relationships long, stopping at 300 loops. These are the same loops, with the same limits, as the loop count on the Influence Metrics tab, so the totals match. If a limit is hit, every count here is a lower bound.</p>
-        <p><strong>Reinforcing or balancing</strong> is decided by sign parity: an even number of negative relationships around the loop makes it reinforcing (a change comes back with the same sign and grows), an odd number makes it balancing (a change comes back reversed and is dampened). Parity says nothing about how strong or fast the loop is; <strong>strength</strong>, the product of the absolute weights around the loop, gives a rough idea of that.</p>
-        <p><strong>Within versus between modules.</strong> A loop is within a module when every concept on it belongs to that module, and between modules otherwise. Between-module loops are the feedback that couples subsystems: a change in one module returns to it only after passing through another, which is where decisions in one sector can come back to affect that sector through others. In Nexus Interface mode only relationships between modules are kept, so no loop can stay inside a module there.</p>
-      </MethodPanel>
     </div>
   );
 }
@@ -7446,7 +7531,9 @@ function InfluenceRoutesTab({ concepts, edges, config, setConfig, onHighlight })
   const nameOf = useMemo(() => new Map(concepts.map((c) => [c.id, c.name])), [concepts]);
   const conceptById = useMemo(() => new Map(concepts.map((c) => [c.id, c])), [concepts]);
   const moduleOf = useMemo(() => new Map(concepts.map((c) => [c.id, moduleKey(c.category)])), [concepts]);
-  const [showCount, setShowCount] = useState(50);
+  const [showCount, setShowCount] = useState(10);
+  const [bridgesAll, setBridgesAll] = useState(false);
+  const [flowsAll, setFlowsAll] = useState(false);
 
   // Module choices fall back sensibly when the scope changes underneath a
   // saved selection (e.g. the chosen module is no longer in scope).
@@ -7468,7 +7555,7 @@ function InfluenceRoutesTab({ concepts, edges, config, setConfig, onHighlight })
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [concepts, edges, effKey, unavailable]
   );
-  useEffect(() => { setShowCount(50); }, [effKey]);
+  useEffect(() => { setShowCount(10); }, [effKey]);
   const set = (patch) => setConfig((c) => ({ ...c, ...patch }));
 
   const Chip = ({ id }) => {
@@ -7575,8 +7662,8 @@ function InfluenceRoutesTab({ concepts, edges, config, setConfig, onHighlight })
 
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
             <div className="bg-white rounded-lg border border-slate-200 p-4">
-              <h3 className="font-semibold text-sm mb-1">Bridge concepts &amp; coupling points</h3>
-              <p className="text-[14px] text-neutral-600 mb-2">Share of the selected routes' combined strength that passes through each concept.</p>
+              <h3 className="font-semibold text-sm mb-1">Bridge concepts</h3>
+              <p className="text-[14px] text-neutral-600 mb-2">The steps in between that most routes depend on.</p>
               {result.bridges.length === 0 ? <p className="text-xs text-neutral-600 italic">No intermediate concepts: every route found is a direct relationship.</p> : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
@@ -7585,12 +7672,11 @@ function InfluenceRoutesTab({ concepts, edges, config, setConfig, onHighlight })
                         <th className="py-1.5 font-medium pr-3">Concept</th>
                         <th className="py-1.5 font-medium pr-3">Module</th>
                         <th className="py-1.5 font-medium pr-3">Share of strength</th>
-                        <th className="py-1.5 font-medium pr-3" title="Routes passing through this concept">Routes</th>
-                        <th className="py-1.5 font-medium" title="How often a route changes module at this concept">Boundary crossings</th>
+                        <th className="py-1.5 font-medium" title="Routes passing through this concept">Routes</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {result.bridges.slice(0, 15).map((b) => (
+                      {result.bridges.slice(0, bridgesAll ? 15 : 5).map((b) => (
                         <tr key={b.id} className="border-b border-slate-50 cursor-pointer hover:bg-slate-50" onClick={() => onHighlight(b.id)}>
                           <td className="py-1.5 pr-3">
                             {b.name}
@@ -7603,47 +7689,49 @@ function InfluenceRoutesTab({ concepts, edges, config, setConfig, onHighlight })
                               <span className="font-mono">{Math.round(b.share * 100)}%</span>
                             </div>
                           </td>
-                          <td className="py-1.5 pr-3 font-mono">{b.throughCount}</td>
-                          <td className="py-1.5 font-mono">{b.boundaryCrossings}</td>
+                          <td className="py-1.5 font-mono">{b.throughCount}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
+                  <ShowAllButton shown={5} total={Math.min(15, result.bridges.length)} open={bridgesAll} onToggle={() => setBridgesAll((v) => !v)} noun="concepts" />
                 </div>
               )}
             </div>
 
             <div className="bg-white rounded-lg border border-slate-200 p-4">
-              <h3 className="font-semibold text-sm mb-1">Transmission routes between modules</h3>
-              <p className="text-[14px] text-neutral-600 mb-2">Routes grouped by the module they start in and the module they end in.</p>
+              <h3 className="font-semibold text-sm mb-1">Routes from module to module</h3>
+              <p className="text-[14px] text-neutral-600 mb-2">Where routes start and end, strongest first.</p>
               {result.flows.length === 0 ? <p className="text-xs text-neutral-600 italic">No routes match this selection.</p> : (
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="text-left text-neutral-600 border-b border-slate-100">
                       <th className="py-1.5 font-medium pr-3">From &rarr; to</th>
                       <th className="py-1.5 font-medium pr-3">Routes</th>
-                      <th className="py-1.5 font-medium pr-3">Combined strength</th>
-                      <th className="py-1.5 font-medium">+ / &minus;</th>
+                      <th className="py-1.5 font-medium" title="Combined strength of these routes">Strength</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {result.flows.map((f) => (
+                    {result.flows.slice(0, flowsAll ? undefined : 6).map((f) => (
                       <tr key={`${f.from}|${f.to}`} className="border-b border-slate-50">
                         <td className="py-1.5 pr-3 whitespace-nowrap">
                           <ModuleChip category={moduleCategory.get(f.from)} label={moduleLabel.get(f.from)} /> <span className="text-neutral-600">&rarr;</span> <ModuleChip category={moduleCategory.get(f.to)} label={moduleLabel.get(f.to)} />
                         </td>
                         <td className="py-1.5 pr-3 font-mono">{f.count}</td>
-                        <td className="py-1.5 pr-3 font-mono">{f.strength}</td>
-                        <td className="py-1.5 font-mono"><span className="text-green-700">{f.positive}</span> / <span className="text-orange-700">{f.negative}</span></td>
+                        <td className="py-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-20 h-1.5 bg-slate-100 rounded"><div className="h-1.5 bg-lagoon-600 rounded" style={{ width: `${Math.round((100 * f.strength) / Math.max(1e-9, result.flows[0]?.strength || 0))}%` }} /></div>
+                            <span className="font-mono">{f.strength}</span>
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               )}
+              <ShowAllButton shown={6} total={result.flows.length} open={flowsAll} onToggle={() => setFlowsAll((v) => !v)} noun="module pairs" />
             </div>
           </div>
-
-          <FeedbackLoopsSection concepts={concepts} edges={edges} onHighlight={onHighlight} />
 
           <div className="bg-white rounded-lg border border-slate-200 p-4">
             <div className="flex items-center gap-3 mb-2">
@@ -7660,8 +7748,6 @@ function InfluenceRoutesTab({ concepts, edges, config, setConfig, onHighlight })
                     <tr className="text-left text-neutral-600 border-b border-slate-100">
                       <th className="py-1.5 font-medium pr-2">#</th>
                       <th className="py-1.5 font-medium pr-3">Route</th>
-                      <th className="py-1.5 font-medium pr-3" title="Relationships in the route">Length</th>
-                      <th className="py-1.5 font-medium pr-3" title="Times the route changes module">Crossings</th>
                       <th className="py-1.5 font-medium pr-3">Sign</th>
                       <th className="py-1.5 font-medium">Strength</th>
                     </tr>
@@ -7684,8 +7770,6 @@ function InfluenceRoutesTab({ concepts, edges, config, setConfig, onHighlight })
                             ))}
                           </div>
                         </td>
-                        <td className="py-1.5 pr-3 font-mono">{p.length}</td>
-                        <td className="py-1.5 pr-3 font-mono">{p.crossings}</td>
                         <td className={`py-1.5 pr-3 font-mono ${p.sign > 0 ? "text-green-700" : "text-orange-700"}`}>{p.sign > 0 ? "+" : "−"}</td>
                         <td className="py-1.5 font-mono">{round3(p.strength)}</td>
                       </tr>
@@ -7693,11 +7777,17 @@ function InfluenceRoutesTab({ concepts, edges, config, setConfig, onHighlight })
                   </tbody>
                 </table>
                 {showCount < result.paths.length && (
-                  <button onClick={() => setShowCount((n) => n + 100)} className="mt-2 text-xs text-lagoon-700 hover:underline">Show 100 more</button>
+                  <button onClick={() => setShowCount((n) => n + 50)} className="mt-2 text-[14px] font-medium text-lagoon-800 hover:underline">Show 50 more</button>
                 )}
               </div>
             )}
           </div>
+
+          <FeedbackLoopsSection concepts={concepts} edges={edges} onHighlight={onHighlight} />
+
+          <FoldableBox storageKey="se.fold.routesAdvanced" title="Advanced results" icon={Layers} summary="Feedback loops counted per module and between modules.">
+            <FeedbackLoopsSection concepts={concepts} edges={edges} onHighlight={onHighlight} part="modules" />
+          </FoldableBox>
 
           <MethodPanel
             fold
@@ -7712,8 +7802,10 @@ function InfluenceRoutesTab({ concepts, edges, config, setConfig, onHighlight })
             <p><strong>Strength</strong> is the product of the absolute weights along a route, the usual FCM indirect-effect measure: a route is never stronger than its weakest relationship, and longer chains fade. <strong>Sign</strong> is the product of the signs: + means the first concept pushes the last one in the same direction, &minus; in the opposite direction.</p>
             <p><strong>This is structure, not simulation.</strong> Routes show the routes along which influence <em>can</em> travel. How much actually arrives depends on the transfer function, feedback and everything else acting on the same concepts, which the simulation tabs capture and this tab does not.</p>
             <p><strong>Bridge concepts</strong> are ranked by the share of combined route strength that passes <em>through</em> them (as an intermediate step, not a start or end). "Boundary crossings" counts how often a route changes module at that concept, which marks it as a coupling point. A concept carrying half or more of the strength is flagged as a bottleneck: the selected routes largely depend on it, which makes it a place where coordination between subsystems is needed. The 50% threshold is a convention of this tool.</p>
+            <p><strong>Boundary crossings.</strong> {result.bridges.slice(0, 5).map((b) => `${b.name} ${b.boundaryCrossings}`).join(", ") || "none"}: how often a route changes module at a bridge concept, which marks it as a coupling point.</p>
             <p><strong>Enumeration is capped</strong> at 6 relationships per route, {ROUTE_KEEP_LIMIT.toLocaleString()} routes and {ROUTE_EXPANSION_LIMIT.toLocaleString()} search steps, so a dense network cannot freeze the page{result.truncated ? ". This selection hit the cap, so counts and shares are based on the routes found before it; narrow the selection (shorter length, a From/To concept) for complete figures" : ""}.</p>
           </MethodPanel>
+          <FeedbackLoopsSection concepts={concepts} edges={edges} onHighlight={onHighlight} part="method" />
         </>
       )}
 
