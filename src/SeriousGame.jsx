@@ -172,7 +172,7 @@ function Reflection({ id, label, hint, state, setText, rows = 3 }) {
       {hint && <span className="block text-xs text-neutral-700 mb-1.5">{hint}</span>}
       <textarea value={v} onChange={(e) => setText(id, e.target.value)} rows={rows}
         className="w-full text-[14.5px] border border-slate-300 rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-lagoon-300" placeholder="Write your answer here" />
-      <span className="block text-[13px] text-neutral-600 mt-0.5">{v.trim().length >= 25 ? "Saved. +5 points." : "A sentence or two is enough (saved as you type)."}</span>
+      <span className="block text-[14px] text-neutral-600 mt-0.5">{v.trim().length >= 25 ? "Saved. +5 points." : "A sentence or two is enough (saved as you type)."}</span>
     </label>
   );
 }
@@ -200,10 +200,12 @@ const CHAPTERS = [
 
 export default function SeriousGame({
   open, onClose, concepts, edges, scenarios, results, baselineResult, tab, onGoTab,
-  activeModelId, onStartModel, onOpenModel, modelExists,
+  activeModelId, onStartModel, onOpenModel, modelExists, collapsed: collapsedProp, setCollapsed: setCollapsedProp,
 }) {
   const [state, setStateRaw] = useState(() => readGameState() || freshGame());
-  const [collapsed, setCollapsed] = useState(false);
+  const [ownCollapsed, setOwnCollapsed] = useState(false);
+  const collapsed = collapsedProp ?? ownCollapsed;
+  const setCollapsed = setCollapsedProp || setOwnCollapsed;
   const [now, setNow] = useState(Date.now());
   const setState = (patch) => setStateRaw((s) => {
     const next = typeof patch === "function" ? patch(s) : { ...s, ...patch };
@@ -371,7 +373,7 @@ export default function SeriousGame({
                 <div className="flex items-center gap-2 mb-1">
                   <MessageSquareQuote size={15} className="text-lagoon-600 shrink-0" />
                   <span className="text-[14.5px] font-semibold text-neutral-900">{iv.who}</span>
-                  <span className="text-[13px] text-neutral-600 truncate">{iv.role}</span>
+                  <span className="text-[14px] text-neutral-600 truncate">{iv.role}</span>
                 </div>
                 <p className="text-[14.5px] text-neutral-900 italic leading-relaxed">"{iv.quote}"</p>
                 {!read
@@ -550,17 +552,49 @@ export default function SeriousGame({
     }
   }
 
+  // Before the game starts it fills the whole screen with its cover.
+  if (!state.startedAt) {
+    return (
+      <div className="fixed inset-0 z-[80] overflow-y-auto bg-gradient-to-br from-lagoon-900 via-lagoon-800 to-ink text-white" role="dialog" aria-label="Veldmeer serious game">
+        <div className="absolute top-4 right-4 flex gap-2">
+          <button onClick={() => setCollapsed(true)} className="rounded-full px-3 py-1.5 text-[14px] text-white/80 hover:text-white hover:bg-white/10">Later</button>
+          <button onClick={onClose} className="rounded-full p-2 text-white/80 hover:text-white hover:bg-white/10" title="Close the game"><X size={20} /></button>
+        </div>
+        <div className="min-h-full flex items-center justify-center p-6">
+          <div className="w-full max-w-2xl space-y-6">
+            <div className="flex items-center gap-3 text-coral-300"><Gamepad2 size={28} /><span className="text-[14px] font-semibold uppercase tracking-[0.18em]">The Veldmeer game</span></div>
+            <h1 className="se-display text-4xl md:text-5xl font-extrabold leading-tight">Can you save the Veldmeer?</h1>
+            <p className="text-[18px] leading-relaxed text-white/85">In about 30 minutes you learn how to think in systems, what a fuzzy cognitive map is, and how to use the Spaghetti Engine, by building your own model of a lake in trouble.</p>
+            <ol className="grid sm:grid-cols-2 gap-2.5">
+              {CHAPTERS.map((c, i) => {
+                const Icon = c.icon;
+                return (
+                  <li key={c.id} className="flex items-center gap-3 rounded-xl bg-white/10 px-3.5 py-2.5 text-[15px]">
+                    <span className="w-8 h-8 rounded-lg bg-white/15 flex items-center justify-center shrink-0"><Icon size={16} className="text-coral-300" /></span>
+                    <span className="flex-1">{i + 1}. {c.title}</span><span className="text-[14px] text-white/60">{c.minutes} min</span>
+                  </li>
+                );
+              })}
+            </ol>
+            <p className="text-[14.5px] text-white/70">The case is fictional. You score points for missions, quiz answers and written answers. Your map is built in a separate model, so your own models are not touched.</p>
+            <button onClick={start} className="inline-flex items-center justify-center gap-2 rounded-xl bg-coral-500 text-white text-[17px] font-semibold px-6 py-3 hover:bg-coral-400 shadow-lg shadow-black/20">Start the game <ChevronRight size={18} /></button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <aside className="fixed z-40 bg-white border border-slate-200 shadow-2xl flex flex-col inset-x-2 bottom-2 max-h-[62vh] rounded-xl md:static md:z-auto md:w-[400px] md:shrink-0 md:max-h-none md:rounded-none md:shadow-none md:border-0 md:border-l"
+    <aside className="fixed z-40 bg-white border border-slate-200 shadow-2xl flex flex-col inset-x-2 bottom-2 max-h-[62vh] rounded-xl md:static md:z-auto md:order-first md:w-[480px] lg:w-[520px] md:shrink-0 md:max-h-none md:rounded-none md:shadow-none md:border-0 md:border-r"
       role="complementary" aria-label="Veldmeer serious game">
       <div className="flex items-center gap-2 px-3.5 py-2.5 bg-ink text-white rounded-t-xl md:rounded-none">
         <Gamepad2 size={17} className="text-coral-400 shrink-0" />
         <div className="min-w-0 flex-1">
           <div className="se-display text-[15.5px] font-semibold leading-tight">The Veldmeer game</div>
-          <div className="text-[13px] text-slate-300">A 30-minute tutorial in modelling</div>
+          <div className="text-[14px] text-slate-300">A 30-minute tutorial in modelling</div>
         </div>
-        <span className="inline-flex items-center gap-1 text-[13.5px] text-coral-300" title="Points"><Trophy size={13} />{points}</span>
-        {state.startedAt && <span className="inline-flex items-center gap-1 text-[13.5px] text-slate-300" title="Time played"><Timer size={13} />{minutes}′</span>}
+        <span className="inline-flex items-center gap-1 text-[14.5px] text-coral-300" title="Points"><Trophy size={13} />{points}</span>
+        {state.startedAt && <span className="inline-flex items-center gap-1 text-[14.5px] text-slate-300" title="Time played"><Timer size={13} />{minutes}′</span>}
         <button onClick={() => setCollapsed(true)} className="text-slate-300 hover:text-white" title="Make smaller"><ChevronDown size={16} /></button>
         <button onClick={onClose} className="text-slate-300 hover:text-white" title="Close the game (your progress is kept)"><X size={16} /></button>
       </div>
@@ -570,25 +604,10 @@ export default function SeriousGame({
             className={`h-1.5 flex-1 rounded-full ${i < state.chapter ? "bg-emerald-500" : i === state.chapter ? "bg-coral-400" : "bg-slate-200"}`} />
         ))}
       </div>
-      {!state.startedAt ? (
-        <div className="p-4 space-y-3 overflow-y-auto" data-game-body>
-          <Card tone="story">
-            <p className="se-display text-[17.5px] font-bold mb-1">Can you save the Veldmeer?</p>
-            <p>In about 30 minutes you learn how to think in systems, what a fuzzy cognitive map is, and how to use the Spaghetti Engine, by building your own model of a lake in trouble.</p>
-          </Card>
-          <ul className="space-y-1">
-            {CHAPTERS.map((c, i) => {
-              const Icon = c.icon;
-              return <li key={c.id} className="flex items-center gap-2 text-[14.5px] text-neutral-900"><Icon size={14} className="text-lagoon-600 shrink-0" /><span className="flex-1">{i + 1}. {c.title}</span><span className="text-[13px] text-neutral-600">{c.minutes} min</span></li>;
-            })}
-          </ul>
-          <p className="text-xs text-neutral-700">The case is fictional. You score points for missions, quiz answers and written answers. Your map is built in a separate model, so your own models are not touched.</p>
-          <button onClick={start} className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-coral-400 text-ink text-[15.5px] font-semibold px-3 py-2 hover:bg-coral-300">Start the game <ChevronRight size={15} /></button>
-        </div>
-      ) : (
+      {!state.startedAt ? null : (
         <>
           <div className="px-3.5 pt-2 pb-1">
-            <div className="text-[13px] uppercase tracking-wide text-neutral-600">Chapter {state.chapter + 1} of {CHAPTERS.length} · about {ch.minutes} min</div>
+            <div className="text-[14px] uppercase tracking-wide text-neutral-600">Chapter {state.chapter + 1} of {CHAPTERS.length} · about {ch.minutes} min</div>
             <h3 className="se-display text-[17.5px] font-bold text-neutral-900">{ch.title}</h3>
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto px-3.5 pb-3 space-y-2.5" data-game-body>{body}</div>

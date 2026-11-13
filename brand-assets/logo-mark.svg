@@ -7,12 +7,10 @@
     </linearGradient>
   </defs>
   <rect x="2" y="2" width="60" height="60" rx="16" fill="url(#se-g)"/>
-  <g transform="translate(-3 3) rotate(-15 32 34)">
-    <g fill="none" stroke="#D9643A" stroke-width="3" stroke-linecap="round"><path d="M18.5 15 A13.5 3.5 0 0 1 45.5 15"/><path d="M18.5 20.5 A13.5 3.5 0 0 1 45.5 20.5"/><path d="M18.5 26 A13.5 3.5 0 0 1 45.5 26"/></g>
-    <g fill="none" stroke="#FFFFFF" stroke-linecap="round"><path d="M24 8 V26 M29.3 8 V26 M34.7 8 V26 M40 8 V26" stroke-width="2.6"/><path d="M24 24 C24 32 28 34.5 32 34.5 C36 34.5 40 32 40 24" stroke-width="2.6"/><path d="M32 34.5 V54" stroke-width="5"/></g>
-    <g fill="none" stroke="#FF8A5B" stroke-width="3" stroke-linecap="round"><path d="M18.5 15 A13.5 3.5 0 0 0 45.5 15"/><path d="M18.5 20.5 A13.5 3.5 0 0 0 45.5 20.5"/><path d="M18.5 26 A13.5 3.5 0 0 0 45.5 26"/></g>
-    <path d="M45.5 26 C54 28 55 37 49 40.5 C44 43.5 45 50 52 51" fill="none" stroke="#FF8A5B" stroke-width="3" stroke-linecap="round"/>
-    <circle cx="49" cy="40.5" r="2.6" fill="#FFFFFF"/>
-    <circle cx="52.5" cy="51" r="4.4" fill="#FFFFFF"/><circle cx="52.5" cy="51" r="2" fill="#FF8A5B"/>
-  </g>
+  <path d="M37.99 17.17 A16 16 0 0 1 47.84 34.23" fill="none" stroke="#fff" stroke-width="3.6" stroke-linecap="round"/>
+  <path d="M41.85 44.61 A16 16 0 0 1 22.15 44.61" fill="none" stroke="#fff" stroke-width="3.6" stroke-linecap="round"/>
+  <path d="M16.16 34.23 A16 16 0 0 1 26.01 17.17" fill="none" stroke="#fff" stroke-width="3.6" stroke-linecap="round"/>
+  <circle cx="32.00" cy="16.00" r="6.0" fill="#FF8A5B" stroke="#fff" stroke-width="2"/>
+  <circle cx="45.86" cy="40.00" r="5.2" fill="#fff"/>
+  <circle cx="18.14" cy="40.00" r="5.2" fill="#fff"/>
 </svg>

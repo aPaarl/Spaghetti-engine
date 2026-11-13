@@ -61,7 +61,7 @@ function SizeLabel({ doc }) {
 function SectionTitle({ kicker, title, children }) {
   return (
     <div className="space-y-1">
-      {kicker && <div className="text-[13px] font-semibold uppercase tracking-[0.12em] text-lagoon-700">{kicker}</div>}
+      {kicker && <div className="text-[14px] font-semibold uppercase tracking-[0.12em] text-lagoon-700">{kicker}</div>}
       <h2 className="se-display text-2xl font-bold tracking-tight text-ink">{title}</h2>
       {children && <p className="text-sm text-slate-600 max-w-2xl">{children}</p>}
     </div>
@@ -95,10 +95,10 @@ export default function AboutTab({ onOpenTab, onOpenGuide, onOpenGame }) {
               A workspace in your browser for building, simulating, and stress-testing fuzzy cognitive maps of complex systems, with every method documented.
             </p>
             <div className="flex flex-wrap gap-3">
-              <button onClick={() => onOpenTab("network")} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-lagoon-700 text-white text-sm font-semibold shadow-sm shadow-lagoon-900/20 hover:bg-lagoon-800">
+              <button onClick={() => onOpenTab("network")} className="w-full sm:w-64 justify-center inline-flex items-center gap-2 px-5 py-3 rounded-xl border border-lagoon-700 bg-lagoon-700 text-white text-sm font-semibold shadow-sm shadow-lagoon-900/20 hover:bg-lagoon-800">
                 Start building a map <ArrowRight size={16} />
               </button>
-              <a href="#documentation" onClick={jump("documentation")} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-slate-300 bg-white text-sm font-semibold text-ink hover:border-lagoon-400 hover:text-lagoon-800">
+              <a href="#documentation" onClick={jump("documentation")} className="w-full sm:w-64 justify-center inline-flex items-center gap-2 px-5 py-3 rounded-xl border border-slate-300 bg-white text-sm font-semibold text-ink hover:border-lagoon-400 hover:text-lagoon-800">
                 <BookOpen size={16} /> Read the documentation
               </a>
             </div>
@@ -164,7 +164,7 @@ export default function AboutTab({ onOpenTab, onOpenGuide, onOpenGame }) {
           <SectionTitle kicker="Documentation" title="Read the manual and the method">
             Three documents, each as a PDF to download or read in your browser.
           </SectionTitle>
-          <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[13px] font-medium ${docsCurrent ? "bg-lagoon-50 text-lagoon-800" : "bg-amber-50 text-amber-800"}`}>
+          <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[14px] font-medium ${docsCurrent ? "bg-lagoon-50 text-lagoon-800" : "bg-amber-50 text-amber-800"}`}>
             {docsCurrent ? <Check size={14} /> : <HelpCircle size={14} />}
             {docsCurrent ? `Up to date with version ${APP_VERSION}` : `Describes version ${manifest.version}, not yet ${APP_VERSION}`}
           </span>
@@ -177,10 +177,10 @@ export default function AboutTab({ onOpenTab, onOpenGuide, onOpenGame }) {
                 <div className={`relative bg-gradient-to-br ${tint} text-white px-5 pt-5 pb-6`}>
                   <Icon size={26} className="opacity-90" />
                   <div className="se-display mt-3 text-lg font-bold leading-tight">{title}</div>
-                  <div className="text-[13px] text-white/80">Version {manifest.version} · PDF · <SizeLabel doc={doc} /></div>
+                  <div className="text-[14px] text-white/80">Version {manifest.version} · PDF · <SizeLabel doc={doc} /></div>
                 </div>
                 <div className="p-5 flex flex-col flex-1 gap-3">
-                  <div className="text-[13px] font-semibold uppercase tracking-wide text-slate-500">{audience}</div>
+                  <div className="text-[14px] font-semibold uppercase tracking-wide text-slate-500">{audience}</div>
                   <p className="text-sm text-slate-700 leading-relaxed flex-1">{blurb}</p>
                   <div className="flex flex-wrap items-center gap-2 pt-1">
                     <a href={docUrl(doc.file)} download={doc.file} className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-lagoon-700 text-white text-[14px] font-semibold hover:bg-lagoon-800">
@@ -215,7 +215,7 @@ export default function AboutTab({ onOpenTab, onOpenGuide, onOpenGame }) {
       <section id="about-contact" className="scroll-mt-4 rounded-3xl bg-ink text-white p-7 md:p-9 flex flex-col md:flex-row md:items-center gap-6">
         <div className="w-16 h-16 rounded-2xl bg-lagoon-600 text-white flex items-center justify-center text-xl font-bold shrink-0">{initials}</div>
         <div className="flex-1 space-y-1.5">
-          <div className="text-[13px] font-semibold uppercase tracking-[0.12em] text-lagoon-300">Contact</div>
+          <div className="text-[14px] font-semibold uppercase tracking-[0.12em] text-lagoon-300">Contact</div>
           <h2 className="se-display text-xl font-bold">{CONTACT.name}</h2>
           <p className="text-sm text-slate-300 leading-relaxed max-w-2xl">
             Questions, bug reports, ideas, and requests to collaborate are welcome. When reporting a problem, please mention the version ({APP_VERSION}) and, if you can, attach your model file (Export JSON in the model menu).
