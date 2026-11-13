@@ -38,6 +38,7 @@ import { ConvergenceChart, SteadyStateBars, ScenarioComparisonFigure, ScenarioGr
 import { metroRows } from "./pathwayMetroLayout.js";
 import { bootLibrary, saveModel, loadModel, setActive, createModel, renameModel, duplicateModel, deleteModel, readIndex, modelKey } from "./modelLibrary.js";
 import { BrandMark } from "./brand.jsx";
+import { TableToolsHost } from "./TableEditor.jsx";
 
 // ============================================================================
 // Utilities
@@ -7680,7 +7681,7 @@ function InfluenceRoutesTab({ concepts, edges, config, setConfig, onHighlight })
                         <tr key={b.id} className="border-b border-slate-50 cursor-pointer hover:bg-slate-50" onClick={() => onHighlight(b.id)}>
                           <td className="py-1.5 pr-3">
                             {b.name}
-                            {b.share >= 0.5 && <span className="ml-1.5 px-1 py-0.5 rounded bg-orange-100 text-orange-800 text-[14px]">bottleneck</span>}
+                            {b.share >= 0.5 && <span data-export-text="(bottleneck)" className="ml-1.5 px-1 py-0.5 rounded bg-orange-100 text-orange-800 text-[14px]">bottleneck</span>}
                           </td>
                           <td className="py-1.5 pr-3"><ModuleChip category={moduleCategory.get(b.moduleKey)} label={moduleLabel.get(b.moduleKey)} /></td>
                           <td className="py-1.5 pr-3">
@@ -13502,6 +13503,7 @@ export default function SpaghettiEngine() {
     <AppCrashBoundary>
       <SpaghettiEngineApp />
       <FigureEditorHost />
+      <TableToolsHost />
     </AppCrashBoundary>
   );
 }
