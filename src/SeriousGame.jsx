@@ -125,14 +125,31 @@ function Card({ children, tone = "plain" }) {
   return <div className={`rounded-xl border p-4 text-[16px] leading-[1.7] text-neutral-900 ${cls}`}>{children}</div>;
 }
 
-function Mission({ done, title, detail, children }) {
+// An exercise: a number, a task, the steps to take, and a live check.
+function Mission({ num, done, title, steps, detail, children }) {
   return (
-    <div className={`rounded-xl border p-4 ${done ? "bg-emerald-50 border-emerald-200" : "bg-white border-slate-200"}`}>
-      <div className="flex items-start gap-2">
-        {done ? <CheckCircle2 size={17} className="text-emerald-600 shrink-0 mt-px" /> : <Circle size={17} className="text-slate-300 shrink-0 mt-px" />}
+    <div className={`rounded-xl border p-4 ${done ? "bg-emerald-50 border-emerald-200" : "bg-white border-slate-300"}`} data-game-exercise={num}>
+      <div className="flex items-start gap-3">
+        <span className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-[14px] font-semibold ${done ? "bg-emerald-600 text-white" : "bg-lagoon-100 text-lagoon-800"}`}>
+          {done ? <CheckCircle2 size={18} /> : num}
+        </span>
         <div className="min-w-0 flex-1">
-          <div className={`text-[16px] font-semibold ${done ? "text-emerald-900" : "text-neutral-900"}`}>{title}</div>
-          {detail && <div className="text-[15px] text-neutral-700 mt-0.5">{detail}</div>}
+          <div className="text-[13px] font-semibold uppercase tracking-wide text-neutral-500">Exercise {num}</div>
+          <div className={`text-[17px] font-semibold leading-snug ${done ? "text-emerald-900" : "text-neutral-900"}`}>{title}</div>
+          {steps && !done && (
+            <ol className="mt-2 space-y-1.5">
+              {steps.map((st, i) => (
+                <li key={i} className="flex gap-2 text-[16px] leading-relaxed text-neutral-900">
+                  <span className="text-lagoon-700 font-semibold shrink-0">{i + 1}.</span><span>{st}</span>
+                </li>
+              ))}
+            </ol>
+          )}
+          {detail && (
+            <div className={`mt-2 text-[15px] leading-relaxed rounded-lg px-3 py-1.5 ${done ? "text-emerald-900" : "bg-slate-50 text-neutral-800"}`}>
+              <strong>{done ? "Done. " : "Check: "}</strong>{detail}
+            </div>
+          )}
           {children}
         </div>
       </div>
@@ -166,16 +183,38 @@ function Quiz({ id, question, options, correct, explain, state, answer }) {
   );
 }
 
-function Reflection({ id, label, hint, state, setText, rows = 3 }) {
+// A written answer to one of the board's questions, set as an exercise.
+function Reflection({ num, id, title, question, instruction, hint, state, setText, rows = 4 }) {
   const v = state.texts[id] || "";
+  const done = v.trim().length >= 25;
   return (
-    <label className="block">
-      <span className="block text-[16px] font-semibold text-neutral-900 mb-1">{label}</span>
-      {hint && <span className="block text-[15px] text-neutral-700 mb-1.5">{hint}</span>}
-      <textarea value={v} onChange={(e) => setText(id, e.target.value)} rows={rows}
-        className="w-full text-[16px] leading-relaxed border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-lagoon-300" placeholder="Write your answer here" />
-      <span className="block text-[15px] text-neutral-600 mt-0.5">{v.trim().length >= 25 ? "Saved. +5 points." : "A sentence or two is enough (saved as you type)."}</span>
-    </label>
+    <Mission num={num} done={done} title={title}>
+      <p className="mt-2 text-[16px] leading-relaxed text-neutral-900 font-medium">{question}</p>
+      {instruction && <p className="mt-1.5 text-[16px] leading-relaxed text-neutral-800">{instruction}</p>}
+      {hint && <p className="mt-1.5 text-[15px] leading-relaxed text-neutral-600"><strong>Hint:</strong> {hint}</p>}
+      <textarea value={v} onChange={(e) => setText(id, e.target.value)} rows={rows} aria-label={title}
+        className="mt-2 w-full text-[16px] leading-relaxed border border-slate-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-lagoon-300" placeholder="Write your answer here" />
+      <p className="text-[15px] text-neutral-600 mt-0.5">{done ? "Saved. +5 points." : "Saved as you type. Done when you have written at least one full sentence."}</p>
+    </Mission>
+  );
+}
+
+// The goal of a chapter and how many of its tasks are done.
+function ChapterGoal({ goal, checks }) {
+  const n = checks.filter(Boolean).length;
+  return (
+    <div className="rounded-xl bg-ink text-white p-4">
+      <div className="text-[13px] font-semibold uppercase tracking-wide text-coral-300">Goal of this chapter</div>
+      <p className="text-[16px] leading-relaxed mt-1">{goal}</p>
+      {checks.length > 0 && (
+        <div className="mt-3 flex items-center gap-3">
+          <div className="flex gap-1 flex-1" aria-hidden>
+            {checks.map((c, i) => <span key={i} className={`h-1.5 flex-1 rounded-full ${c ? "bg-emerald-400" : "bg-white/20"}`} />)}
+          </div>
+          <span className="text-[15px] text-white/85 shrink-0">{n} of {checks.length} tasks done</span>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -190,14 +229,14 @@ function GoButton({ onClick, children }) {
 // ---- the chapters --------------------------------------------------------------------
 
 const CHAPTERS = [
-  { id: "briefing", title: "Your assignment", minutes: 3, icon: Flag },
-  { id: "fcm", title: "Fuzzy cognitive maps in four minutes", minutes: 4, icon: Lightbulb },
-  { id: "interviews", title: "Listen to the stakeholders", minutes: 4, icon: Users },
-  { id: "concepts", title: "Map the concepts", minutes: 6, icon: MapPin },
-  { id: "links", title: "Connect cause and effect", minutes: 6, icon: Target },
-  { id: "run", title: "Run your map", minutes: 3, icon: Timer },
-  { id: "policy", title: "Test an intervention", minutes: 3, icon: Star },
-  { id: "debrief", title: "Advise the board", minutes: 2, icon: Trophy },
+  { id: "briefing", title: "Your assignment", minutes: 3, icon: Flag, goal: "Understand the case, the boundaries of the system and the four questions your map must answer. To finish, answer the two quiz questions at the bottom." },
+  { id: "fcm", title: "Fuzzy cognitive maps in four minutes", minutes: 4, icon: Lightbulb, goal: "Learn the three ideas you will use: concepts, weighted arrows and feedback loops. To finish, answer the three quiz questions." },
+  { id: "interviews", title: "Listen to the stakeholders", minutes: 4, icon: Users, goal: "Collect the quantities that will become your concepts. To finish, read the five interviews and write at least five quantities in your notebook." },
+  { id: "concepts", title: "Map the concepts", minutes: 6, icon: MapPin, goal: "Put your quantities on the map as concepts and sort them into modules. You work in the Network tab beside this panel." },
+  { id: "links", title: "Connect cause and effect", minutes: 6, icon: Target, goal: "Draw the arrows between your concepts, with a direction and a strength, until the map contains at least one feedback loop." },
+  { id: "run", title: "Run your map", minutes: 3, icon: Timer, goal: "Describe today's situation, let the map run until it settles, and use the result to answer board question 1." },
+  { id: "policy", title: "Test an intervention", minutes: 3, icon: Star, goal: "Test one measure the board could fund, compare it with the baseline, and answer board question 3." },
+  { id: "debrief", title: "Advise the board", minutes: 2, icon: Trophy, goal: "Answer the last two board questions and download your advice." },
 ];
 
 export default function SeriousGame({
@@ -224,7 +263,9 @@ export default function SeriousGame({
 
   // Missions are checked from the model itself, so they follow whatever the
   // player does in the tool, in any order.
+  const noteCount = (state.notes || "").split(/[,;\n]+/).map((t) => t.trim()).filter((t) => t.length >= 3).length;
   const missions = {
+    notes5: noteCount >= 5,
     model: onGameModel,
     concepts8: stats.nConcepts >= 8,
     modules3: stats.modules.length >= 3,
@@ -240,8 +281,8 @@ export default function SeriousGame({
   // A mission counts for points once it has been met; later edits do not take
   // the points away again.
   useEffect(() => {
-    if (!open || !onGameModel) return;
-    const newly = Object.entries(missions).filter(([k, v]) => v && !state.missions[k]).map(([k]) => k);
+    if (!open) return;
+    const newly = Object.entries(missions).filter(([k, v]) => v && !state.missions[k] && (onGameModel || k === "notes5")).map(([k]) => k);
     if (newly.length) setState((s) => ({ ...s, missions: { ...s.missions, ...Object.fromEntries(newly.map((k) => [k, true])) } }));
   });
 
@@ -263,7 +304,8 @@ export default function SeriousGame({
     + Object.keys(state.missions).length * 20
     + Object.values(state.texts).filter((t) => (t || "").trim().length >= 25).length * 5
     + state.interviewsRead.length * 2;
-  const maxPoints = 10 * 10 + 11 * 20 + QUESTIONS.length * 5 + INTERVIEWS.length * 2;
+  const missionCount = Object.keys(missions).length;
+  const maxPoints = 10 * 10 + missionCount * 20 + QUESTIONS.length * 5 + INTERVIEWS.length * 2;
   const minutes = state.startedAt ? Math.max(0, Math.floor(((state.finishedAt || Math.max(now, state.startedAt)) - state.startedAt) / 60000)) : 0;
   const ch = CHAPTERS[state.chapter] || CHAPTERS[0];
   const go = (i) => { setState({ chapter: Math.max(0, Math.min(CHAPTERS.length - 1, i)) }); document.querySelector("[data-game-body]")?.scrollTo?.({ top: 0 }); };
@@ -299,6 +341,18 @@ export default function SeriousGame({
   const finals = onGameModel && baselineResult?.final ? concepts.map((c) => baselineResult.final[c.id] ?? 0) : [];
   const finalQ = finals.length && Math.max(...finals) - Math.min(...finals) > 0.05 ? rankedOptions(concepts, (c) => baselineResult.final[c.id] ?? 0) : null;
   const firstLoop = stats.loops[0];
+  const solved = (id) => !!state.answers[id]?.correct;
+  const wrote = (id) => (state.texts[id] || "").trim().length >= 25;
+  const chapterChecks = {
+    briefing: [solved("b1"), solved("b2")],
+    fcm: [solved("f1"), solved("f2"), solved("f3")],
+    interviews: [state.interviewsRead.length >= INTERVIEWS.length, missions.notes5],
+    concepts: [missions.model, missions.concepts8, missions.modules3],
+    links: [missions.edges12, missions.negative2, missions.connected, missions.loop],
+    run: [missions.start3, missions.baseline, wrote("q1")],
+    policy: [missions.scenario, missions.scenarioRun, wrote("q3")],
+    debrief: [wrote("q2"), wrote("q4"), !!state.finishedAt],
+  };
 
   let body;
   switch (ch.id) {
@@ -382,8 +436,11 @@ export default function SeriousGame({
       body = (
         <>
           <Card tone="story">
-            <p>You spent the morning talking to people in and around the park. Read what they told you. Listen for <strong>quantities that change</strong> and for <strong>causes and effects</strong>: these become your concepts and arrows. People do not always agree, and that is part of the system too.</p>
+            <p>You spent the morning talking to people in and around the park. People do not always agree, and that disagreement is part of the system too.</p>
           </Card>
+          <Mission num="3.1" done={state.interviewsRead.length >= INTERVIEWS.length} title="Read the five interviews"
+            steps={["Read each quote below.", "Look for quantities that can rise or fall, such as groundwater level or farm income.", "Look for causes and effects: what makes what go up or down?", "Click Mark as read under each quote."]}
+            detail={`${state.interviewsRead.length} of ${INTERVIEWS.length} read.`} />
           {INTERVIEWS.map((iv) => {
             const read = state.interviewsRead.includes(iv.id);
             return (
@@ -402,12 +459,12 @@ export default function SeriousGame({
               </div>
             );
           })}
-          <label className="block">
-            <span className="block text-[16px] font-semibold text-neutral-900 mb-1">Your notebook</span>
-            <span className="block text-[15px] text-neutral-700 mb-1.5">Jot down the quantities you heard, in your own words. You will turn them into concepts in the next chapter.</span>
-            <textarea value={state.notes} onChange={(e) => setState({ notes: e.target.value })} rows={4}
-              className="w-full text-[16px] border border-slate-300 rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-lagoon-300" placeholder="For example: groundwater level, ..." />
-          </label>
+          <Mission num="3.2" done={missions.notes5} title="Write at least five quantities in your notebook"
+            steps={["Write each quantity in your own words.", "Separate them with commas or new lines.", "Name quantities, not groups: write 'Farm income', not 'Farmers'."]}
+            detail={`${noteCount} quantit${noteCount === 1 ? "y" : "ies"} so far. You turn them into concepts in the next chapter.`}>
+            <textarea value={state.notes} onChange={(e) => setState({ notes: e.target.value })} rows={4} aria-label="Your notebook"
+              className="mt-2 w-full text-[16px] leading-relaxed border border-slate-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-lagoon-300" placeholder="For example: groundwater level, grass cover, ..." />
+          </Mission>
         </>
       );
       break;
@@ -415,14 +472,17 @@ export default function SeriousGame({
       body = (
         <>
           {!onGameModel && needModel}
-          <Card tone="story">
-            <p>Time to draw. Open the <strong>Network</strong> tab: double-click an empty spot (or click <em>Add concept</em>) to add a concept. Click a concept to open the <strong>Inspector</strong> beside the map, and type its name there. Give each concept a <strong>module</strong> (for example Water, Nature, Farming, Recreation) so the map is coloured by theme.</p>
-          </Card>
-          <Mission done={missions.model} title="Open a fresh model for your map" detail={onGameModel ? "Your game map is open. Everything you build in it counts." : "Use the button above."} />
-          <Mission done={missions.concepts8} title="Add at least 8 concepts" detail={`${stats.nConcepts} so far. Stay within the boundaries; 20 is the upper limit.`}>
+          <Mission num="4.1" done={missions.model} title="Create your game map"
+            steps={["Click Create my game map above.", "A new, empty model opens. Your own models stay as they are."]}
+            detail={onGameModel ? "Your game map is open. Everything you build in it counts." : "No game map is open yet."} />
+          <Mission num="4.2" done={missions.concepts8} title="Add between 8 and 20 concepts"
+            steps={["Open the Network tab.", "Double-click an empty spot on the map, or click Add concept.", "Type the name in the Inspector beside the map. Use the quantities from your notebook.", "Repeat until you have at least 8 concepts."]}
+            detail={`${stats.nConcepts} concept${stats.nConcepts === 1 ? "" : "s"} so far.`}>
             {tab !== "network" && <GoButton onClick={() => onGoTab("network")}>Go to the Network tab</GoButton>}
           </Mission>
-          <Mission done={missions.modules3} title="Sort them into at least 3 modules" detail={stats.modules.length ? `Modules so far: ${stats.modules.join(", ")}.` : "Click a concept and pick or type a module in the Inspector."} />
+          <Mission num="4.3" done={missions.modules3} title="Sort the concepts into at least 3 modules"
+            steps={["Click a concept on the map.", "In the Inspector, pick or type a module, for example Water, Nature, Farming or Recreation.", "Do this for every concept. The map is then coloured by theme."]}
+            detail={stats.modules.length ? `Modules so far: ${stats.modules.join(", ")}.` : "No modules yet."} />
           {stats.actorLike.length > 0 && (
             <Card tone="tip">
               <p><strong>Analyst's tip.</strong> {stats.actorLike.map((c) => `"${c.name}"`).join(", ")} {stats.actorLike.length === 1 ? "sounds" : "sound"} like a group or a sector rather than a quantity. What about it goes up or down? For example the number, the income, or the satisfaction.</p>
@@ -440,15 +500,20 @@ export default function SeriousGame({
       body = (
         <>
           {!onGameModel && needModel}
-          <Card tone="story">
-            <p>Now draw the arrows. Hover a concept to see its small dots, then drag from a dot to the concept it affects. You can also click a concept and use <em>Link to a concept already on the map</em> in the Inspector. Then click the arrow and choose whether it <strong>increases</strong> or <strong>decreases</strong> the other concept, and how strongly. Use what the stakeholders told you, and your own judgement.</p>
-          </Card>
-          <Mission done={missions.edges12} title="Draw at least 12 relationships" detail={`${stats.nEdges} so far.`}>
+          <Mission num="5.1" done={missions.edges12} title="Draw at least 12 relationships"
+            steps={["Hover over a concept until small dots appear on its edge.", "Drag from a dot to the concept it affects. Alternatively, click a concept and use Link to a concept already on the map in the Inspector.", "Click the new arrow and choose whether it increases or decreases the other concept.", "Set how strong the effect is. Base it on the interviews and your own judgement."]}
+            detail={`${stats.nEdges} relationship${stats.nEdges === 1 ? "" : "s"} so far.`}>
             {tab !== "network" && <GoButton onClick={() => onGoTab("network")}>Go to the Network tab</GoButton>}
           </Mission>
-          <Mission done={missions.negative2} title="Include at least 2 negative relationships" detail={`${stats.nNegative} so far. Real systems have brakes as well as accelerators.`} />
-          <Mission done={missions.connected} title="Connect every concept" detail={stats.isolated.length ? `Not connected yet: ${stats.isolated.slice(0, 4).map((c) => c.name).join(", ")}${stats.isolated.length > 4 ? ` and ${stats.isolated.length - 4} more` : ""}.` : "Every concept has at least one arrow."} />
-          <Mission done={missions.loop} title="Find a feedback loop" detail={firstLoop ? `Found ${stats.loops.length}${stats.loops.length >= 25 ? "+" : ""}. For example: ${firstLoop.nodes.map((id) => nameOf(concepts, id)).join(" → ")} → ${nameOf(concepts, firstLoop.nodes[0])}.` : "Is there a chain of arrows in your map that comes back to where it started? The stakeholders mentioned a few."} />
+          <Mission num="5.2" done={missions.negative2} title="Include at least 2 negative relationships"
+            steps={["Find an effect where more of one concept gives less of another, for example more pumping gives a lower groundwater level.", "Set that arrow to decreases.", "Find a second one."]}
+            detail={`${stats.nNegative} negative relationship${stats.nNegative === 1 ? "" : "s"} so far. Real systems have brakes as well as accelerators.`} />
+          <Mission num="5.3" done={missions.connected} title="Connect every concept"
+            steps={["Look at the list of unconnected concepts below.", "Give each one at least one arrow in or out, or delete it if it does not belong in the map."]}
+            detail={stats.isolated.length ? `Not connected yet: ${stats.isolated.slice(0, 4).map((c) => c.name).join(", ")}${stats.isolated.length > 4 ? ` and ${stats.isolated.length - 4} more` : ""}.` : (stats.nConcepts ? "Every concept has at least one arrow." : "No concepts yet.")} />
+          <Mission num="5.4" done={missions.loop} title="Make sure the map contains a feedback loop"
+            steps={["Start at a concept and follow its arrows.", "If you can return to the concept you started from, you have found a loop.", "If there is none, add the missing arrow. The ecologist described one: grass cover, heath fires and heather cover."]}
+            detail={firstLoop ? `Found ${stats.loops.length}${stats.loops.length >= 25 ? "+" : ""}. For example: ${firstLoop.nodes.map((id) => nameOf(concepts, id)).join(" → ")} → ${nameOf(concepts, firstLoop.nodes[0])}.` : "No loop yet."} />
           {firstLoop && (
             <Quiz id={`l1:${firstLoop.nodes.join(",")}`} state={state} answer={answer}
               question={`Look at your loop ${firstLoop.nodes.map((id) => nameOf(concepts, id)).join(" → ")} → ${nameOf(concepts, firstLoop.nodes[0])}. Is it reinforcing or balancing?`}
@@ -466,13 +531,16 @@ export default function SeriousGame({
         <>
           {!onGameModel && needModel}
           <Card tone="story">
-            <p>Let us see what your map does. First describe <strong>today's situation</strong>: if every concept starts at 0, nothing can move. Then open <strong>Baseline Equilibrium</strong> (step 2, Explore) and click <strong>Run</strong>. The chart shows how every concept moves until the system settles.</p>
+            <p>If every concept starts at 0, nothing can move. So you first describe today's situation, and then let the map run.</p>
           </Card>
-          <Mission done={missions.start3} title="Give at least 3 concepts a starting value"
-            detail={stats.started.length ? `Set so far: ${stats.started.slice(0, 4).map((c) => `${c.name} ${fmt(Number(c.initialValue))}`).join(", ")}${stats.started.length > 4 ? ` and ${stats.started.length - 4} more` : ""}.` : "Click a concept on the Network tab and move its Starting value slider in the Inspector (or use the Starting value column in the Model editor). For example: algal blooms high (+0.7), reed bed area low (-0.5)."}>
+          <Mission num="6.1" done={missions.start3} title="Give at least 3 concepts a starting value"
+            steps={["On the Network tab, click a concept.", "In the Inspector, move the Starting value slider. A positive value means high today, a negative value means low today.", "Do this for at least three concepts, for example grass cover +0.6 and groundwater level -0.5."]}
+            detail={stats.started.length ? `Set so far: ${stats.started.slice(0, 4).map((c) => `${c.name} ${fmt(Number(c.initialValue))}`).join(", ")}${stats.started.length > 4 ? ` and ${stats.started.length - 4} more` : ""}.` : "No starting values yet."}>
             {tab !== "network" && tab !== "editor" && <GoButton onClick={() => onGoTab("network")}>Go to the Network tab</GoButton>}
           </Mission>
-          <Mission done={missions.baseline} title="Run the baseline">
+          <Mission num="6.2" done={missions.baseline} title="Run the baseline"
+            steps={["Open Baseline Equilibrium under State and scenario analysis.", "Click Run.", "Read the chart: where does each concept settle?"]}
+            detail={missions.baseline ? "The baseline has run." : "Not run yet."}>
             {tab !== "equilibrium" && <GoButton onClick={() => onGoTab("equilibrium")}>Go to Baseline Equilibrium</GoButton>}
           </Mission>
           {missions.baseline && baselineResult && (
@@ -494,7 +562,9 @@ export default function SeriousGame({
               options={driverQ.options} correct={driverQ.correct}
               explain={`${driverQ.best.name} sends out arrows with a total weight of ${(stats.outStrength.get(driverQ.best.id) || 0).toFixed(2)}. The Influence Metrics tab measures this for every concept: a strong 'driver' is a good place to look for levers.`} />
           )}
-          <Reflection id="q1" state={state} setText={setText} label={`Board question 1. ${QUESTIONS[0].text}`} hint="Follow the arrows that lead into your groundwater or heath concept." />
+          <Reflection num="6.3" id="q1" state={state} setText={setText} title="Answer board question 1" question={QUESTIONS[0].text}
+            instruction="Write two or three sentences. Name at least one chain of cause and effect from your map, for example A → B → C."
+            hint="Follow the arrows that lead into your groundwater or heath concept." />
         </>
       );
       break;
@@ -503,12 +573,16 @@ export default function SeriousGame({
         <>
           {!onGameModel && needModel}
           <Card tone="story">
-            <p>The alderman wants to know what the subsidy budget should go to. Open <strong>Scenarios &amp; Simulation</strong>, click <em>New scenario</em>, and under <em>Add a change</em> push up (or down) the concept that stands for the measure you would fund. Tick the scenario and click <strong>Run simulation</strong> to compare it with the baseline.</p>
+            <p>The alderman wants to know what the budget should go to. Choose one measure, such as closing ditches or turning pine into mixed forest, and test it.</p>
           </Card>
-          <Mission done={missions.scenario} title="Make a scenario with at least one change" detail={changedScenarios.length ? `Scenarios: ${changedScenarios.map((s) => s.name).join(", ")}.` : undefined}>
+          <Mission num="7.1" done={missions.scenario} title="Make a scenario for one measure"
+            steps={["Open Scenarios & Simulation.", "Click New scenario and give it a name, for example Close the ditches.", "Under Add a change, pick the concept your measure acts on and push it up or down."]}
+            detail={changedScenarios.length ? `Scenarios: ${changedScenarios.map((s) => s.name).join(", ")}.` : "No scenario with a change yet."}>
             {tab !== "scenarios" && <GoButton onClick={() => onGoTab("scenarios")}>Go to Scenarios &amp; Simulation</GoButton>}
           </Mission>
-          <Mission done={missions.scenarioRun} title="Run it and compare it with the baseline" />
+          <Mission num="7.2" done={missions.scenarioRun} title="Run it and compare it with the baseline"
+            steps={["Tick your scenario.", "Click Run simulation.", "Compare it with the baseline: which concepts change most, and in which direction?"]}
+            detail={missions.scenarioRun ? "The scenario has run." : "Not run yet."} />
           {scenarioRuns.length > 0 && results.baseline && (() => {
             const sid = scenarioRuns[0];
             const diffs = concepts.map((c) => ({ c, d: (results[sid].final[c.id] ?? 0) - (results.baseline.final[c.id] ?? 0) })).sort((a, b) => Math.abs(b.d) - Math.abs(a.d)).slice(0, 4);
@@ -523,7 +597,9 @@ export default function SeriousGame({
             question="Your intervention raises the groundwater but lowers farm income. What does a good analyst do with that?"
             options={["Leave farm income out of the advice", "Report the trade-off, and look for a second measure that softens it", "Choose another model until the trade-off disappears"]}
             correct={1} explain="Trade-offs are a result, not a flaw. Showing them is what makes the advice credible to all stakeholders." />
-          <Reflection id="q3" state={state} setText={setText} label={`Board question 3. ${QUESTIONS[2].text}`} hint="Use your scenario result. Who gains, who loses?" />
+          <Reflection num="7.3" id="q3" state={state} setText={setText} title="Answer board question 3" question={QUESTIONS[2].text}
+            instruction="Name the measure, its two or three largest effects, and who gains and who loses."
+            hint="Use the largest changes in your scenario result." />
         </>
       );
       break;
@@ -547,15 +623,20 @@ export default function SeriousGame({
       body = (
         <>
           <Card tone="story">
-            <p>The council meets in an hour. Finish your advice by answering the last two questions, then download it.</p>
+            <p>The council meets in an hour. Your answers to board questions 1 and 3 are already in your advice.</p>
           </Card>
-          <Reflection id="q2" state={state} setText={setText} label={`Board question 2. ${QUESTIONS[1].text}`}
+          <Reflection num="8.1" id="q2" state={state} setText={setText} title="Answer board question 2" question={QUESTIONS[1].text}
+            instruction="Name one or two loops from your map, and say for each whether it reinforces or balances change."
             hint={allLoops.length ? `Your map holds, for example: ${allLoops.join("; ")}.` : "Your map has no feedback loop yet. Is that realistic for a national park?"} />
-          <Reflection id="q4" state={state} setText={setText} label={`Board question 4. ${QUESTIONS[3].text}`} hint="Think of the boundaries you were given, the stakeholders you did not hear, and the weights you were unsure about." />
+          <Reflection num="8.2" id="q4" state={state} setText={setText} title="Answer board question 4" question={QUESTIONS[3].text}
+            instruction="Name one thing your map leaves out, and say how it could change your advice."
+            hint="Think of the boundaries you were given, the stakeholders you did not hear, and the weights you were unsure about." />
+          <Mission num="8.3" done={!!state.finishedAt} title="Download your advice"
+            steps={["Click Download my advice below.", "The file holds your four answers and your notebook."]} />
           <div className="rounded-lg border border-coral-300 bg-coral-50 p-3 text-center">
             <Trophy size={26} className="mx-auto text-coral-600 mb-1" />
             <div className="se-display text-[17.5px] font-bold text-neutral-900">{rank}</div>
-            <div className="text-[16px] text-neutral-800">{points} of {maxPoints} points · {done} of 11 missions · {minutes} min</div>
+            <div className="text-[16px] text-neutral-800">{points} of {maxPoints} points · {done} of {missionCount} map tasks · {minutes} min</div>
             <button onClick={report} className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-ink text-white text-[16px] font-semibold px-3 py-1.5 hover:bg-slate-800"><Download size={14} />Download my advice</button>
           </div>
           <Card>
@@ -596,7 +677,7 @@ export default function SeriousGame({
                 );
               })}
             </ol>
-            <p className="text-[14.5px] text-white/70">The case is fictional. You score points for missions, quiz answers and written answers. Your map is built in a separate model, so your own models are not touched.</p>
+            <p className="text-[14.5px] text-white/70">The case is fictional. Each chapter has numbered exercises with clear steps. You score points for exercises, quiz answers and written answers. Your map is built in a separate model, so your own models are not touched.</p>
             <button onClick={start} className="inline-flex items-center justify-center gap-2 rounded-xl bg-coral-500 text-white text-[17px] font-semibold px-6 py-3 hover:bg-coral-400 shadow-lg shadow-black/20">Start the game <ChevronRight size={18} /></button>
           </div>
         </div>
@@ -630,7 +711,10 @@ export default function SeriousGame({
             <div className="text-[15px] uppercase tracking-wide text-neutral-600">Chapter {state.chapter + 1} of {CHAPTERS.length} · about {ch.minutes} min</div>
             <h3 className="se-display text-[22px] font-bold leading-tight text-neutral-900 mt-0.5">{ch.title}</h3>
           </div>
-          <div className="flex-1 min-h-0 overflow-y-auto px-5 pt-1 pb-6 space-y-4" data-game-body>{body}</div>
+          <div className="flex-1 min-h-0 overflow-y-auto px-5 pt-1 pb-6 space-y-4" data-game-body>
+            <ChapterGoal goal={ch.goal} checks={chapterChecks[ch.id] || []} />
+            {body}
+          </div>
           <div className="flex items-center gap-2 px-5 py-3 border-t border-slate-200">
             <button onClick={() => go(state.chapter - 1)} disabled={state.chapter === 0} className="inline-flex items-center gap-1 text-[16px] text-neutral-800 px-2 py-1 rounded-md hover:bg-slate-100 disabled:opacity-40"><ChevronLeft size={14} />Back</button>
             <button onClick={restart} className="text-neutral-500 hover:text-neutral-800" title="Start the game again"><RotateCcw size={14} /></button>
