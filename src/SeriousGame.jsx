@@ -28,26 +28,25 @@ function freshGame() {
 // ---- the case -----------------------------------------------------------------------
 
 const BOUNDARIES = [
-  { label: "Place", text: "The Meinweg national park and its edge: the heath, the pine and oak forest, the fens and the valley of the Roode Beek, with the farmland, the village and the holiday parks along the western side. The Roer valley and the forest across the German border are outside." },
-  { label: "Time", text: "The next 20 years. Slow changes count (groundwater that recovers, pine forest that turns into mixed forest); one-off events such as a single storm do not." },
-  { label: "Scope", text: "Water, nature, farming, recreation and the livelihoods of the people at the edge of the park." },
-  { label: "Outside, but felt", text: "Climate, national nitrogen rules, and milk and pork prices cannot be changed from the Meinweg. They may enter your map as drivers: concepts with arrows going out but none coming in." },
-  { label: "Size", text: "Between 8 and 20 concepts. A map that fits on one screen can be discussed with the people it is about." },
+  { label: "Place", text: "The national park and its edge: heath, forest, fens, the Roode Beek valley, and the farms, village and holiday parks beside it." },
+  { label: "Time", text: "The next 20 years. Slow changes count; one-off events such as a single storm do not." },
+  { label: "Outside, but felt", text: "Climate, national nitrogen rules and farm prices. They may enter your map as drivers: concepts with arrows going out but none coming in." },
+  { label: "Size", text: "Between 6 and 12 concepts, so the map fits on one screen." },
 ];
 
+// The board's questions. The ids stay stable so saved answers keep working.
 const QUESTIONS = [
-  { id: "q1", short: "Causes", text: "What causes the drying out of the wet heath and fens in the Meinweg, and through which chains of cause and effect?" },
-  { id: "q2", short: "Loops", text: "Which feedback loops keep the park in its current state?" },
+  { id: "q1", short: "Causes", text: "What causes the drying out of the wet heath and fens, and through which chains of cause and effect?" },
   { id: "q3", short: "Intervention", text: "Which intervention would help the park most, and who bears its costs?" },
   { id: "q4", short: "Blind spots", text: "What does your map leave out, and how could that change your advice?" },
 ];
 
 const INTERVIEWS = [
-  { id: "farmer", who: "Huub Peeters", role: "Dairy farmer at the edge of the park", quote: "In dry summers I water the maize from my own well, otherwise there is no fodder for the cows. They say my pumping lowers the water in the fens, but without it the farm does not pay. And now the nitrogen rules as well. If my land has to become a buffer zone, the farm closes, and my son will not take it over." },
-  { id: "camp", who: "Ellen Coenen", role: "Owner of a holiday park in the village", quote: "People come for the purple heath, the adders and the quiet. Last summer the park was closed for a week because of the fire risk, and the cancellations came in the same day. More visitors bring money to the village, but also more trampling and more cigarette ends in dry grass. Without attractive nature we have no business." },
-  { id: "ecologist", who: "Dr. Lotte Hermans", role: "Heathland ecologist", quote: "The wet heath and the fens need high groundwater. Pumping, old drainage ditches and drier summers all lower it. Nitrogen from the air fertilises the poor soil, so grass and birch take over from the heather. The dense pine plantations use a lot of water as well. And dry, grassy heath burns easily: after a fire the grass returns first, which makes the next fire more likely." },
-  { id: "water", who: "Ruud Smeets", role: "Regional water board", quote: "We can close the old drainage ditches in the Roode Beek valley and limit pumping permits. That raises the groundwater, but some fields along the park get wetter and yield less. The farmers will want compensation, and our budget for this is small." },
-  { id: "alderman", who: "Mieke Willems", role: "Alderman, municipality at the park's edge", quote: "We have a budget of a few million for the coming years. Buying out farms next to the park, turning pine into mixed forest, closing ditches, more rangers in summer: all possible. But money spent on one thing cannot be spent on another, and my voters care about jobs and holiday parks as much as about the heath." },
+  { id: "farmer", who: "Huub Peeters", role: "Dairy farmer at the edge of the park", quote: "In dry summers I pump water from my own well for the maize. They say that lowers the water in the fens, but without it the farm does not pay." },
+  { id: "camp", who: "Ellen Coenen", role: "Owner of a holiday park", quote: "People come for the purple heath. Last summer the fire risk closed the park for a week, and the cancellations came the same day." },
+  { id: "ecologist", who: "Dr. Lotte Hermans", role: "Heathland ecologist", quote: "Lower groundwater and nitrogen from the air let grass replace the heather. Dry, grassy heath burns easily, and after a fire the grass returns first." },
+  { id: "water", who: "Ruud Smeets", role: "Regional water board", quote: "Closing the old drainage ditches raises the groundwater, but nearby fields get wetter and yield less. The farmers will want compensation." },
+  { id: "alderman", who: "Mieke Willems", role: "Alderman", quote: "We have a few million to spend: closing ditches, buying out farms, or turning pine into mixed forest. Money spent on one cannot go to another." },
 ];
 
 // ---- reading the player's model --------------------------------------------------------
@@ -229,14 +228,14 @@ function GoButton({ onClick, children }) {
 // ---- the chapters --------------------------------------------------------------------
 
 const CHAPTERS = [
-  { id: "briefing", title: "Your assignment", minutes: 3, icon: Flag, goal: "Understand the case, the boundaries of the system and the four questions your map must answer. To finish, answer the two quiz questions at the bottom." },
-  { id: "fcm", title: "Fuzzy cognitive maps in four minutes", minutes: 4, icon: Lightbulb, goal: "Learn the three ideas you will use: concepts, weighted arrows and feedback loops. To finish, answer the three quiz questions." },
+  { id: "briefing", title: "Your assignment", minutes: 3, icon: Flag, goal: "Understand the case and the three questions your map must answer. To finish, answer the two quiz questions." },
+  { id: "fcm", title: "Fuzzy cognitive maps in three minutes", minutes: 3, icon: Lightbulb, goal: "Learn the three ideas you will use: concepts, weighted arrows and feedback loops. To finish, answer the two quiz questions." },
   { id: "interviews", title: "Listen to the stakeholders", minutes: 4, icon: Users, goal: "Collect the quantities that will become your concepts. To finish, read the five interviews and write at least five quantities in your notebook." },
-  { id: "concepts", title: "Map the concepts", minutes: 6, icon: MapPin, goal: "Put your quantities on the map as concepts and sort them into modules. You work in the Network tab beside this panel." },
-  { id: "links", title: "Connect cause and effect", minutes: 6, icon: Target, goal: "Draw the arrows between your concepts, with a direction and a strength, until the map contains at least one feedback loop." },
+  { id: "concepts", title: "Map the concepts", minutes: 5, icon: MapPin, goal: "Put your quantities on the map as concepts and sort them into modules. You work in the Network tab beside this panel." },
+  { id: "links", title: "Connect cause and effect", minutes: 7, icon: Target, goal: "Draw the arrows between your concepts, with a direction and a strength, until the map contains at least one feedback loop." },
   { id: "run", title: "Run your map", minutes: 3, icon: Timer, goal: "Describe today's situation, let the map run until it settles, and use the result to answer board question 1." },
-  { id: "policy", title: "Test an intervention", minutes: 3, icon: Star, goal: "Test one measure the board could fund, compare it with the baseline, and answer board question 3." },
-  { id: "debrief", title: "Advise the board", minutes: 2, icon: Trophy, goal: "Answer the last two board questions and download your advice." },
+  { id: "policy", title: "Test an intervention", minutes: 3, icon: Star, goal: "Test one measure the board could fund, compare it with the baseline, and answer board question 2." },
+  { id: "debrief", title: "Advise the board", minutes: 2, icon: Trophy, goal: "Answer the last board question and download your advice." },
 ];
 
 export default function SeriousGame({
@@ -267,13 +266,13 @@ export default function SeriousGame({
   const missions = {
     notes5: noteCount >= 5,
     model: onGameModel,
-    concepts8: stats.nConcepts >= 8,
-    modules3: stats.modules.length >= 3,
-    edges12: stats.nEdges >= 12,
-    negative2: stats.nNegative >= 2,
+    concepts8: stats.nConcepts >= 6,
+    modules3: stats.modules.length >= 2,
+    edges12: stats.nEdges >= 8,
+    negative2: stats.nNegative >= 1,
     loop: stats.loops.length > 0,
     connected: stats.nConcepts > 0 && stats.isolated.length === 0,
-    start3: stats.started.length >= 3,
+    start3: stats.started.length >= 2,
     baseline: onGameModel && !!baselineResult,
     scenario: changedScenarios.length > 0,
     scenarioRun: scenarioRuns.length > 0,
@@ -305,7 +304,7 @@ export default function SeriousGame({
     + Object.values(state.texts).filter((t) => (t || "").trim().length >= 25).length * 5
     + state.interviewsRead.length * 2;
   const missionCount = Object.keys(missions).length;
-  const maxPoints = 10 * 10 + missionCount * 20 + QUESTIONS.length * 5 + INTERVIEWS.length * 2;
+  const maxPoints = 6 * 10 + missionCount * 20 + QUESTIONS.length * 5 + INTERVIEWS.length * 2;
   const minutes = state.startedAt ? Math.max(0, Math.floor(((state.finishedAt || Math.max(now, state.startedAt)) - state.startedAt) / 60000)) : 0;
   const ch = CHAPTERS[state.chapter] || CHAPTERS[0];
   const go = (i) => { setState({ chapter: Math.max(0, Math.min(CHAPTERS.length - 1, i)) }); document.querySelector("[data-game-body]")?.scrollTo?.({ top: 0 }); };
@@ -313,6 +312,12 @@ export default function SeriousGame({
   const restart = () => { if (window.confirm("Start the game again from the beginning? Your answers and points are cleared; the map you built stays in your model library.")) setState(freshGame()); };
 
   if (!open) return null;
+
+  // Reading chapters fill the whole screen; in the hands-on chapters the game
+  // sits beside the tool, which the player needs for the exercises.
+  const HANDS_ON = new Set(["concepts", "links", "run", "policy"]);
+  const full = !HANDS_ON.has(ch.id);
+  const col = full ? "w-full max-w-3xl mx-auto" : "";
 
   if (collapsed) {
     return (
@@ -337,7 +342,6 @@ export default function SeriousGame({
   );
 
   // Questions about the player's own map.
-  const driverQ = onGameModel ? rankedOptions(concepts, (c) => stats.outStrength.get(c.id) || 0) : null;
   const finals = onGameModel && baselineResult?.final ? concepts.map((c) => baselineResult.final[c.id] ?? 0) : [];
   const finalQ = finals.length && Math.max(...finals) - Math.min(...finals) > 0.05 ? rankedOptions(concepts, (c) => baselineResult.final[c.id] ?? 0) : null;
   const firstLoop = stats.loops[0];
@@ -345,13 +349,13 @@ export default function SeriousGame({
   const wrote = (id) => (state.texts[id] || "").trim().length >= 25;
   const chapterChecks = {
     briefing: [solved("b1"), solved("b2")],
-    fcm: [solved("f1"), solved("f2"), solved("f3")],
+    fcm: [solved("f1"), solved("f2")],
     interviews: [state.interviewsRead.length >= INTERVIEWS.length, missions.notes5],
     concepts: [missions.model, missions.concepts8, missions.modules3],
     links: [missions.edges12, missions.negative2, missions.connected, missions.loop],
     run: [missions.start3, missions.baseline, wrote("q1")],
     policy: [missions.scenario, missions.scenarioRun, wrote("q3")],
-    debrief: [wrote("q2"), wrote("q4"), !!state.finishedAt],
+    debrief: [wrote("q4"), !!state.finishedAt],
   };
 
   let body;
@@ -368,7 +372,7 @@ export default function SeriousGame({
           </Card>
           <Card>
             <p className="font-semibold mb-1">Your task</p>
-            <p>Build a causal map of the Meinweg with the Spaghetti Engine, use it to answer the board's four questions, and give advice. Nobody tells you which factors to include. That is your call.</p>
+            <p>Build a causal map of the Meinweg with the Spaghetti Engine, use it to answer the board's three questions, and give advice. Nobody tells you which factors to include. That is your call.</p>
           </Card>
           <div>
             <h4 className="se-display text-[18px] font-semibold mb-2">The questions your map must answer</h4>
@@ -414,8 +418,8 @@ export default function SeriousGame({
             </ul>
           </Card>
           <Card>
-            <p className="mb-2"><strong>Feedback loops</strong> are chains of arrows that come back to where they started. A loop with an even number of negative arrows is <em>reinforcing</em>: change keeps feeding itself (a vicious or virtuous circle). A loop with an odd number is <em>balancing</em>: it pushes back against change.</p>
-            <p><strong>Running the map</strong>: the engine passes every concept's value along the arrows again and again, until the values stop changing. Where they settle shows the state the system tends towards. The numbers are relative, from -1 to +1, not real units: an FCM tells you about direction and strength, not about kilograms or euros.</p>
+            <p className="mb-2"><strong>Feedback loops</strong> are chains of arrows that return to where they started. With an even number of negative arrows a loop is <em>reinforcing</em>: change feeds itself. With an odd number it is <em>balancing</em>: it pushes back.</p>
+            <p><strong>Running the map</strong> passes the values along the arrows until they settle. The results are relative, from -1 to +1, not real units.</p>
           </Card>
           <Quiz id="f1" state={state} answer={answer}
             question="The arrow 'Pine forest area → Groundwater level' has weight -0.6. What does it say?"
@@ -425,10 +429,6 @@ export default function SeriousGame({
             question="Heather cover → (−) Grass cover → (+) Heath fires → (−) Heather cover. What kind of loop is this?"
             options={["Balancing: it has negative arrows", "Reinforcing: it has two negative arrows, an even number", "No loop at all"]}
             correct={1} explain="Two negatives cancel out: less heather gives more grass and more fires, and so even less heather. This is the ecologist's 'fire trap'." />
-          <Quiz id="f3" state={state} answer={answer}
-            question="Your map shows Visitor numbers settling at +0.4. What can you conclude?"
-            options={["40% more visitors than today", "Exactly 40,000 visitors a year", "Visitor numbers tend to end on the high side, relative to the other concepts"]}
-            correct={2} explain="FCM values are relative. They are good for comparing directions and scenarios, not for forecasting real numbers." />
         </>
       );
       break;
@@ -475,12 +475,12 @@ export default function SeriousGame({
           <Mission num="4.1" done={missions.model} title="Create your game map"
             steps={["Click Create my game map above.", "A new, empty model opens. Your own models stay as they are."]}
             detail={onGameModel ? "Your game map is open. Everything you build in it counts." : "No game map is open yet."} />
-          <Mission num="4.2" done={missions.concepts8} title="Add between 8 and 20 concepts"
-            steps={["Open the Network tab.", "Double-click an empty spot on the map, or click Add concept.", "Type the name in the Inspector beside the map. Use the quantities from your notebook.", "Repeat until you have at least 8 concepts."]}
+          <Mission num="4.2" done={missions.concepts8} title="Add between 6 and 12 concepts"
+            steps={["Open the Network tab.", "Double-click an empty spot on the map, or click Add concept.", "Type the name in the Inspector beside the map. Use the quantities from your notebook.", "Repeat until you have at least 6 concepts."]}
             detail={`${stats.nConcepts} concept${stats.nConcepts === 1 ? "" : "s"} so far.`}>
             {tab !== "network" && <GoButton onClick={() => onGoTab("network")}>Go to the Network tab</GoButton>}
           </Mission>
-          <Mission num="4.3" done={missions.modules3} title="Sort the concepts into at least 3 modules"
+          <Mission num="4.3" done={missions.modules3} title="Sort the concepts into at least 2 modules"
             steps={["Click a concept on the map.", "In the Inspector, pick or type a module, for example Water, Nature, Farming or Recreation.", "Do this for every concept. The map is then coloured by theme."]}
             detail={stats.modules.length ? `Modules so far: ${stats.modules.join(", ")}.` : "No modules yet."} />
           {stats.actorLike.length > 0 && (
@@ -489,10 +489,6 @@ export default function SeriousGame({
             </Card>
           )}
           {stats.nConcepts > 20 && <Card tone="tip"><p><strong>Analyst's tip.</strong> {stats.nConcepts} concepts is more than the boundary allows. Can some be merged into one?</p></Card>}
-          <Quiz id="c1" state={state} answer={answer}
-            question="Your map has 'Groundwater level' and 'Water table in the fens'. They mean almost the same. What do you do?"
-            options={["Keep both: more concepts make a better map", "Merge them into one concept, or make the difference explicit", "Delete both"]}
-            correct={1} explain="Two concepts for one idea split its effects over two places and make loops harder to see. Keep one, or name them so the difference is clear." />
         </>
       );
       break;
@@ -500,13 +496,13 @@ export default function SeriousGame({
       body = (
         <>
           {!onGameModel && needModel}
-          <Mission num="5.1" done={missions.edges12} title="Draw at least 12 relationships"
+          <Mission num="5.1" done={missions.edges12} title="Draw at least 8 relationships"
             steps={["Hover over a concept until small dots appear on its edge.", "Drag from a dot to the concept it affects. Alternatively, click a concept and use Link to a concept already on the map in the Inspector.", "Click the new arrow and choose whether it increases or decreases the other concept.", "Set how strong the effect is. Base it on the interviews and your own judgement."]}
             detail={`${stats.nEdges} relationship${stats.nEdges === 1 ? "" : "s"} so far.`}>
             {tab !== "network" && <GoButton onClick={() => onGoTab("network")}>Go to the Network tab</GoButton>}
           </Mission>
-          <Mission num="5.2" done={missions.negative2} title="Include at least 2 negative relationships"
-            steps={["Find an effect where more of one concept gives less of another, for example more pumping gives a lower groundwater level.", "Set that arrow to decreases.", "Find a second one."]}
+          <Mission num="5.2" done={missions.negative2} title="Include at least 1 negative relationship"
+            steps={["Find an effect where more of one concept gives less of another, for example more pumping gives a lower groundwater level.", "Set that arrow to decreases."]}
             detail={`${stats.nNegative} negative relationship${stats.nNegative === 1 ? "" : "s"} so far. Real systems have brakes as well as accelerators.`} />
           <Mission num="5.3" done={missions.connected} title="Connect every concept"
             steps={["Look at the list of unconnected concepts below.", "Give each one at least one arrow in or out, or delete it if it does not belong in the map."]}
@@ -533,8 +529,8 @@ export default function SeriousGame({
           <Card tone="story">
             <p>If every concept starts at 0, nothing can move. So you first describe today's situation, and then let the map run.</p>
           </Card>
-          <Mission num="6.1" done={missions.start3} title="Give at least 3 concepts a starting value"
-            steps={["On the Network tab, click a concept.", "In the Inspector, move the Starting value slider. A positive value means high today, a negative value means low today.", "Do this for at least three concepts, for example grass cover +0.6 and groundwater level -0.5."]}
+          <Mission num="6.1" done={missions.start3} title="Give at least 2 concepts a starting value"
+            steps={["On the Network tab, click a concept.", "In the Inspector, move the Starting value slider. A positive value means high today, a negative value means low today.", "Do this for at least two concepts, for example grass cover +0.6 and groundwater level -0.5."]}
             detail={stats.started.length ? `Set so far: ${stats.started.slice(0, 4).map((c) => `${c.name} ${fmt(Number(c.initialValue))}`).join(", ")}${stats.started.length > 4 ? ` and ${stats.started.length - 4} more` : ""}.` : "No starting values yet."}>
             {tab !== "network" && tab !== "editor" && <GoButton onClick={() => onGoTab("network")}>Go to the Network tab</GoButton>}
           </Mission>
@@ -555,12 +551,6 @@ export default function SeriousGame({
               question="Read your result. Which of these concepts ends highest?"
               options={finalQ.options} correct={finalQ.correct}
               explain={`${finalQ.best.name} settles at ${fmt(baselineResult.final[finalQ.best.id] ?? 0)}. The bar chart on the Baseline Equilibrium tab ranks every concept.`} />
-          )}
-          {driverQ && (
-            <Quiz id={`r2:${driverQ.best.id}`} state={state} answer={answer}
-              question="Which of these concepts has the most influence on the rest of your map (the strongest arrows going out)?"
-              options={driverQ.options} correct={driverQ.correct}
-              explain={`${driverQ.best.name} sends out arrows with a total weight of ${(stats.outStrength.get(driverQ.best.id) || 0).toFixed(2)}. The Influence Metrics tab measures this for every concept: a strong 'driver' is a good place to look for levers.`} />
           )}
           <Reflection num="6.3" id="q1" state={state} setText={setText} title="Answer board question 1" question={QUESTIONS[0].text}
             instruction="Write two or three sentences. Name at least one chain of cause and effect from your map, for example A → B → C."
@@ -597,7 +587,7 @@ export default function SeriousGame({
             question="Your intervention raises the groundwater but lowers farm income. What does a good analyst do with that?"
             options={["Leave farm income out of the advice", "Report the trade-off, and look for a second measure that softens it", "Choose another model until the trade-off disappears"]}
             correct={1} explain="Trade-offs are a result, not a flaw. Showing them is what makes the advice credible to all stakeholders." />
-          <Reflection num="7.3" id="q3" state={state} setText={setText} title="Answer board question 3" question={QUESTIONS[2].text}
+          <Reflection num="7.3" id="q3" state={state} setText={setText} title="Answer board question 2" question={QUESTIONS[1].text}
             instruction="Name the measure, its two or three largest effects, and who gains and who loses."
             hint="Use the largest changes in your scenario result." />
         </>
@@ -613,6 +603,7 @@ export default function SeriousGame({
           `Map: ${stats.nConcepts} concepts, ${stats.nEdges} relationships, ${stats.loops.length} feedback loop(s), modules: ${stats.modules.join(", ") || "none"}.`,
           `Points: ${points} of ${maxPoints} (${rank}). Time: ${minutes} minutes.`, "",
           ...QUESTIONS.flatMap((q) => [`## ${q.text}`, "", (state.texts[q.id] || "(no answer)").trim(), ""]),
+          "## Feedback loops in the map", "", ...(allLoops.length ? allLoops.map((l) => `- ${l}`) : ["(none)"]), "",
           "## Notebook", "", (state.notes || "(empty)").trim(), "",
         ];
         const url = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/markdown" }));
@@ -623,16 +614,13 @@ export default function SeriousGame({
       body = (
         <>
           <Card tone="story">
-            <p>The council meets in an hour. Your answers to board questions 1 and 3 are already in your advice.</p>
+            <p>The council meets in an hour. Your answers to board questions 1 and 2 are already in your advice, together with the feedback loops in your map.</p>
           </Card>
-          <Reflection num="8.1" id="q2" state={state} setText={setText} title="Answer board question 2" question={QUESTIONS[1].text}
-            instruction="Name one or two loops from your map, and say for each whether it reinforces or balances change."
-            hint={allLoops.length ? `Your map holds, for example: ${allLoops.join("; ")}.` : "Your map has no feedback loop yet. Is that realistic for a national park?"} />
-          <Reflection num="8.2" id="q4" state={state} setText={setText} title="Answer board question 4" question={QUESTIONS[3].text}
+          <Reflection num="8.1" id="q4" state={state} setText={setText} title="Answer board question 3" question={QUESTIONS[2].text}
             instruction="Name one thing your map leaves out, and say how it could change your advice."
             hint="Think of the boundaries you were given, the stakeholders you did not hear, and the weights you were unsure about." />
-          <Mission num="8.3" done={!!state.finishedAt} title="Download your advice"
-            steps={["Click Download my advice below.", "The file holds your four answers and your notebook."]} />
+          <Mission num="8.2" done={!!state.finishedAt} title="Download your advice"
+            steps={["Click Download my advice below.", "The file holds your three answers, your feedback loops and your notebook."]} />
           <div className="rounded-lg border border-coral-300 bg-coral-50 p-3 text-center">
             <Trophy size={26} className="mx-auto text-coral-600 mb-1" />
             <div className="se-display text-[17.5px] font-bold text-neutral-900">{rank}</div>
@@ -686,9 +674,11 @@ export default function SeriousGame({
   }
 
   return (
-    <aside className="fixed z-40 bg-white border border-slate-200 shadow-2xl flex flex-col inset-x-2 bottom-2 max-h-[62vh] rounded-xl md:static md:z-auto md:order-first md:w-[540px] lg:w-[600px] md:shrink-0 md:max-h-none md:rounded-none md:shadow-none md:border-0 md:border-r"
-      role="complementary" aria-label="Meinweg serious game">
-      <div className="flex items-center gap-2 px-3.5 py-2.5 bg-ink text-white rounded-t-xl md:rounded-none">
+    <aside className={full
+      ? "fixed inset-0 z-[60] bg-white flex flex-col"
+      : "fixed z-40 bg-white border border-slate-200 shadow-2xl flex flex-col inset-x-2 bottom-2 max-h-[62vh] rounded-xl md:static md:z-auto md:order-first md:w-[460px] lg:w-[520px] md:shrink-0 md:max-h-none md:rounded-none md:shadow-none md:border-0 md:border-r"}
+      role="complementary" aria-label="Meinweg serious game" data-game-layout={full ? "full" : "split"}>
+      <div className={`flex items-center gap-2 px-3.5 py-2.5 bg-ink text-white ${full ? "" : "rounded-t-xl md:rounded-none"}`}>
         <Gamepad2 size={17} className="text-coral-400 shrink-0" />
         <div className="min-w-0 flex-1">
           <div className="se-display text-[18px] font-semibold leading-tight">The Meinweg game</div>
@@ -699,7 +689,7 @@ export default function SeriousGame({
         <button onClick={() => setCollapsed(true)} className="text-slate-300 hover:text-white" title="Make smaller"><ChevronDown size={16} /></button>
         <button onClick={onClose} className="text-slate-300 hover:text-white" title="Close the game (your progress is kept)"><X size={16} /></button>
       </div>
-      <div className="flex gap-1 px-5 pt-3" aria-label="Chapters">
+      <div className={`flex gap-1 px-5 pt-3 ${col}`} aria-label="Chapters">
         {CHAPTERS.map((c, i) => (
           <button key={c.id} onClick={() => state.startedAt && go(i)} title={`${i + 1}. ${c.title} (${c.minutes} min)`}
             className={`h-1.5 flex-1 rounded-full ${i < state.chapter ? "bg-emerald-500" : i === state.chapter ? "bg-coral-400" : "bg-slate-200"}`} />
@@ -707,22 +697,25 @@ export default function SeriousGame({
       </div>
       {!state.startedAt ? null : (
         <>
-          <div className="px-5 pt-3 pb-2">
+          <div className={`px-5 pt-3 pb-2 ${col}`}>
             <div className="text-[15px] uppercase tracking-wide text-neutral-600">Chapter {state.chapter + 1} of {CHAPTERS.length} · about {ch.minutes} min</div>
             <h3 className="se-display text-[22px] font-bold leading-tight text-neutral-900 mt-0.5">{ch.title}</h3>
           </div>
-          <div className="flex-1 min-h-0 overflow-y-auto px-5 pt-1 pb-6 space-y-4" data-game-body>
-            <ChapterGoal goal={ch.goal} checks={chapterChecks[ch.id] || []} />
-            {body}
+          <div className="flex-1 min-h-0 overflow-y-auto" data-game-body>
+            <div className={`px-5 pt-1 pb-6 space-y-4 ${col}`}>
+              <ChapterGoal goal={ch.goal} checks={chapterChecks[ch.id] || []} />
+              {!full && <p className="text-[15px] text-neutral-600">Do the exercises in the tool on the right. This panel follows what you do there.</p>}
+              {body}
+            </div>
           </div>
-          <div className="flex items-center gap-2 px-5 py-3 border-t border-slate-200">
+          <div className="border-t border-slate-200"><div className={`flex items-center gap-2 px-5 py-3 ${col}`}>
             <button onClick={() => go(state.chapter - 1)} disabled={state.chapter === 0} className="inline-flex items-center gap-1 text-[16px] text-neutral-800 px-2 py-1 rounded-md hover:bg-slate-100 disabled:opacity-40"><ChevronLeft size={14} />Back</button>
             <button onClick={restart} className="text-neutral-500 hover:text-neutral-800" title="Start the game again"><RotateCcw size={14} /></button>
             <span className="flex-1" />
             {state.chapter < CHAPTERS.length - 1 && (
               <button onClick={() => go(state.chapter + 1)} className="inline-flex items-center gap-1 rounded-lg bg-ink text-white text-[16px] font-semibold px-3 py-1.5 hover:bg-slate-800">Next chapter<ChevronRight size={14} /></button>
             )}
-          </div>
+          </div></div>
         </>
       )}
     </aside>
