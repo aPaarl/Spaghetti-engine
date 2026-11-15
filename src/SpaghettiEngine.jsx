@@ -14796,7 +14796,7 @@ function SpaghettiEngineApp() {
       {/* Side menu (laptop and desktop): the four steps, each a fold-out
           with its tabs. The step you are in is open; click another step to
           see its tabs. */}
-      <nav aria-label="Workspace sections" className={`se-sidenav hidden lg:flex flex-col w-56 shrink-0 border-r border-slate-200 bg-white overflow-y-auto py-3`}>
+      <nav aria-label="Workspace sections" className={`se-sidenav hidden ${gameMode ? "" : "lg:flex"} flex-col w-56 shrink-0 border-r border-slate-200 bg-white overflow-y-auto py-3`}>
         {visibleGroups.filter((g) => !g.accent).map((g, gi) => {
           const tone = GROUP_TONES[g.tone] || GROUP_TONES.about;
           return (
