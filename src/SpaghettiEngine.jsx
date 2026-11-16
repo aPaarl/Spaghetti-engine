@@ -4415,133 +4415,130 @@ function checkModel(concepts, edges) {
 // Model editor: the model as two lists
 // ============================================================================
 // Concepts on the left, grouped by module and coloured as on the Network
-// tab; relationships on the right as "A -> B" cards with a coloured strength
-// badge. A search box and module chips narrow both lists, and clicking a
-// concept shows only its own relationships, so a large model stays easy to
-// work through. A concept's definition is folded away until it has one.
+// tab; relationships on the right. Each is one quiet line until it is
+// opened: only the open item shows its fields, so a large model reads as a
+// list rather than a form. Opening a concept also narrows the relationships
+// to its own, and a search box and module chips narrow both lists.
 function EditorStrengthBadge({ w }) {
   const a = Math.abs(w);
-  if (a < 1e-9) return <span className="shrink-0 rounded-full px-2 py-0.5 text-[13px] font-semibold bg-slate-100 text-neutral-700">No effect</span>;
+  if (a < 1e-9) return <span className="shrink-0 rounded-full px-2 py-0.5 text-[13px] font-medium bg-slate-100 text-neutral-700">No effect</span>;
   const word = a < 0.2 ? "Very weak" : a < 0.4 ? "Weak" : a < 0.63 ? "Moderate" : a < 0.88 ? "Strong" : "Very strong";
   return (
-    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[13px] font-semibold tabular-nums ${w > 0 ? "bg-green-50 text-green-800 ring-1 ring-green-200" : "bg-orange-50 text-orange-800 ring-1 ring-orange-200"}`}>
+    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[13px] font-medium whitespace-nowrap ${w > 0 ? "bg-green-50 text-green-800" : "bg-orange-50 text-orange-800"}`}>
       {word} {w > 0 ? "+" : "-"}
     </span>
   );
 }
 
-function EditorConceptCard({ c, deg, focused, onFocus, updateConcept, onReveal, onDelete, onAddEdge, nameRef }) {
+function EditorConceptRow({ c, deg, open, onToggle, updateConcept, onReveal, onDelete, onAddEdge, nameRef }) {
   const st = categoryStyle(c.category);
-  const [showDef, setShowDef] = useState(false);
-  const defOpen = showDef || !!(c.description || "").trim();
+  if (!open) {
+    return (
+      <button onClick={onToggle} className="w-full flex items-center gap-2.5 px-3 py-2 text-left rounded-md hover:bg-slate-50 group" title="Open to edit, and to see this concept's relationships">
+        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: st.border }} aria-hidden="true" />
+        <span className="flex-1 min-w-0 truncate text-sm text-neutral-900">{c.name || <em className="text-neutral-500">Unnamed</em>}</span>
+        <span className="shrink-0 text-[13px] text-neutral-500 tabular-nums" title={`${deg.in} in, ${deg.out} out`}>{deg.in + deg.out} link{deg.in + deg.out === 1 ? "" : "s"}</span>
+        <ChevronRight size={15} className="shrink-0 text-neutral-400 group-hover:text-neutral-700" aria-hidden="true" />
+      </button>
+    );
+  }
   return (
-    <div
-      className={`rounded-lg border bg-white transition-shadow ${focused ? "border-lagoon-500 ring-2 ring-lagoon-200 shadow-sm" : "border-slate-200 hover:border-slate-300"}`}
-      style={{ borderLeft: `5px solid ${st.border}` }}
-    >
-      <div className="flex items-center gap-2 px-3 pt-2.5">
+    <div className="rounded-lg bg-white border border-lagoon-400 shadow-sm p-3 space-y-2.5 my-1">
+      <div className="flex items-center gap-2">
+        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: st.border }} aria-hidden="true" />
         <input
           value={c.name}
           onChange={(e) => updateConcept(c.id, { name: e.target.value })}
-          onFocus={onFocus}
           ref={nameRef}
           onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
-          placeholder="Concept name"
-          aria-label="Concept name"
-          className="flex-1 min-w-0 text-[15px] font-semibold text-neutral-900 bg-transparent border border-transparent hover:border-slate-200 focus:border-lagoon-500 focus:outline-none rounded px-1.5 py-0.5"
+          placeholder="Concept name" aria-label="Concept name"
+          className="flex-1 min-w-0 text-[15px] font-semibold text-neutral-900 border border-slate-200 focus:border-lagoon-500 focus:outline-none rounded px-2 py-1"
         />
-        <button onClick={onFocus} className={`shrink-0 rounded-full px-2 py-0.5 text-[13px] tabular-nums ${focused ? "bg-lagoon-700 text-white" : "bg-slate-100 text-neutral-800 hover:bg-lagoon-50"}`}
-          title={`${deg.in} relationship${deg.in === 1 ? "" : "s"} in, ${deg.out} out. Click to show only this concept's relationships.`}>
-          {deg.in} in · {deg.out} out
-        </button>
-        <button onClick={() => onReveal(c.id)} className="shrink-0 p-1 rounded text-neutral-600 hover:text-lagoon-700 hover:bg-slate-100" title="Show this concept on the map" aria-label={`Show ${c.name} on the map`}><Eye size={15} /></button>
-        <button onClick={onDelete} className="shrink-0 p-1 rounded text-neutral-600 hover:text-red-600 hover:bg-red-50" title="Delete this concept" aria-label={`Delete ${c.name}`}><Trash2 size={15} /></button>
+        <button onClick={onToggle} className="shrink-0 p-1 rounded text-neutral-600 hover:bg-slate-100" title="Close" aria-label="Close"><ChevronDown size={16} /></button>
       </div>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 pt-1.5">
-        <label className="flex items-center gap-1.5 text-[13px] text-neutral-700 min-w-[140px] flex-1">
-          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: st.border }} aria-hidden="true" />
-          <input
-            placeholder="Module (e.g. Water)"
-            list="se-module-options"
-            title="The module (subsystem) this concept belongs to. Existing modules are suggested as you type."
-            value={c.category || ""}
-            onChange={(e) => updateConcept(c.id, { category: e.target.value })}
-            className="w-full text-[13px] text-neutral-900 border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-lagoon-500"
-          />
-        </label>
-        <label className="flex items-center gap-1.5 text-[13px] text-neutral-700" title="Starting value for simulations, from -1 (very low) to +1 (very high). Give the concepts that describe today's situation a value: if every value is 0, nothing can move. Test interventions in Scenarios & Simulation, not here.">
-          Start
+      <div className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2 text-[13px] text-neutral-800">
+        <span>Module</span>
+        <input placeholder="e.g. Water" list="se-module-options" value={c.category || ""}
+          title="The module (subsystem) this concept belongs to. Existing modules are suggested as you type."
+          onChange={(e) => updateConcept(c.id, { category: e.target.value })}
+          className="text-[13px] text-neutral-900 border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-lagoon-500" />
+        <span title="Starting value for simulations, from -1 (very low) to +1 (very high). Give the concepts that describe today's situation a value: if every value is 0, nothing can move.">Start value</span>
+        <span className="flex items-center gap-2">
           <input type="range" min={-1} max={1} step={0.05} value={c.initialValue}
             onChange={(e) => updateConcept(c.id, { initialValue: clamp(parseFloat(e.target.value) || 0) })}
-            className="w-24 accent-lagoon-700" aria-label={`Starting value of ${c.name}`} />
+            className="flex-1 min-w-0 accent-lagoon-700" aria-label={`Starting value of ${c.name}`} />
           <input type="number" min={-1} max={1} step={0.05} value={c.initialValue}
             onChange={(e) => updateConcept(c.id, { initialValue: clamp(parseFloat(e.target.value) || 0) })}
-            className="w-16 text-[13px] font-mono text-right border border-slate-200 rounded px-1 py-0.5" aria-label={`Starting value of ${c.name}, as a number`} />
-        </label>
+            className="w-16 text-[13px] font-mono text-right border border-slate-200 rounded px-1 py-0.5" aria-label="Starting value as a number" />
+        </span>
       </div>
-      <div className="px-3 pt-1.5 pb-2.5">
-        {defOpen ? (
-          <textarea
-            value={c.description || ""}
-            autoFocus={showDef && !(c.description || "").trim()}
-            onChange={(e) => updateConcept(c.id, { description: e.target.value })}
-            onBlur={() => setShowDef(false)}
-            placeholder="Definition: what this concept means and how it is measured"
-            aria-label={`Definition of ${c.name}`}
-            rows={2}
-            className="w-full text-[13px] text-neutral-900 border border-slate-200 rounded px-1.5 py-1 resize-y focus:outline-none focus:ring-1 focus:ring-lagoon-500"
-          />
-        ) : (
-          <div className="flex flex-wrap gap-x-4 gap-y-1">
-            <button onClick={() => setShowDef(true)} className="text-[13px] text-lagoon-700 hover:text-lagoon-900 inline-flex items-center gap-1"><Plus size={13} />Add a definition</button>
-            <button onClick={onAddEdge} className="text-[13px] text-lagoon-700 hover:text-lagoon-900 inline-flex items-center gap-1"><Plus size={13} />Relationship from here</button>
-          </div>
-        )}
-        {defOpen && <button onClick={onAddEdge} className="mt-1 text-[13px] text-lagoon-700 hover:text-lagoon-900 inline-flex items-center gap-1"><Plus size={13} />Relationship from here</button>}
+      <textarea
+        value={c.description || ""}
+        onChange={(e) => updateConcept(c.id, { description: e.target.value })}
+        placeholder="Definition (optional): what this concept means and how it is measured"
+        aria-label={`Definition of ${c.name}`} rows={2}
+        className="w-full text-[13px] text-neutral-900 border border-slate-200 rounded px-2 py-1 resize-y focus:outline-none focus:ring-1 focus:ring-lagoon-500"
+      />
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px]">
+        <button onClick={onAddEdge} className="text-lagoon-700 hover:text-lagoon-900 inline-flex items-center gap-1 font-medium"><Plus size={13} />Add a relationship from here</button>
+        <button onClick={onReveal} className="text-neutral-700 hover:text-lagoon-800 inline-flex items-center gap-1"><Eye size={13} />Show on the map</button>
+        <button onClick={onDelete} className="ml-auto text-neutral-600 hover:text-red-600 inline-flex items-center gap-1"><Trash2 size={13} />Delete</button>
       </div>
     </div>
   );
 }
 
-function EditorEdgeCard({ e, concepts, conceptById, basic, updateEdge, onDelete }) {
+function EditorEdgeRow({ e, concepts, conceptById, basic, open, onToggle, updateEdge, onDelete }) {
   const s = conceptById.get(e.source), t = conceptById.get(e.target);
   const lag = edgeLag(e);
+  const signColor = Math.abs(e.weight) < 1e-9 ? "#94a3b8" : e.weight > 0 ? "#15803d" : "#ea580c";
+  if (!open) {
+    return (
+      <button onClick={onToggle} className="w-full flex items-center gap-2 px-3 py-2 text-left rounded-md hover:bg-slate-50 group" title="Open to edit">
+        <span className="min-w-0 flex-1 flex items-center gap-1.5 text-sm text-neutral-900">
+          <span className="truncate">{s?.name}</span>
+          <ArrowRight size={14} className="shrink-0" style={{ color: signColor }} aria-hidden="true" />
+          <span className="truncate">{t?.name}</span>
+          {lag > 0 && <Hourglass size={12} className="shrink-0 text-neutral-500" aria-label={`delay of ${lag}`} />}
+        </span>
+        <EditorStrengthBadge w={e.weight} />
+        <ChevronRight size={15} className="shrink-0 text-neutral-400 group-hover:text-neutral-700" aria-hidden="true" />
+      </button>
+    );
+  }
   return (
-    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 space-y-2 hover:border-slate-300"
-      style={{ borderLeft: `5px solid ${Math.abs(e.weight) < 1e-9 ? "#cbd5e1" : e.weight > 0 ? "#16a34a" : "#ea580c"}` }}>
+    <div className="rounded-lg bg-white border border-lagoon-400 shadow-sm p-3 space-y-2.5 my-1">
       <div className="flex items-center gap-2">
-        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: categoryStyle(s?.category).border }} aria-hidden="true" />
         <ConceptSelect value={e.source} concepts={concepts} onChange={(ev) => updateEdge(e.id, { source: ev.target.value })} className="min-w-0 flex-1 text-[13px] font-medium text-neutral-900 border border-slate-200 rounded px-1 py-1" />
-        <ArrowRight size={16} className={`shrink-0 ${e.weight >= 0 ? "text-green-700" : "text-orange-700"}`} aria-hidden="true" />
-        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: categoryStyle(t?.category).border }} aria-hidden="true" />
+        <ArrowRight size={16} className="shrink-0" style={{ color: signColor }} aria-hidden="true" />
         <ConceptSelect value={e.target} concepts={concepts} onChange={(ev) => updateEdge(e.id, { target: ev.target.value })} className="min-w-0 flex-1 text-[13px] font-medium text-neutral-900 border border-slate-200 rounded px-1 py-1" />
-        <button onClick={onDelete} className="shrink-0 p-1 rounded text-neutral-600 hover:text-red-600 hover:bg-red-50" title="Delete this relationship" aria-label="Delete this relationship"><Trash2 size={15} /></button>
+        <button onClick={onToggle} className="shrink-0 p-1 rounded text-neutral-600 hover:bg-slate-100" title="Close" aria-label="Close"><ChevronDown size={16} /></button>
       </div>
-      <p className="text-[13px] text-neutral-800 leading-snug">
-        {relationshipSentence(s?.name, t?.name, e.weight)}{lag > 0 && ` The effect arrives ${lag} iteration${lag === 1 ? "" : "s"} later than the others.`}
-      </p>
       <div className="flex items-center gap-2">
         <span className="text-[13px] text-orange-700 font-semibold" aria-hidden="true">-1</span>
         <input type="range" min={-1} max={1} step={0.05} value={e.weight}
           onChange={(ev) => updateEdge(e.id, { weight: parseFloat(ev.target.value) })}
-          className="flex-1 min-w-0" style={{ accentColor: e.weight < 0 ? "#ea580c" : "#15803d" }} aria-label="Strength, from -1 to +1" />
+          className="flex-1 min-w-0" style={{ accentColor: signColor }} aria-label="Strength, from -1 to +1" />
         <span className="text-[13px] text-green-700 font-semibold" aria-hidden="true">+1</span>
         <input type="number" min={-1} max={1} step={0.05} value={round2(e.weight)}
           onChange={(ev) => updateEdge(e.id, { weight: clamp(parseFloat(ev.target.value) || 0) })}
           className="w-16 text-[13px] font-mono text-right border border-slate-200 rounded px-1 py-0.5" aria-label="Strength as a number" />
-        <EditorStrengthBadge w={e.weight} />
       </div>
-      {(!basic || lag > 0) && (
-        <label className="flex items-center gap-1.5 text-[13px] text-neutral-700" title="How many extra iterations pass before a change in the source reaches the target (0 = no delay).">
-          <Hourglass size={13} aria-hidden="true" />Delay
-          <input
-            type="number" min={0} max={MAX_EDGE_LAG} step={1} value={lag}
-            onChange={(ev) => updateEdge(e.id, { lag: edgeLag({ lag: ev.target.value }) })}
-            className="w-14 text-[13px] border border-slate-200 rounded px-1.5 py-0.5"
-          />
-          iterations
-        </label>
-      )}
+      <p className="text-[13px] text-neutral-800">
+        {relationshipSentence(s?.name, t?.name, e.weight)}{lag > 0 && ` The effect arrives ${lag} iteration${lag === 1 ? "" : "s"} later than the others.`}
+      </p>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px]">
+        {(!basic || lag > 0) && (
+          <label className="flex items-center gap-1.5 text-neutral-700" title="How many extra iterations pass before a change in the source reaches the target (0 = no delay).">
+            <Hourglass size={13} aria-hidden="true" />Delay
+            <input type="number" min={0} max={MAX_EDGE_LAG} step={1} value={lag}
+              onChange={(ev) => updateEdge(e.id, { lag: edgeLag({ lag: ev.target.value }) })}
+              className="w-14 text-[13px] border border-slate-200 rounded px-1.5 py-0.5" />
+            iterations
+          </label>
+        )}
+        <button onClick={onDelete} className="ml-auto text-neutral-600 hover:text-red-600 inline-flex items-center gap-1"><Trash2 size={13} />Delete</button>
+      </div>
     </div>
   );
 }
@@ -4549,7 +4546,8 @@ function EditorEdgeCard({ e, concepts, conceptById, basic, updateEdge, onDelete 
 function ModelEditorLists({ concepts, edges, basic, updateConcept, updateEdge, onDeleteConcept, onDeleteEdge, onAddConcept, onAddEdge, onReveal, onOpenNetwork, onOpenTables, newConceptId, clearNewConceptId }) {
   const [query, setQuery] = useState("");
   const [moduleFilter, setModuleFilter] = useState(null);
-  const [focusId, setFocusId] = useState(null);
+  const [openConcept, setOpenConcept] = useState(null);
+  const [openEdge, setOpenEdge] = useState(null);
   const modules = useMemo(() => listModules(concepts), [concepts]);
   const conceptById = useMemo(() => new Map(concepts.map((c) => [c.id, c])), [concepts]);
   const degree = useMemo(() => {
@@ -4557,26 +4555,28 @@ function ModelEditorLists({ concepts, edges, basic, updateConcept, updateEdge, o
     edges.forEach((e) => { if (d.has(e.source)) d.get(e.source).out += 1; if (d.has(e.target)) d.get(e.target).in += 1; });
     return d;
   }, [concepts, edges]);
+  // a concept just added opens straight away, so its name can be typed
+  useEffect(() => { if (newConceptId && conceptById.has(newConceptId)) setOpenConcept(newConceptId); }, [newConceptId, conceptById]);
 
   const q = query.trim().toLowerCase();
-  const conceptMatches = (c) => (!moduleFilter || moduleKey(c.category) === moduleFilter)
-    && (!q || c.name.toLowerCase().includes(q) || (c.category || "").toLowerCase().includes(q) || (c.description || "").toLowerCase().includes(q));
-  const shownConcepts = concepts.filter(conceptMatches);
+  const shownConcepts = concepts.filter((c) => (!moduleFilter || moduleKey(c.category) === moduleFilter)
+    && (!q || c.name.toLowerCase().includes(q) || (c.category || "").toLowerCase().includes(q) || (c.description || "").toLowerCase().includes(q)));
   const shownIds = new Set(shownConcepts.map((c) => c.id));
-  const focus = focusId && conceptById.has(focusId) ? focusId : null;
+  const focus = openConcept && conceptById.has(openConcept) ? openConcept : null;
+  const filtering = !!(q || moduleFilter);
   const shownEdges = edges.filter((e) => (focus
     ? e.source === focus || e.target === focus
-    : (!moduleFilter && !q) || shownIds.has(e.source) || shownIds.has(e.target)));
+    : !filtering || shownIds.has(e.source) || shownIds.has(e.target)));
   const groups = modules
     .map((m) => ({ ...m, items: shownConcepts.filter((c) => moduleKey(c.category) === m.key) }))
     .filter((g) => g.items.length);
-  const filtering = !!(q || moduleFilter);
   const focusName = focus ? conceptById.get(focus)?.name : null;
   const addHere = () => {
     const m = modules.find((x) => x.key === moduleFilter);
-    onAddConcept(m && m.key !== UNCATEGORIZED_MODULE ? m.categoryValue : "");
     setQuery("");
+    onAddConcept(m && m.key !== UNCATEGORIZED_MODULE ? m.categoryValue : "");
   };
+  const addEdgeFrom = (id) => { const newId = onAddEdge(id); if (newId) setOpenEdge(newId); };
 
   if (!concepts.length) {
     return (
@@ -4595,27 +4595,24 @@ function ModelEditorLists({ concepts, edges, basic, updateConcept, updateEdge, o
     );
   }
 
+  const panel = "bg-white rounded-xl border border-slate-200";
   return (
     <div className="space-y-3">
-      {/* find and filter */}
-      <div className="bg-white rounded-lg border border-slate-200 p-3 flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[200px] max-w-md">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-500" aria-hidden="true" />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Find a concept, module or definition"
-            aria-label="Find a concept" className="w-full text-sm text-neutral-900 border border-slate-300 rounded-md pl-8 pr-7 py-1.5 focus:outline-none focus:ring-2 focus:ring-lagoon-300" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Find a concept"
+            aria-label="Find a concept" className="w-full text-sm text-neutral-900 bg-white border border-slate-300 rounded-md pl-8 pr-7 py-1.5 focus:outline-none focus:ring-2 focus:ring-lagoon-300" />
           {query && <button onClick={() => setQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-neutral-900" aria-label="Clear the search"><X size={14} /></button>}
         </div>
         {modules.length > 1 && (
           <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Show one module">
-            <button onClick={() => setModuleFilter(null)} className={`rounded-full px-2.5 py-1 text-[13px] border ${!moduleFilter ? "bg-ink text-white border-ink" : "bg-white text-neutral-800 border-slate-300 hover:border-slate-400"}`}>All modules</button>
             {modules.map((m) => {
-              const st = categoryStyle(m.categoryValue);
               const on = moduleFilter === m.key;
               return (
                 <button key={m.key} onClick={() => setModuleFilter(on ? null : m.key)} aria-pressed={on}
-                  className={`rounded-full px-2.5 py-1 text-[13px] border inline-flex items-center gap-1.5 ${on ? "font-semibold text-neutral-900" : "text-neutral-800 hover:brightness-95"}`}
-                  style={{ background: st.bg, borderColor: on ? "#0f1b3d" : st.border }}>
-                  {m.label}<span className="tabular-nums text-neutral-600">{m.count}</span>
+                  className={`rounded-full px-2.5 py-1 text-[13px] border inline-flex items-center gap-1.5 ${on ? "bg-ink text-white border-ink" : "bg-white text-neutral-800 border-slate-300 hover:border-slate-400"}`}>
+                  <span className="w-2 h-2 rounded-full" style={{ background: categoryStyle(m.categoryValue).border }} aria-hidden="true" />{m.label}
                 </button>
               );
             })}
@@ -4623,69 +4620,50 @@ function ModelEditorLists({ concepts, edges, basic, updateConcept, updateEdge, o
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {/* concepts */}
-        <section className="bg-slate-50/60 rounded-xl border border-slate-200 p-3.5">
-          <div className="flex items-center justify-between gap-2 mb-3">
-            <div>
-              <h3 className="se-display font-bold text-[16px] text-neutral-900">Concepts <span className="text-neutral-600 font-medium tabular-nums">{filtering ? `${shownConcepts.length} of ${concepts.length}` : concepts.length}</span></h3>
-              <p className="text-[13px] text-neutral-700">The things that matter in the system. Click the in/out count to see a concept's relationships.</p>
-            </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
+        <section className={panel}>
+          <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-slate-100">
+            <h3 className="se-display font-bold text-[16px] text-neutral-900">Concepts <span className="text-neutral-500 font-medium tabular-nums">{filtering ? `${shownConcepts.length} of ${concepts.length}` : concepts.length}</span></h3>
             <Btn onClick={addHere}><Plus size={14} />Add concept</Btn>
           </div>
-          <div className="space-y-4 max-h-[640px] overflow-auto pr-1">
-            {!shownConcepts.length && <p className="text-sm text-neutral-700 italic">No concept matches this search.</p>}
-            {groups.map((g) => {
-              const st = categoryStyle(g.categoryValue);
-              return (
-                <div key={g.key} className="space-y-2">
-                  {modules.length > 1 && (
-                    <div className="flex items-center gap-2 text-[13px] font-semibold uppercase tracking-wide text-neutral-800">
-                      <span className="w-3 h-3 rounded" style={{ background: st.bg, border: `1px solid ${st.border}` }} aria-hidden="true" />
-                      {g.label}<span className="font-normal normal-case tracking-normal text-neutral-600">{g.items.length}</span>
-                    </div>
-                  )}
-                  <ProgressiveList items={g.items} render={(c) => (
-                    <EditorConceptCard
-                      key={c.id} c={c} deg={degree.get(c.id) || { in: 0, out: 0 }}
-                      focused={focus === c.id}
-                      onFocus={() => setFocusId((f) => (f === c.id ? f : c.id))}
-                      updateConcept={updateConcept} onReveal={onReveal}
-                      onDelete={() => { if (focus === c.id) setFocusId(null); onDeleteConcept(c.id); }}
-                      onAddEdge={() => { setFocusId(c.id); onAddEdge(c.id); }}
-                      nameRef={c.id === newConceptId ? (el) => { if (el) { el.focus(); el.select(); clearNewConceptId(); } } : undefined}
-                    />
-                  )} />
-                </div>
-              );
-            })}
+          <div className="p-2 max-h-[600px] overflow-auto">
+            {!shownConcepts.length && <p className="px-3 py-2 text-sm text-neutral-700">No concept matches this search.</p>}
+            {groups.map((g) => (
+              <div key={g.key} className="mb-2 last:mb-0">
+                {modules.length > 1 && <div className="px-3 pt-2 pb-1 text-[12px] font-semibold uppercase tracking-wide text-neutral-500">{g.label}</div>}
+                <ProgressiveList items={g.items} render={(c) => (
+                  <EditorConceptRow
+                    key={c.id} c={c} deg={degree.get(c.id) || { in: 0, out: 0 }} open={focus === c.id}
+                    onToggle={() => setOpenConcept((o) => (o === c.id ? null : c.id))}
+                    updateConcept={updateConcept} onReveal={() => onReveal(c.id)}
+                    onDelete={() => { setOpenConcept(null); onDeleteConcept(c.id); }}
+                    onAddEdge={() => addEdgeFrom(c.id)}
+                    nameRef={c.id === newConceptId ? (el) => { if (el) { el.focus(); el.select(); clearNewConceptId(); } } : undefined}
+                  />
+                )} />
+              </div>
+            ))}
           </div>
         </section>
 
-        {/* relationships */}
-        <section className="bg-slate-50/60 rounded-xl border border-slate-200 p-3.5">
-          <div className="flex items-center justify-between gap-2 mb-3">
-            <div>
-              <h3 className="se-display font-bold text-[16px] text-neutral-900">Relationships <span className="text-neutral-600 font-medium tabular-nums">{focus || filtering ? `${shownEdges.length} of ${edges.length}` : edges.length}</span></h3>
-              <p className="text-[13px] text-neutral-700">How one concept raises (+) or lowers (-) another, from -1 to +1.</p>
-            </div>
-            <Btn onClick={() => onAddEdge(focus)} disabled={concepts.length < 2}><Plus size={14} />Add relationship</Btn>
+        <section className={panel}>
+          <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-slate-100">
+            <h3 className="se-display font-bold text-[16px] text-neutral-900 min-w-0 truncate">
+              {focus ? <>Relationships of <span className="text-lagoon-800">{focusName}</span></> : "Relationships"} <span className="text-neutral-500 font-medium tabular-nums">{shownEdges.length}</span>
+            </h3>
+            {focus
+              ? <button onClick={() => setOpenConcept(null)} className="shrink-0 text-[13px] font-medium text-lagoon-700 hover:underline inline-flex items-center gap-1"><X size={13} />Show all</button>
+              : <Btn onClick={() => addEdgeFrom(null)} disabled={concepts.length < 2}><Plus size={14} />Add relationship</Btn>}
           </div>
-          {focus && (
-            <div className="mb-2.5 flex items-center gap-2 rounded-md bg-lagoon-50 border border-lagoon-200 px-2.5 py-1.5 text-[13px] text-lagoon-900">
-              Showing the relationships of <strong className="truncate">{focusName}</strong>
-              <button onClick={() => setFocusId(null)} className="ml-auto shrink-0 inline-flex items-center gap-1 font-medium hover:underline"><X size={13} />Show all</button>
-            </div>
-          )}
-          <div className="space-y-2 max-h-[640px] overflow-auto pr-1">
+          <div className="p-2 max-h-[600px] overflow-auto">
             {!edges.length && (
-              <div className="rounded-lg border border-dashed border-slate-300 bg-white p-4 text-sm text-neutral-800">
-                No relationships yet. Use <strong>Add relationship</strong>, or <strong>Relationship from here</strong> on a concept. On the <button onClick={onOpenNetwork} className="underline text-lagoon-800">Network tab</button> you can draw them by dragging from one concept to another.
-              </div>
+              <p className="px-3 py-2 text-sm text-neutral-800">No relationships yet. Open a concept and choose <strong>Add a relationship from here</strong>, or draw them on the <button onClick={onOpenNetwork} className="underline text-lagoon-800">Network tab</button>.</p>
             )}
-            {!!edges.length && !shownEdges.length && <p className="text-sm text-neutral-700 italic">{focus ? `${focusName} has no relationships yet.` : "No relationship involves the concepts shown."}</p>}
+            {!!edges.length && !shownEdges.length && <p className="px-3 py-2 text-sm text-neutral-700">{focus ? `${focusName} has no relationships yet.` : "No relationship involves the concepts shown."}</p>}
             <ProgressiveList items={shownEdges} render={(e) => (
-              <EditorEdgeCard key={e.id} e={e} concepts={concepts} conceptById={conceptById} basic={basic} updateEdge={updateEdge} onDelete={() => onDeleteEdge(e.id)} />
+              <EditorEdgeRow key={e.id} e={e} concepts={concepts} conceptById={conceptById} basic={basic}
+                open={openEdge === e.id} onToggle={() => setOpenEdge((o) => (o === e.id ? null : e.id))}
+                updateEdge={updateEdge} onDelete={() => { setOpenEdge(null); onDeleteEdge(e.id); }} />
             )} />
           </div>
         </section>
@@ -14459,7 +14437,9 @@ function SpaghettiEngineApp() {
     const src = concepts.some((c) => c.id === sourceId) ? sourceId : concepts[0].id;
     const others = concepts.filter((c) => c.id !== src);
     const target = (others.find((c) => !edges.some((e) => e.source === src && e.target === c.id)) || others[0]).id;
-    setEdges((es) => [{ id: uid("e"), source: src, target, weight: 0.5, description: "" }, ...es]);
+    const id = uid("e");
+    setEdges((es) => [{ id, source: src, target, weight: 0.5, description: "" }, ...es]);
+    return id;
   };
   // `patch` is an object, or a function of the relationship that returns one.
   const updateEdge = (id, patch) => setEdges((es) => es.map((e) => (e.id === id ? { ...e, ...(typeof patch === "function" ? patch(e) : patch) } : e)));
@@ -15279,10 +15259,6 @@ function SpaghettiEngineApp() {
         {/* ============================= EDITOR ============================= */}
         {tab === "editor" && (
           <div className="space-y-5">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-xs text-neutral-700">Every concept and relationship as a list. To draw them instead, use the <button onClick={() => setTab("network")} className="underline font-medium text-lagoon-800">Network tab</button>.</p>
-            </div>
-
             <ModelCheck concepts={concepts} edges={edges} onSelectConcept={(id) => revealItem("concept", id)} onSelectEdge={(id) => revealItem("edge", id)} />
 
             <ModelEditorLists
@@ -15291,7 +15267,7 @@ function SpaghettiEngineApp() {
               onDeleteConcept={(id) => { commitHistory(); removeConcept(id); }}
               onDeleteEdge={(id) => { commitHistory(); removeEdge(id); }}
               onAddConcept={(category) => { commitHistory(); addConceptAt(circlePos(concepts.length, concepts.length + 1), category); }}
-              onAddEdge={(sourceId) => { commitHistory(); addEdgeFrom(sourceId); }}
+              onAddEdge={(sourceId) => { commitHistory(); return addEdgeFrom(sourceId); }}
               onReveal={(id) => revealItem("concept", id)}
               onOpenNetwork={() => setTab("network")}
               onOpenTables={() => { setShowMatrixPanel(true); setTimeout(() => document.getElementById("se-model-tables")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0); }}
