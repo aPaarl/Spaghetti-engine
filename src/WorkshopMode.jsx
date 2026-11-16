@@ -189,31 +189,43 @@ const longDate = (d) => {
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 // ---------------------------------------------------------------------------
-// The printed documents: plain HTML pages, laid out for A4.
+// The printed documents: plain HTML pages, laid out for A4. The running
+// footer and the page numbers are page-margin boxes (Chrome and Edge print
+// them; other browsers leave the margin empty).
 // ---------------------------------------------------------------------------
+const cssText = (s) => `"${String(s ?? "").replace(/["\\]/g, "\\$&").replace(/\s+/g, " ")}"`;
+const pageCss = (footer) => `
+@page{size:A4;margin:15mm 16mm 19mm;
+  @bottom-left{content:${cssText(footer)};font:7.5pt Inter,Arial,sans-serif;color:#8a93a3;vertical-align:top;padding-top:4mm}
+  @bottom-right{content:"Page " counter(page) " of " counter(pages);font:7.5pt Inter,Arial,sans-serif;color:#8a93a3;vertical-align:top;padding-top:4mm}}`;
 const PRINT_CSS = `
-@page{size:A4;margin:16mm 16mm 18mm}
 *{box-sizing:border-box}
-body{font-family:Inter,Arial,sans-serif;color:#1d2433;font-size:10pt;line-height:1.45;margin:0}
+body{font-family:Inter,Arial,sans-serif;color:#1d2433;font-size:10pt;line-height:1.45;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 h1,h2,h3{font-family:"Plus Jakarta Sans",Inter,Arial,sans-serif;color:#0f1b3d;margin:0}
 .brand{display:flex;align-items:center;gap:8px;font-size:8.5pt;color:#5b6577;letter-spacing:.08em;text-transform:uppercase;border-bottom:2px solid #137d78;padding-bottom:6px;margin-bottom:14px}
 .brand i{display:inline-block;width:10px;height:10px;border-radius:50%;background:#f26b4f}
-.kicker{font-size:8.5pt;letter-spacing:.12em;text-transform:uppercase;color:#137d78;font-weight:600;margin-bottom:2px}
 h1{font-size:21pt;line-height:1.15;margin-bottom:8px}
-h2{font-size:13pt;margin:18px 0 8px;padding-bottom:3px;border-bottom:1px solid #d7dde5}
-h3{font-size:11pt}
+h2{font-size:13pt;margin:18px 0 8px;padding-bottom:3px;border-bottom:1px solid #d7dde5;break-after:avoid}
+h3{font-size:11pt;break-after:avoid}
+p{margin:0 0 6px}
 .meta{display:grid;grid-template-columns:auto 1fr;gap:3px 14px;margin:8px 0 12px;font-size:9.5pt}
 .meta b{color:#5b6577;font-weight:500}
 .q{background:#eef7f6;border-left:4px solid #137d78;padding:9px 12px;margin:10px 0;font-size:11.5pt;color:#0f1b3d}
 .aim{margin:6px 0 12px}
 table{width:100%;border-collapse:collapse;font-size:9.5pt}
+thead{display:table-header-group}
+tr{break-inside:avoid}
 th{text-align:left;font-weight:600;color:#5b6577;font-size:8.5pt;text-transform:uppercase;letter-spacing:.05em;border-bottom:1.5px solid #0f1b3d;padding:5px 6px}
 td{border-bottom:1px solid #e2e7ee;padding:6px;vertical-align:top}
 td.t{white-space:nowrap;color:#5b6577;font-variant-numeric:tabular-nums;width:1%}
-.step{display:grid;grid-template-columns:22mm 1fr;gap:0 10px;padding:10px 0;border-bottom:1px solid #e2e7ee;break-inside:avoid}
+tr.pause td{background:#f4f6f8;color:#5b6577}
+.step{display:grid;grid-template-columns:24mm 1fr;gap:0 10px;padding:10px 0;border-bottom:1px solid #e2e7ee;break-inside:avoid}
 .step .when{font-variant-numeric:tabular-nums;color:#5b6577;font-size:9pt}
 .step .when b{display:block;color:#0f1b3d;font-size:11pt}
+.step .box{display:inline-block;width:10px;height:10px;border:1.3px solid #0f1b3d;border-radius:2px;margin-top:6px}
 .step h3{margin-bottom:4px}
+.pause{display:flex;gap:10px;align-items:baseline;background:#f4f6f8;border-radius:6px;padding:7px 10px;margin:8px 0;color:#5b6577;break-inside:avoid}
+.pause b{color:#0f1b3d;font-variant-numeric:tabular-nums}
 .tag{display:inline-block;font-size:8pt;border:1px solid #c9d1dc;border-radius:10px;padding:0 6px;margin-left:6px;color:#5b6577;font-family:Inter,Arial,sans-serif;font-weight:500;vertical-align:2px}
 .ask{margin:2px 0 6px;font-size:10.5pt}
 .rows{display:grid;grid-template-columns:24mm 1fr;gap:2px 8px;font-size:9.3pt}
@@ -224,38 +236,44 @@ td.t{white-space:nowrap;color:#5b6577;font-variant-numeric:tabular-nums;width:1%
 .check li{break-inside:avoid;padding:3px 0 3px 18px;position:relative}
 .check li:before{content:"";position:absolute;left:0;top:5px;width:10px;height:10px;border:1.3px solid #0f1b3d;border-radius:2px}
 .check li.done:before{background:#137d78;border-color:#137d78}
-.team{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-.team div{border:1px solid #e2e7ee;border-radius:6px;padding:6px 8px}
+.team{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:4px}
+.team div{border:1px solid #e2e7ee;border-radius:6px;padding:6px 8px;min-height:12mm}
 .team b{display:block;font-size:8pt;color:#5b6577;font-weight:500;text-transform:uppercase;letter-spacing:.05em}
 .lines div{border-bottom:1px solid #c9d1dc;height:8mm}
+.keep{break-inside:avoid}
 .pb{break-before:page}
-.ws td{height:9mm}
+.ws td{height:9.5mm}
+.ws.tall td{height:15mm}
 .small{font-size:8.5pt;color:#5b6577}
-.example{display:flex;gap:14px;align-items:center;margin:8px 0 4px}
-footer{margin-top:18px;font-size:8pt;color:#8a93a3;border-top:1px solid #e2e7ee;padding-top:5px}
+.example{margin:10px 0 8px}
+.example svg{width:100%;max-width:150mm;height:auto}
+.legend{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;font-size:9.5pt;margin-top:6px}
+.legend b{color:#0f1b3d}
 `;
 
-function shell(title, body) {
+function shell(title, footer, body) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${esc(title)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700&display=swap" rel="stylesheet">
-<style>${PRINT_CSS}</style></head><body>${body}</body></html>`;
+<style>${pageCss(footer)}${PRINT_CSS}</style></head><body>${body}</body></html>`;
 }
 
-function headerBlock(plan, kind) {
+function headerBlock(plan, kind, extraMeta = []) {
   const total = plan.steps.reduce((t, s) => t + (Number(s.minutes) || 0), 0);
   const when = [longDate(plan.date), plan.start ? `${plan.start} to ${clock(plan.start, total)}` : fmtMin(total)].filter(Boolean).join(", ");
-  const meta = [["When", when], ["Where", plan.location], ["With", plan.participants]].filter(([, v]) => v);
+  const meta = [["When", when], ["Where", plan.location], ["With", plan.participants], ...extraMeta].filter(([, v]) => v);
   return `<div class="brand"><i></i>The Spaghetti Engine · ${esc(kind)}</div>
 <h1>${esc(plan.title || "Workshop")}</h1>
 ${meta.length ? `<div class="meta">${meta.map(([k, v]) => `<b>${k}</b><span>${esc(v)}</span>`).join("")}</div>` : ""}
 ${plan.question ? `<div class="q">${esc(plan.question)}</div>` : ""}`;
 }
 
+const isPause = (s) => s.block === "break";
+
 function agendaTable(plan, { withFormat }) {
   let at = 0;
   return `<table><thead><tr><th>Time</th><th>Step</th>${withFormat ? "<th>Format</th>" : ""}<th style="text-align:right">Min</th></tr></thead><tbody>${plan.steps.map((s) => {
     const from = clock(plan.start, at); at += Number(s.minutes) || 0;
-    return `<tr><td class="t">${from || ""}</td><td>${esc(s.title)}</td>${withFormat ? `<td class="small">${esc(s.format)}</td>` : ""}<td class="t" style="text-align:right">${esc(s.minutes)}</td></tr>`;
+    return `<tr class="${isPause(s) ? "pause" : ""}"><td class="t">${from || ""}</td><td>${esc(s.title)}</td>${withFormat ? `<td class="small">${isPause(s) ? "" : esc(s.format)}</td>` : ""}<td class="t" style="text-align:right">${esc(s.minutes)}</td></tr>`;
   }).join("")}</tbody></table>`;
 }
 
@@ -264,68 +282,87 @@ function facilitatorScript(plan, warnings, modelName) {
   const team = plan.team || {};
   const steps = plan.steps.map((s, i) => {
     const from = clock(plan.start, at); at += Number(s.minutes) || 0;
+    const to = clock(plan.start, at);
+    if (isPause(s)) return `<div class="pause"><b>${from || ""}</b><span><b>${esc(s.title)}</b>, ${esc(s.minutes)} min${s.materials ? ` · ${esc(s.materials)}` : ""}</span></div>`;
     const b = BLOCK[s.block] || {};
     const opens = b.action === "combine" ? "Combine maps" : TAB_LABEL[b.tab];
     const rows = [["Result", s.output], ["Materials", s.materials], ["In the tool", opens]].filter(([, v]) => v);
-    return `<div class="step"><div class="when"><b>${from || `Step ${i + 1}`}</b>${esc(s.minutes)} min</div><div>
+    return `<div class="step"><div class="when"><b>${from ? `${from}` : `Step ${i + 1}`}</b>${from && to ? `to ${to}<br>` : ""}${esc(s.minutes)} min<br><span class="box" title="done"></span></div><div>
 <h3>${esc(s.title)}<span class="tag">${esc(s.format)}</span></h3>
-<p class="ask">“${esc(s.prompt)}”</p>
+${s.prompt ? `<p class="ask">“${esc(s.prompt)}”</p>` : ""}
 ${rows.length ? `<div class="rows">${rows.map(([k, v]) => `<b>${k}</b><span>${esc(v)}</span>`).join("")}</div>` : ""}
 ${s.notes ? `<div class="note">${esc(s.notes)}</div>` : ""}
-${warnings[s.uid] ? `<p class="warn small">Before the session: ${esc(warnings[s.uid])}</p>` : ""}
+${warnings[s.uid] ? `<p class="warn small" style="margin-top:4px">Before the session: ${esc(warnings[s.uid])}</p>` : ""}
 </div></div>`;
   }).join("");
   const prep = [...plan.steps.filter((s) => warnings[s.uid]).map((s) => ({ text: `${s.title}: ${warnings[s.uid]}`, done: false })), ...(plan.prep || [])];
-  const body = `${headerBlock(plan, "Facilitator script")}
+  const body = `${headerBlock(plan, "Facilitator script", [["Model", modelName]])}
 ${plan.aim ? `<p class="aim"><b>Aim.</b> ${esc(plan.aim)}</p>` : ""}
-${(team.facilitator || team.cofacilitator || team.notetaker) ? `<div class="team"><div><b>Facilitator</b>${esc(team.facilitator) || "&nbsp;"}</div><div><b>Co-facilitator</b>${esc(team.cofacilitator) || "&nbsp;"}</div><div><b>Notes and tool</b>${esc(team.notetaker) || "&nbsp;"}</div></div>` : ""}
+<div class="team"><div><b>Facilitator</b>${esc(team.facilitator)}</div><div><b>Co-facilitator</b>${esc(team.cofacilitator)}</div><div><b>Notes and tool</b>${esc(team.notetaker)}</div></div>
 <h2>The session at a glance</h2>
 ${agendaTable(plan, { withFormat: true })}
-<p class="small">Model used: ${esc(modelName)}.</p>
-<h2>Before the session</h2>
-<ul class="check">${prep.map((t) => `<li class="${t.done ? "done" : ""}">${esc(t.text)}</li>`).join("")}</ul>
-<h3 style="margin-top:12px">Bring along</h3>
-<ul class="check" style="margin-top:4px">${(plan.materials || []).map((t) => `<li class="${t.done ? "done" : ""}">${esc(t.text)}</li>`).join("")}</ul>
-<h2 class="pb">Step by step</h2>
+<div class="keep"><h2>Before the session</h2>
+<ul class="check">${prep.map((t) => `<li class="${t.done ? "done" : ""}">${esc(t.text)}</li>`).join("")}</ul></div>
+<div class="keep"><h3 style="margin-top:12px">Bring along</h3>
+<ul class="check" style="margin-top:4px">${(plan.materials || []).map((t) => `<li class="${t.done ? "done" : ""}">${esc(t.text)}</li>`).join("")}</ul></div>
+<h2>Step by step</h2>
 ${steps}
-<h2>After the session</h2>
+<div class="keep"><h2>After the session</h2>
 ${plan.followUp ? `<p>${esc(plan.followUp)}</p>` : ""}
 <ul class="check"><li>Save the final model with Export JSON</li><li>Export the figures and tables for the report</li><li>Write up the points the group did not agree on</li><li>Send the participants the map and a short summary</li></ul>
 <h3 style="margin-top:12px">Notes</h3>
-<div class="lines">${"<div></div>".repeat(8)}</div>
-<footer>${esc(plan.title)} · facilitator script · printed from the Spaghetti Engine</footer>`;
-  return shell(`${plan.title} - facilitator script`, body);
+<div class="lines">${"<div></div>".repeat(5)}</div></div>`;
+  return shell(`${plan.title} - facilitator script`, `${plan.title} · facilitator script`, body);
 }
 
-const EXAMPLE_SVG = `<svg width="330" height="70" viewBox="0 0 330 70" xmlns="http://www.w3.org/2000/svg" font-family="Inter,Arial" font-size="11">
+const EXAMPLE_SVG = `<svg viewBox="0 0 520 96" xmlns="http://www.w3.org/2000/svg" font-family="Inter,Arial" font-size="13">
 <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="context-stroke"/></marker></defs>
-<rect x="1" y="22" width="92" height="26" rx="6" fill="#eef7f6" stroke="#137d78"/><text x="47" y="39" text-anchor="middle">Rainfall</text>
-<rect x="119" y="22" width="92" height="26" rx="6" fill="#eef7f6" stroke="#137d78"/><text x="165" y="39" text-anchor="middle">Soil moisture</text>
-<rect x="237" y="22" width="92" height="26" rx="6" fill="#eef7f6" stroke="#137d78"/><text x="283" y="39" text-anchor="middle">Peat oxidation</text>
-<line x1="94" y1="35" x2="117" y2="35" stroke="#15803d" stroke-width="2" marker-end="url(#a)"/><text x="105" y="18" text-anchor="middle" fill="#15803d" font-size="14">+</text>
-<line x1="212" y1="35" x2="235" y2="35" stroke="#c2410c" stroke-width="2" marker-end="url(#a)"/><text x="223" y="18" text-anchor="middle" fill="#c2410c" font-size="14">-</text>
+<rect x="2" y="34" width="130" height="34" rx="8" fill="#eef7f6" stroke="#137d78" stroke-width="1.5"/><text x="67" y="56" text-anchor="middle" fill="#0f1b3d">Rainfall</text>
+<rect x="195" y="34" width="130" height="34" rx="8" fill="#eef7f6" stroke="#137d78" stroke-width="1.5"/><text x="260" y="56" text-anchor="middle" fill="#0f1b3d">Soil moisture</text>
+<rect x="388" y="34" width="130" height="34" rx="8" fill="#eef7f6" stroke="#137d78" stroke-width="1.5"/><text x="453" y="56" text-anchor="middle" fill="#0f1b3d">Peat oxidation</text>
+<line x1="134" y1="51" x2="192" y2="51" stroke="#15803d" stroke-width="2.5" marker-end="url(#a)"/><text x="163" y="28" text-anchor="middle" fill="#15803d" font-size="12" font-weight="600">+ strong</text>
+<line x1="327" y1="51" x2="385" y2="51" stroke="#c2410c" stroke-width="2.5" marker-end="url(#a)"/><text x="356" y="28" text-anchor="middle" fill="#c2410c" font-size="12" font-weight="600">- moderate</text>
+<text x="163" y="88" text-anchor="middle" fill="#5b6577" font-size="11">more rain, wetter soil</text>
+<text x="356" y="88" text-anchor="middle" fill="#5b6577" font-size="11">wetter soil, less oxidation</text>
 </svg>`;
 
 function participantHandout(plan) {
-  const ws = plan.steps.some((s) => ["concepts", "individual", "relationships"].includes(s.block));
+  const build = plan.steps.some((s) => ["concepts", "individual", "relationships"].includes(s.block));
+  const measures = plan.steps.some((s) => ["scenarios", "transition", "pathways"].includes(s.block));
+  const rows = (n, cells) => Array.from({ length: n }, (_, i) => `<tr><td class="t">${i + 1}</td>${"<td></td>".repeat(cells)}</tr>`).join("");
+  const sheets = [];
+  if (build) {
+    sheets.push(`<h2 class="pb">Worksheet: the factors that matter</h2>
+<p class="small">One factor per line, written as something that can go up or down: "groundwater level" rather than "drought". Use the theme column to group them later.</p>
+<table class="ws"><thead><tr><th style="width:8mm">#</th><th>Factor</th><th style="width:42mm">Theme</th></tr></thead><tbody>${rows(15, 2)}</tbody></table>`);
+    sheets.push(`<h2 class="pb">Worksheet: how they influence each other</h2>
+<p class="small">If the first factor goes up, does the second go up (+) or down (-)? Is the effect weak, moderate or strong? A word on why helps the group later.</p>
+<table class="ws"><thead><tr><th style="width:8mm">#</th><th>From</th><th>To</th><th style="width:13mm">+ / -</th><th style="width:22mm">Strength</th><th style="width:48mm">Why</th></tr></thead><tbody>${rows(15, 5)}</tbody></table>`);
+  }
+  if (measures) {
+    sheets.push(`<h2 class="pb">Worksheet: measures to test</h2>
+<p class="small">Which measures or developments would you like to see tested on the map? What should they change, and who would notice?</p>
+<table class="ws tall"><thead><tr><th style="width:8mm">#</th><th>Measure</th><th>What it changes first</th><th>What you expect to happen</th><th style="width:30mm">Who is affected</th></tr></thead><tbody>${rows(8, 4)}</tbody></table>`);
+  }
   const body = `${headerBlock(plan, "Workshop handout")}
-<p>Thank you for taking part. Today we work together on the question above, using a cognitive map: a drawing of the things that matter in the situation and of how they influence each other. The map is built from what you know. There is no expert answer we are trying to reach.</p>
+<p>Thank you for taking part. Today we work on the question above with a cognitive map: a drawing of the things that matter in this situation and of how they influence each other. The map is built from what you know; we are not working towards an answer that someone already has.</p>
 ${plan.aim ? `<p class="aim"><b>What we hope to achieve.</b> ${esc(plan.aim)}</p>` : ""}
 <h2>Programme</h2>
 ${agendaTable(plan, { withFormat: false })}
-<h2>Reading a map</h2>
+<div class="keep"><h2>Reading a map</h2>
 <div class="example">${EXAMPLE_SVG}</div>
-<p>Each box is a <b>concept</b>: something that can increase or decrease. Each arrow is a <b>relationship</b>. A <b>+</b> means that when the first concept goes up, the second goes up as well; a <b>-</b> means it goes down. A relationship can be weak, moderate or strong. When the map is complete, the tool plays it forward to show where the situation is heading and what changes when we try a measure.</p>
-${ws ? `<h2 class="pb">Worksheet 1: the factors that matter</h2>
-<p class="small">Write each factor so that it can go up or down, for example "groundwater level" rather than "drought".</p>
-<table class="ws"><thead><tr><th style="width:8mm">#</th><th>Factor</th><th style="width:40mm">Theme</th></tr></thead><tbody>${Array.from({ length: 12 }, (_, i) => `<tr><td class="t">${i + 1}</td><td></td><td></td></tr>`).join("")}</tbody></table>
-<h2>Worksheet 2: how they influence each other</h2>
-<p class="small">+ or -: does the second factor go up or down when the first goes up? Strength: weak, moderate or strong.</p>
-<table class="ws"><thead><tr><th>From</th><th>To</th><th style="width:12mm">+ / -</th><th style="width:24mm">Strength</th><th>Why</th></tr></thead><tbody>${Array.from({ length: 12 }, () => "<tr><td></td><td></td><td></td><td></td><td></td></tr>").join("")}</tbody></table>` : ""}
-<h2>${ws ? "Your notes" : "Notes"}</h2>
-<div class="lines">${"<div></div>".repeat(ws ? 6 : 10)}</div>
-<footer>${esc(plan.title)}${plan.team?.facilitator ? ` · facilitated by ${esc(plan.team.facilitator)}` : ""} · made with the Spaghetti Engine</footer>`;
-  return shell(`${plan.title} - handout`, body);
+<div class="legend">
+<span><b>A box</b> is a concept: something that can increase or decrease.</span>
+<span><b>An arrow</b> is a relationship: one concept pushing another.</span>
+<span><b>+</b> (green): when the first goes up, the second goes up too.</span>
+<span><b>-</b> (orange): when the first goes up, the second goes down.</span>
+</div>
+<p style="margin-top:8px">Each relationship is weak, moderate or strong. When the map is complete, the computer plays it forward: it shows where the situation is heading if nothing changes, and what changes when we try a measure.</p></div>
+${sheets.map((h, i) => (i === 0 ? h.replace('<h2 class="pb">', "<h2>") : h)).join("")}
+${sheets.length ? "" : `<div class="keep"><h2>Notes</h2>
+<div class="lines">${"<div></div>".repeat(8)}</div></div>`}
+${plan.team?.facilitator ? `<p class="small" style="margin-top:10px">Questions afterwards? Contact ${esc(plan.team.facilitator)}.</p>` : ""}`;
+  return shell(`${plan.title} - handout`, plan.title, body);
 }
 
 // for tests and previews
@@ -336,8 +373,9 @@ function printDoc(html) {
   if (!w) return false;
   w.document.write(html);
   w.document.close();
-  // give the fonts a moment before the print dialog opens
-  setTimeout(() => { try { w.focus(); w.print(); } catch { /* the page stays open to print by hand */ } }, 700);
+  // print once the fonts are in, so the page is not laid out with a fallback font
+  const go = () => { try { w.focus(); w.print(); } catch { /* the page stays open to print by hand */ } };
+  try { (w.document.fonts?.ready || Promise.resolve()).then(() => setTimeout(go, 150)); } catch { setTimeout(go, 700); }
   return true;
 }
 
