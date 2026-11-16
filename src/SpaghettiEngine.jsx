@@ -11830,6 +11830,8 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
   const [tpFilter, setTpFilter] = useState("");
   const matrixRef = useRef(null);
   const [tpFlatThreshold, setTpFlatThreshold] = useState(() => result?.flatThreshold ?? 0.015);
+  const [tpSettingsOpen, setTpSettingsOpen] = useState(false);
+  const [tpAllColumns, setTpAllColumns] = useState(false);
   const [running, setRunning] = useState(false);
 
   const responseChartRef = useRef(null);
@@ -11954,6 +11956,21 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
   const tpTableRows = useMemo(() => (result ? result.rows.map((r) => ({ ...r, interventionName: result.interventionName })) : []), [result]);
   const { sorted: tpSortedRows, sortKey: tpSortKey, sortDir: tpSortDir, onSort: tpOnSort } = useTableSort(tpTableRows, TRANSITION_TABLE_COLUMNS, { key: "tp", dir: "asc" });
 
+  // The table shows the columns most readers need; the rest on request.
+  const tpColumns = TRANSITION_TABLE_COLUMNS.filter((c) => c.key !== "interventionName" && (tpAllColumns || ["outcomeName", "tp", "effectAtTp", "effect", "responseType"].includes(c.key)));
+  const signed = (v) => `${v >= 0 ? "+" : ""}${round2(v)}`;
+  const tpCell = (r, key) => {
+    if (key === "outcomeName") return r.outcomeName;
+    if (key === "tp") return round2(r.tp);
+    if (key === "effectAtTp") return signed(r.effectAtTp);
+    if (key === "shareAtTp") return r.shareAtTp === null ? "n/a" : `${Math.round(100 * r.shareAtTp)}%`;
+    if (key === "effect") return signed(r.effect);
+    if (key === "range") return round2(r.range);
+    if (key === "efficiency") return signed(r.efficiency);
+    if (key === "responseType") return <span title={RESPONSE_TYPE_HELP[r.responseType]} className={`text-[14px] px-1.5 py-0.5 rounded-full border ${RESPONSE_TYPE_STYLE[r.responseType]}`}>{r.responseType}</span>;
+    return r[key];
+  };
+
   const synergy = useMemo(() => {
     if (!result || result.rows.length < 2) return null;
     return classifySynergy(result.rows, result.flatThreshold);
@@ -11996,7 +12013,7 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
       <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-4" data-tp-setup>
         <div>
           <h3 className="font-semibold text-sm">Run a transition point analysis</h3>
-          <p className="text-[14px] text-neutral-600">Raise (or lower) one intervention step by step, and find for each outcome the intensity from which extra effort pays off less.</p>
+          <p className="text-[14px] text-neutral-700">For each outcome: from which intensity of the intervention does extra effort pay off less?</p>
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="rounded-md border border-slate-200 p-3">
@@ -12034,35 +12051,62 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
               ))}
             </div>
           </div>
-          <div className="rounded-md border border-slate-200 p-3 lg:col-span-3">
-            <div className="flex items-center gap-2 mb-1.5"><span className="w-5 h-5 rounded-full bg-lagoon-700 text-white text-[14px] font-semibold flex items-center justify-center">3</span><span className="text-xs font-semibold text-neutral-900">How finely should the intervention be stepped?</span></div>
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs">
-              <div className="inline-flex border border-slate-300 rounded overflow-hidden" role="group" aria-label="Resolution">
-                {[[50, "Quick (50 steps)"], [100, "Normal (100)"], [200, "Fine (200)"], [500, "Very fine (500)"]].map(([n, label], k) => (
-                  <button key={n} onClick={() => setTpResolution(n)} className={`px-2.5 py-1 ${k ? "border-l border-slate-300" : ""} ${tpResolution === n ? "bg-slate-900 text-white" : "bg-white hover:bg-slate-50"}`}>{label}</button>
-                ))}
-              </div>
-              <label className="flex items-center gap-1.5 text-neutral-700" title="Below this, an outcome's total range across the whole sweep is classified as a 'Flat' (no meaningful) response.">
-                Count a response as flat below
-                <input type="number" step={0.005} min={0} max={1} value={tpFlatThreshold} onChange={(e) => setTpFlatThreshold(Math.max(0, parseFloat(e.target.value) || 0))} className="w-20 border border-slate-300 rounded px-1.5 py-0.5" />
-                <HelpCircle size={11} className="text-neutral-500" />
-              </label>
-            </div>
-          </div>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <Btn variant="accent" onClick={runAnalysis} disabled={!tpIntervention || tpOutcomes.filter((o) => o !== tpIntervention).length === 0 || running}>
             <Play size={14} />{running ? "Running…" : "Run analysis"}
           </Btn>
+          <button onClick={() => setTpSettingsOpen((v) => !v)} aria-expanded={tpSettingsOpen} className="text-[14px] text-neutral-700 hover:text-lagoon-800 inline-flex items-center gap-1">
+            <SlidersHorizontal size={13} />{tpResolution} steps, flat below {tpFlatThreshold}{tpSettingsOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+          </button>
           <span className="text-[14px] text-neutral-600">
             {!tpIntervention ? "Choose an intervention (step 1)." : tpOutcomes.filter((o) => o !== tpIntervention).length === 0 ? "Choose at least one outcome (step 2)." : `${tpDirection === "increase" ? "Raises" : "Lowers"} ${concepts.find((c) => c.id === tpIntervention)?.name} in ${tpResolution} steps and follows ${tpOutcomes.filter((o) => o !== tpIntervention).length} outcome${tpOutcomes.filter((o) => o !== tpIntervention).length === 1 ? "" : "s"}.`}
           </span>
         </div>
+        {tpSettingsOpen && (
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs rounded-md bg-slate-50 border border-slate-200 p-3">
+            <span className="text-neutral-800">Steps</span>
+            <div className="inline-flex border border-slate-300 rounded overflow-hidden bg-white" role="group" aria-label="Resolution">
+              {[[50, "Quick (50)"], [100, "Normal (100)"], [200, "Fine (200)"], [500, "Very fine (500)"]].map(([n, label], k) => (
+                <button key={n} onClick={() => setTpResolution(n)} className={`px-2.5 py-1 ${k ? "border-l border-slate-300" : ""} ${tpResolution === n ? "bg-slate-900 text-white" : "bg-white hover:bg-slate-50"}`}>{label}</button>
+              ))}
+            </div>
+            <label className="flex items-center gap-1.5 text-neutral-800" title="Below this, an outcome's total range across the whole sweep is classified as a 'Flat' (no meaningful) response.">
+              Count a response as flat below
+              <input type="number" step={0.005} min={0} max={1} value={tpFlatThreshold} onChange={(e) => setTpFlatThreshold(Math.max(0, parseFloat(e.target.value) || 0))} className="w-20 border border-slate-300 rounded px-1.5 py-0.5" />
+            </label>
+          </div>
+        )}
       </div>
 
       {result && (
         <>
           {isStale && <StaleResultBanner label="this transition point analysis" />}
+
+          <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <h4 className="text-sm font-semibold">Key findings: {result.direction === "decrease" ? "lowering" : "raising"} {result.interventionName}</h4>
+              {synergy && <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border ${SYNERGY_STYLE[synergy.type]}`} title={`${synergy.improve} improved, ${synergy.worsen} worsened, ${synergy.total - synergy.improve - synergy.worsen} unchanged, at full intensity`}>{synergy.type}</span>}
+            </div>
+            <ul className="space-y-2">
+              {[...result.rows].filter((r) => r.responseType !== "Flat").sort((a, b) => Math.abs(b.effect) - Math.abs(a.effect)).map((r) => {
+                const q = QUADRANTS.find((x) => x.key === quadrantOf({ x: round2(r.tp), y: round2(Math.abs(r.effect)) }, 0.5, matrixYSplit));
+                return (
+                  <li key={r.outcomeId} className="flex gap-2.5 text-sm text-neutral-900">
+                    <span className={`shrink-0 mt-0.5 ${r.effect >= 0 ? "text-green-700" : "text-orange-700"}`} aria-hidden="true">{r.effect >= 0 ? "▲" : "▼"}</span>
+                    <span>
+                      <strong>{r.outcomeName}</strong> {r.effect >= 0 ? "rises" : "falls"} by {Math.abs(round2(r.effect)).toFixed(2)}.{" "}
+                      {r.tp >= 0.999 ? "The effect keeps building up to full intensity." : `Returns diminish from intensity ${round2(r.tp)}${r.shareAtTp === null ? "" : `, when ${Math.round(100 * r.shareAtTp)}% of the effect is reached`}.`}
+                      {q && <span className="ml-2 text-[13px] px-1.5 py-0.5 rounded" style={{ background: q.fill, color: q.ink }}>{q.label}</span>}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+            {result.rows.some((r) => r.responseType === "Flat") && (
+              <p className="text-[14px] text-neutral-700">No meaningful response: {result.rows.filter((r) => r.responseType === "Flat").map((r) => r.outcomeName).join(", ")}.</p>
+            )}
+          </div>
 
           <div className="bg-white rounded-lg border border-slate-200 p-4" data-tp-matrix>
             <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
@@ -12071,22 +12115,9 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
                 <FigureExportButton targetRef={matrixRef} baseName="transition-prioritization-matrix" title="Intervention prioritization matrix" subtitle={`${result.interventionName} (${transitionRangeLabel(result.direction)})`} />
               </div>
             </div>
-            <p className="text-[14px] text-neutral-600 mb-3">Each numbered dot is an outcome that responds. Further left, the outcome already gains most of its effect at a low intensity; higher up, the effect is larger. Green dots rise, orange dots fall; the numbers match the lists below. The lines split the plot at the middle intensity (0.5) and at the average effect.</p>
+            <p className="text-[14px] text-neutral-700 mb-3">Further left, returns diminish at a lower intensity; higher up, the effect is larger. Green dots rise, orange dots fall.</p>
             <div ref={matrixRef}>
               <PrioritizationMatrix points={matrixData} xSplit={0.5} ySplit={matrixYSplit} />
-            </div>
-            {result.rows.length > matrixData.length && <p className="text-[14px] text-neutral-600 mt-2">Left out: {result.rows.length - matrixData.length} outcome{result.rows.length - matrixData.length === 1 ? "" : "s"} that hardly respond (flat response), listed in the table below.</p>}
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2 mt-3">
-              {QUADRANTS.map((q) => {
-                const items = matrixData.filter((d) => quadrantOf(d, 0.5, matrixYSplit) === q.key).sort((a, b) => b.y - a.y);
-                return (
-                  <div key={q.key} className="rounded-md border px-3 py-2" style={{ background: q.fill, borderColor: q.fill === "#f8fafc" ? "#e2e8f0" : q.fill }}>
-                    <div className="text-xs font-semibold" style={{ color: q.ink }}>{q.label} <span className="font-normal text-neutral-600">({items.length})</span></div>
-                    <div className="text-[14.5px] text-neutral-600 mb-1">{q.text}</div>
-                    {items.length ? <ul className="text-[14px] text-neutral-900 space-y-0.5">{items.map((d) => <li key={d.name} className="flex justify-between gap-2"><span><span className="inline-flex w-5 h-5 mr-1 rounded-full text-white text-[13.5px] font-semibold items-center justify-center align-middle" style={{ background: d.effect >= 0 ? "#15803d" : "#c2410c" }}>{matrixData.indexOf(d) + 1}</span>{d.effect >= 0 ? "▲" : "▼"} {d.name}</span><span className="font-mono text-neutral-600">{d.effect >= 0 ? "+" : ""}{d.effect.toFixed(2)}</span></li>)}</ul> : <p className="text-[14.5px] italic text-neutral-500">none</p>}
-                  </div>
-                );
-              })}
             </div>
           </div>
 
@@ -12095,46 +12126,24 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
               <h4 className="text-sm font-semibold">Transition point results</h4>
               <Btn variant="outline" onClick={exportTableCSV}><Download size={13} />Export CSV</Btn>
             </div>
-            <p className="text-[14px] text-neutral-600 mb-1.5">Click a column header to sort by it; click again to reverse the direction.</p>
             <table className="w-full text-xs">
               <thead>
                 <tr className="text-left text-neutral-600 border-b border-slate-100">
-                  {TRANSITION_TABLE_COLUMNS.map((col) => <SortHeader key={col.key} col={col} sortKey={tpSortKey} sortDir={tpSortDir} onSort={tpOnSort} />)}
+                  {tpColumns.map((col) => <SortHeader key={col.key} col={col} sortKey={tpSortKey} sortDir={tpSortDir} onSort={tpOnSort} />)}
                 </tr>
               </thead>
               <tbody>
                 {tpSortedRows.map((r) => (
                   <tr key={r.outcomeId} className="border-b border-slate-50">
-                    <td className="py-1 pr-3">{r.interventionName}</td>
-                    <td className="py-1 pr-3">{r.outcomeName}</td>
-                    <td className="py-1 pr-3 font-mono">{round2(r.tp)}</td>
-                    <td className="py-1 pr-3 font-mono">{r.effectAtTp >= 0 ? "+" : ""}{round2(r.effectAtTp)}</td>
-                    <td className="py-1 pr-3 font-mono">{r.shareAtTp === null ? "n/a" : `${Math.round(100 * r.shareAtTp)}%`}</td>
-                    <td className="py-1 pr-3 font-mono">{r.effect >= 0 ? "+" : ""}{round2(r.effect)}</td>
-                    <td className="py-1 pr-3 font-mono">{round2(r.range)}</td>
-                    <td className="py-1 pr-3 font-mono">{r.efficiency >= 0 ? "+" : ""}{round2(r.efficiency)}</td>
-                    <td className="py-1 pr-3">
-                      <span title={RESPONSE_TYPE_HELP[r.responseType]} className={`text-[14px] px-1.5 py-0.5 rounded-full border ${RESPONSE_TYPE_STYLE[r.responseType]}`}>{r.responseType}</span>
-                    </td>
+                    {tpColumns.map((col) => <td key={col.key} className={`py-1 pr-3 ${col.type === "num" ? "font-mono" : ""}`}>{tpCell(r, col.key)}</td>)}
                   </tr>
                 ))}
               </tbody>
             </table>
+            <button onClick={() => setTpAllColumns((v) => !v)} className="mt-2 text-[14px] text-lagoon-700 hover:underline">{tpAllColumns ? "Show fewer columns" : "Show all columns (share at TP, range, efficiency)"}</button>
           </div>
 
-          {synergy && (
-            <div className="bg-white rounded-lg border border-slate-200 p-4">
-              <h4 className="text-sm font-semibold mb-1">Synergy classification</h4>
-              <p className="text-[14px] text-neutral-600 mb-2">Across the {synergy.total} selected outcomes, evaluated at full intervention intensity (x = 1).</p>
-              <div className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full border ${SYNERGY_STYLE[synergy.type]}`}>
-                {synergy.type}
-              </div>
-              <p className="text-xs text-neutral-700 mt-2">{synergy.improve} improved, {synergy.worsen} worsened, {synergy.total - synergy.improve - synergy.worsen} unchanged (within the flat-response threshold).</p>
-            </div>
-          )}
-
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
-            <h4 className="text-sm font-semibold mb-2">Export</h4>
+          <FoldableBox storageKey="se.fold.tpExport" title="Export data and figures" icon={Download} summary="The curves, the table and the rankings as CSV, and the charts through the figure editor.">
             <div className="flex flex-wrap gap-2">
               <Btn variant="outline" onClick={exportResponseCSV}><Download size={13} />Response curves (CSV)</Btn>
               <Btn variant="outline" onClick={exportSlopeCSV}><Download size={13} />Marginal benefit curves (CSV)</Btn>
@@ -12144,7 +12153,7 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
               <Btn variant="outline" onClick={() => openFigureFromFold("se.fold.tpAdvanced", () => slopeChartRef.current, "transition-marginal-benefit.png", figSlope, { title: figSlope.title || `Marginal benefit: ${result.interventionName}`, subtitle: `Transition Point Analysis · outcomes: ${chartRows.map((r) => r.outcomeName).join(", ")}` })}><Download size={13} />Marginal chart ({figSlope.format.toUpperCase()})</Btn>
             </div>
             <p className="text-[14px] text-neutral-600 mt-2">The chart buttons open the figure editor, which saves PNG, SVG or PDF. The CSV files hold the data behind the charts.</p>
-          </div>
+          </FoldableBox>
 
           <FoldableBox storageKey="se.fold.tpAdvanced" title="Advanced results" icon={Activity} summary="Every outcome in its own panel (response curve, marginal benefit and transition point), the dashboard, and the overlay charts for export.">
             <div className="space-y-5">
