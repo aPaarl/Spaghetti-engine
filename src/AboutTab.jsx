@@ -4,11 +4,12 @@ import React, { useState } from "react";
 import {
   BookOpen, FileText, ScrollText, Download, Mail, Copy, Check, Users, GraduationCap,
   Microscope, ArrowRight, Landmark, ExternalLink, Gamepad2, Compass, HelpCircle,
-  Share2, Activity, Sparkles,
+  Share2, Activity, Sparkles, Sprout, ArrowLeft, Merge,
 } from "lucide-react";
 import pkg from "../package.json";
 import manifest from "./docs-manifest.json";
 import { BrandLockup, BrandHeroArt } from "./brand.jsx";
+import { AUDIENCE_PAGES } from "./audiencePages.js";
 
 export const APP_VERSION = pkg.version;
 export const CONTACT = {
@@ -38,10 +39,11 @@ const DOCS = [
 ];
 
 const AUDIENCES = [
-  { icon: Microscope, title: "Researchers", text: "Traceable models of complex systems", tint: "bg-lagoon-50 text-lagoon-700" },
-  { icon: Users, title: "Facilitators", text: "Build maps live with stakeholders", tint: "bg-coral-50 text-coral-600" },
-  { icon: Landmark, title: "Policy makers", text: "Test what-if questions and interventions", tint: "bg-sky-50 text-sky-700" },
-  { icon: GraduationCap, title: "Students and teachers", text: "Learn with the guide and the game", tint: "bg-violet-50 text-violet-700" },
+  { id: "researchers", icon: Microscope, title: "Researchers", text: "Traceable models of complex systems", tint: "bg-lagoon-50 text-lagoon-700" },
+  { id: "facilitators", icon: Users, title: "Facilitators", text: "Build maps live with stakeholders", tint: "bg-coral-50 text-coral-600" },
+  { id: "policy", icon: Landmark, title: "Policy makers", text: "Test what-if questions and interventions", tint: "bg-sky-50 text-sky-700" },
+  { id: "stakeholders", icon: Sprout, title: "Local stakeholders", text: "Make your knowledge of the system visible", tint: "bg-emerald-50 text-emerald-700" },
+  { id: "education", icon: GraduationCap, title: "Students and teachers", text: "Learn with the guide and the game", tint: "bg-violet-50 text-violet-700" },
 ];
 
 const STEPS = [
@@ -68,8 +70,106 @@ function SectionTitle({ kicker, title, children }) {
   );
 }
 
-export default function AboutTab({ onOpenTab, onOpenGuide, onOpenGame }) {
+// One group's page: why they would use the tool, a typical way of working
+// (each step opens its tab), what they take away and what to keep in mind.
+function AudiencePage({ id, onBack, onSwitch, onOpenTab, onOpenGuide, onOpenGame, onOpenCombine }) {
+  const page = AUDIENCE_PAGES[id];
+  const meta = AUDIENCES.find((a) => a.id === id);
+  const doc = DOCS.find((d) => d.key === page.doc);
+  const docFile = manifest.documents[page.doc];
+  const actions = {
+    combine: { run: onOpenCombine, label: "Open Combine maps", icon: Merge },
+    guide: { run: onOpenGuide, label: "Open the guide", icon: Compass },
+    game: { run: onOpenGame, label: "Play the game", icon: Gamepad2 },
+  };
+  const Icon = meta.icon;
+  const DocIcon = doc?.icon;
+  const list = (items) => (
+    <ul className="space-y-2">
+      {items.map((t) => (
+        <li key={t} className="flex gap-2.5 text-sm text-slate-700 leading-relaxed"><Check size={16} className="text-lagoon-600 shrink-0 mt-0.5" />{t}</li>
+      ))}
+    </ul>
+  );
+  return (
+    <div className="se-about max-w-4xl mx-auto space-y-8 pb-6">
+      <button onClick={onBack} className="inline-flex items-center gap-1.5 text-[14px] font-semibold text-lagoon-700 hover:text-lagoon-900"><ArrowLeft size={15} /> Back to About</button>
+      <header className="flex flex-col sm:flex-row sm:items-center gap-4">
+        <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shrink-0 ${meta.tint}`}><Icon size={30} /></div>
+        <div className="space-y-1">
+          <div className="text-[14px] font-semibold uppercase tracking-[0.12em] text-lagoon-700">Who it is for</div>
+          <h1 className="se-display text-3xl font-bold tracking-tight text-ink">{page.title}</h1>
+        </div>
+      </header>
+      <p className="text-[17px] leading-relaxed text-slate-700">{page.lead}</p>
+
+      <section className="space-y-3">
+        <h2 className="se-display text-xl font-bold text-ink">What it helps you do</h2>
+        {list(page.purpose)}
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="se-display text-xl font-bold text-ink">A typical way of working</h2>
+        <ol className="space-y-3">
+          {page.steps.map((s, i) => {
+            const act = s.action ? actions[s.action] : null;
+            const ActIcon = act?.icon;
+            return (
+              <li key={s.title} className="rounded-2xl bg-white border border-slate-200 p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+                <span className="w-8 h-8 rounded-full bg-lagoon-700 text-white flex items-center justify-center text-sm font-bold shrink-0">{i + 1}</span>
+                <div className="flex-1 space-y-0.5">
+                  <div className="text-sm font-semibold text-ink">{s.title}</div>
+                  <p className="text-sm text-slate-700 leading-relaxed">{s.text}</p>
+                </div>
+                {act ? (
+                  <button onClick={act.run} className="self-start sm:self-center shrink-0 text-[14px] font-semibold text-lagoon-700 hover:text-lagoon-900 inline-flex items-center gap-1"><ActIcon size={14} />{act.label}</button>
+                ) : (
+                  <button onClick={() => onOpenTab(s.tab)} className="self-start sm:self-center shrink-0 text-[14px] font-semibold text-lagoon-700 hover:text-lagoon-900 inline-flex items-center gap-1">Open <ArrowRight size={14} /></button>
+                )}
+              </li>
+            );
+          })}
+        </ol>
+      </section>
+
+      <div className="grid md:grid-cols-2 gap-4">
+        <section className="rounded-2xl bg-lagoon-50 border border-lagoon-100 p-5 space-y-3">
+          <h2 className="se-display text-lg font-bold text-ink">What you take away</h2>
+          {list(page.outputs)}
+        </section>
+        <section className="rounded-2xl bg-amber-50 border border-amber-100 p-5 space-y-3">
+          <h2 className="se-display text-lg font-bold text-ink">Keep in mind</h2>
+          <ul className="space-y-2">{page.caveats.map((t) => <li key={t} className="flex gap-2.5 text-sm text-slate-800 leading-relaxed"><HelpCircle size={16} className="text-amber-700 shrink-0 mt-0.5" />{t}</li>)}</ul>
+        </section>
+      </div>
+
+      {doc && docFile && (
+        <section className="rounded-2xl bg-white border border-slate-200 p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+          <DocIcon size={26} className="text-lagoon-700 shrink-0" />
+          <div className="flex-1">
+            <div className="text-sm font-semibold text-ink">Recommended reading: {doc.title}</div>
+            <p className="text-sm text-slate-700">{doc.blurb}</p>
+          </div>
+          <a href={docUrl(docFile.file)} target="_blank" rel="noreferrer" className="shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-lagoon-700 text-white text-[14px] font-semibold hover:bg-lagoon-800"><ExternalLink size={14} /> Read online</a>
+        </section>
+      )}
+
+      <nav className="space-y-2">
+        <div className="text-[14px] font-semibold text-slate-600">Other groups</div>
+        <div className="flex flex-wrap gap-2">
+          {AUDIENCES.filter((a) => a.id !== id).map((a) => (
+            <button key={a.id} onClick={() => onSwitch(a.id)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-slate-200 bg-white text-[14px] text-ink hover:border-lagoon-300 hover:text-lagoon-800"><a.icon size={14} />{a.title}</button>
+          ))}
+        </div>
+      </nav>
+    </div>
+  );
+}
+
+export default function AboutTab({ onOpenTab, onOpenGuide, onOpenGame, onOpenCombine }) {
   const [copied, setCopied] = useState(false);
+  const [audience, setAudience] = useState(null);
+  const showAudience = (id) => { setAudience(id); setTimeout(() => document.querySelector(".se-about")?.scrollIntoView({ block: "start" }), 0); };
   const copyEmail = async () => {
     try {
       await navigator.clipboard.writeText(CONTACT.email);
@@ -80,6 +180,16 @@ export default function AboutTab({ onOpenTab, onOpenGuide, onOpenGame }) {
   const mailto = `mailto:${CONTACT.email}?subject=${encodeURIComponent(`The Spaghetti Engine v${APP_VERSION}`)}`;
   const docsCurrent = manifest.version === APP_VERSION;
   const initials = CONTACT.name.split(" ").map((w) => w[0]).join("").slice(0, 2);
+
+  if (audience && AUDIENCE_PAGES[audience]) {
+    return (
+      <AudiencePage
+        id={audience} onSwitch={showAudience}
+        onBack={() => { setAudience(null); setTimeout(() => document.getElementById("about-who")?.scrollIntoView({ block: "start" }), 0); }}
+        onOpenTab={onOpenTab} onOpenGuide={onOpenGuide} onOpenGame={onOpenGame} onOpenCombine={onOpenCombine}
+      />
+    );
+  }
 
   return (
     <div className="se-about max-w-6xl mx-auto space-y-12 pb-6">
@@ -199,14 +309,17 @@ export default function AboutTab({ onOpenTab, onOpenGuide, onOpenGame }) {
 
       {/* Who */}
       <section id="about-who" className="scroll-mt-4 space-y-5">
-        <SectionTitle kicker="Audience" title="Who it is for" />
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {AUDIENCES.map(({ icon: Icon, title, text, tint }) => (
-            <div key={title} className="rounded-2xl bg-white border border-slate-200 p-5 flex flex-col items-center text-center gap-3 transition-shadow hover:shadow-md">
+        <SectionTitle kicker="Audience" title="Who it is for">
+          Choose a group to read what the tool offers it, a typical way of working, and what to keep in mind.
+        </SectionTitle>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          {AUDIENCES.map(({ id, icon: Icon, title, text, tint }) => (
+            <button key={id} onClick={() => showAudience(id)} className="group rounded-2xl bg-white border border-slate-200 p-5 flex flex-col items-center text-center gap-3 transition-shadow hover:shadow-md hover:border-lagoon-300">
               <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${tint}`}><Icon size={26} /></div>
               <div className="se-display text-[16px] font-bold text-ink leading-tight">{title}</div>
-              <p className="text-[14px] text-slate-600 leading-snug">{text}</p>
-            </div>
+              <p className="text-[14px] text-slate-600 leading-snug flex-1">{text}</p>
+              <span className="text-[14px] font-semibold text-lagoon-700 group-hover:text-lagoon-900 inline-flex items-center gap-1">Read more <ArrowRight size={14} /></span>
+            </button>
           ))}
         </div>
       </section>

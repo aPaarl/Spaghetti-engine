@@ -15628,7 +15628,7 @@ function SpaghettiEngineApp() {
         )}
 
         {/* ============================= ABOUT & DOCUMENTATION ============================= */}
-        {tab === "about" && <AboutTab onOpenTab={setTab} onOpenGuide={() => { setGameOpen(false); setGuide({ open: true, collapsed: false }); }} onOpenGame={() => setGameOpen(true)} />}
+        {tab === "about" && <AboutTab onOpenTab={(t) => { if (basic && !BASIC_TABS.has(t)) setUiLevel("advanced"); setTab(t); }} onOpenCombine={() => { saveNow(); setCombineOpen(true); }} onOpenGuide={() => { setGameOpen(false); setGuide({ open: true, collapsed: false }); }} onOpenGame={() => setGameOpen(true)} />}
 
         {/* ============================= TRANSITION PATHWAYS ============================= */}
         {tab === "pathways" && (
