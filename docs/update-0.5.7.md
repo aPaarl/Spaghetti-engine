@@ -72,15 +72,18 @@ The analysis and its results are unchanged (Annex, section U.17); the tab shows 
 
 The workshop mode helps a facilitator to prepare a workshop with the tool and to run it step by step. Open it from the Help menu with *Prepare a workshop*, from the link *Running a workshop? Prepare it here* and the card *Prepare a workshop* on the About page, or from the Facilitators page.
 
-**Preparing.** The planner has three parts.
+**Preparing.** The planner has four parts.
 
 | Part | What it holds |
 |---|---|
-| 1. The workshop | Title, central question, date, start time and participants. |
-| 2. The agenda | The steps of the workshop, each on one line with its start time, type (discussion, building or analysis) and minutes. Click a step to change its title, *What participants are asked* and *Your notes*, or to move it earlier or later or remove it. *Add a step* offers 15 ready-made steps. Three templates fill the agenda at once: *Map a system together*, *Test interventions* and *Compare stakeholder views*. |
-| 3. Print and run | *Print facilitator script* (with notes and points to prepare) and *Print participant handout* (the question and the prompts, with space for notes). |
+| 1. The workshop | Title, place, central question, date and start time, participants, the aim of the session, and the team (facilitator, co-facilitator, and who keeps notes and works the tool). |
+| 2. The agenda | The steps of the workshop, each on one line with its start time, type (discussion, building or analysis) and minutes. Click a step to change its title, format (whole group, small groups, pairs or on your own), *What participants are asked*, the result it should give, the materials and *Your notes*, or to move it earlier or later or remove it. *Add a step* offers 17 ready-made steps. Four templates fill the agenda at once: *Map a system together*, *Test interventions*, *Compare stakeholder views* and *A first introduction*. |
+| 3. Preparation | A checklist of tasks before the session and a list of things to bring, both editable; *Add what the steps need* collects the materials named in the steps. A field for the follow-up after the session. |
+| 4. Print and run | *Print facilitator script* and *Print participant handout*; both open the print dialog, where *Save as PDF* keeps a file. |
 
-The planner checks whether the model is ready for each step and marks the steps to prepare, for example a scenario step without prepared scenarios, a comparison step with only one map in the library, or a baseline step in which every start value is 0. When nothing is missing it shows *The model is ready*. The plan is saved with the model, in this browser.
+The planner checks whether the model is ready for each step and marks the steps to prepare, for example a scenario step without prepared scenarios, a comparison step with only one map in the library, or a baseline step in which every start value is 0. These points are added to the preparation list. When nothing is missing it shows *The model is ready*. The plan is saved with the model, in this browser.
+
+**The printed documents.** The facilitator script gives the details of the session, the team, the programme at a glance with times and formats, the preparation checklist and the things to bring, then every step with what participants are asked, the result, the materials, the tab it opens and your notes, and ends with a checklist for after the session and space for notes. The participant handout gives the details and the question, a short welcome, the aim, the programme, a short guide to reading a map with a small example, and, when the agenda has steps in which participants build a map, two worksheets: one for factors and themes, one for relationships (from, to, + or -, strength, why).
 
 **Running.** *Start the workshop* shows a dark bar under the top bar with the step number, its title, the prompt for the participants and a timer for the step (start, pause, reset; it turns coral when the time is up). *Next* and *Back* move between steps and open what the step needs: its tab, *Combine maps*, or *Advanced tools* for the transition analyses. The full-screen button shows the central question, the prompt and the timer in large text for the group; click anywhere to return. *Agenda* reopens the planner, and *Finish* or the close button ends the workshop. Switching to another model also ends it.
 
@@ -172,7 +175,7 @@ The log documents what changed and why, how existing results are affected, how t
 | About page | A page for each audience, a fifth audience (local stakeholders), and entry points to the workshop planner. |
 | Model editor | One-line concepts and relationships that open to edit, search, module filter, relationships per concept, strength badges, a start panel for an empty model. |
 | Transition Point Analysis | Key findings first, a five-column table with the rest on request, settings and exports folded away. |
-| Workshop mode | A planner with 15 steps, three templates, readiness checks and printable script and handout; a run bar with prompt, timer and navigation that opens each step's tab. |
+| Workshop mode | A planner with 17 steps, four templates, group formats, a preparation checklist, readiness checks and a printable script and handout with worksheets; a run bar with prompt, timer and navigation that opens each step's tab. |
 
 ### 3. The Changes in Detail
 
