@@ -144,124 +144,172 @@ function printPlan(plan, { facilitator, warnings }) {
   return true;
 }
 
+// A numbered heading for the three parts of the planner.
+function PlannerHeading({ n, title, children }) {
+  return (
+    <div className="flex items-start gap-3 mb-3">
+      <span className="w-7 h-7 rounded-full bg-ink text-white text-sm font-bold flex items-center justify-center shrink-0">{n}</span>
+      <div className="min-w-0">
+        <h3 className="se-display text-[17px] font-bold text-neutral-900 leading-tight">{title}</h3>
+        {children && <p className="text-sm text-neutral-700 mt-0.5">{children}</p>}
+      </div>
+    </div>
+  );
+}
+
 export function WorkshopPlanner({ plan, setPlan, modelName, ctx, onStart, onClose, notify }) {
   const [adding, setAdding] = useState(false);
-  const [openNotes, setOpenNotes] = useState(null);
+  const [openStep, setOpenStep] = useState(null);
   const total = plan.steps.reduce((t, s) => t + (Number(s.minutes) || 0), 0);
   const warnings = useMemo(() => Object.fromEntries(plan.steps.map((s) => [s.uid, BLOCK[s.block]?.check?.(ctx) || null]).filter(([, w]) => w)), [plan.steps, ctx]);
   const set = (patch) => setPlan({ ...plan, ...patch });
   const setStep = (uid, patch) => set({ steps: plan.steps.map((s) => (s.uid === uid ? { ...s, ...patch } : s)) });
   const move = (i, d) => { const st = [...plan.steps]; const j = i + d; if (j < 0 || j >= st.length) return; [st[i], st[j]] = [st[j], st[i]]; set({ steps: st }); };
-  const applyTemplate = (t) => set({ steps: t.blocks.map(stepOf) });
+  const applyTemplate = (t) => { set({ steps: t.blocks.map(stepOf) }); setOpenStep(null); };
   const print = (facilitator) => { if (!printPlan(plan, { facilitator, warnings })) notify("The print page was blocked by the browser. Allow pop-ups for this site and try again."); };
+  const nWarn = Object.keys(warnings).length;
   let at = 0;
 
-  const input = "w-full text-sm text-neutral-900 border border-slate-300 rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-lagoon-300";
+  const input = "w-full text-[15px] text-neutral-900 bg-white border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-lagoon-300";
+  const label = "block text-sm font-semibold text-neutral-800";
   return (
     <div className="fixed inset-0 z-[55] bg-slate-900/40 flex items-center justify-center p-3 sm:p-6" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div role="dialog" aria-modal="true" aria-labelledby="se-ws-title" className="bg-[#f7f9f9] rounded-xl shadow-xl border border-slate-200 max-w-5xl w-full max-h-[92vh] flex flex-col"
+      <div role="dialog" aria-modal="true" aria-labelledby="se-ws-title" className="bg-[#f7f9f9] rounded-2xl shadow-xl border border-slate-200 max-w-5xl w-full max-h-[94vh] flex flex-col"
         onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}>
-        <div className="flex items-center justify-between gap-3 px-5 pt-4 pb-3 bg-white rounded-t-xl border-b border-slate-200">
-          <div>
-            <h2 id="se-ws-title" className="se-display text-lg font-bold text-neutral-900 flex items-center gap-2"><Users size={19} className="text-coral-600" />Prepare a workshop</h2>
-            <p className="text-sm text-neutral-700">Build the agenda, check that the model is ready for each step, then run it step by step with the group.</p>
+        <div className="flex items-center justify-between gap-3 px-6 pt-5 pb-4 bg-white rounded-t-2xl border-b border-slate-200">
+          <div className="flex items-center gap-3">
+            <span className="w-10 h-10 rounded-xl bg-coral-500 text-white flex items-center justify-center shrink-0"><Users size={20} /></span>
+            <div>
+              <h2 id="se-ws-title" className="se-display text-xl font-bold text-neutral-900">Prepare a workshop</h2>
+              <p className="text-sm text-neutral-700">Build the agenda, check that the model is ready for each step, then run it step by step with the group.</p>
+            </div>
           </div>
-          <button onClick={onClose} className="text-neutral-600 hover:text-neutral-900" aria-label="Close"><X size={18} /></button>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-neutral-600 hover:text-neutral-900 hover:bg-slate-100" aria-label="Close"><X size={20} /></button>
         </div>
 
-        <div className="overflow-auto p-5 grid lg:grid-cols-[300px_1fr] gap-5">
-          {/* the workshop itself */}
-          <div className="space-y-4">
-            <section className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
-              <label className="block text-[13px] font-medium text-neutral-800">Title<input value={plan.title} onChange={(e) => set({ title: e.target.value })} className={`${input} mt-1`} /></label>
-              <label className="block text-[13px] font-medium text-neutral-800">Central question
-                <textarea value={plan.question} onChange={(e) => set({ question: e.target.value })} rows={3} placeholder="e.g. How can peat meadows stay productive while emissions fall?" className={`${input} mt-1 resize-y`} />
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                <label className="block text-[13px] font-medium text-neutral-800">Date<input type="date" value={plan.date} onChange={(e) => set({ date: e.target.value })} className={`${input} mt-1`} /></label>
-                <label className="block text-[13px] font-medium text-neutral-800">Start time<input type="time" value={plan.start || ""} onChange={(e) => set({ start: e.target.value })} className={`${input} mt-1`} /></label>
+        <div className="overflow-auto px-6 py-5 space-y-6">
+          {/* 1. the workshop itself */}
+          <section className="bg-white rounded-2xl border border-slate-200 p-5">
+            <PlannerHeading n={1} title="The workshop">Model: <strong>{modelName}</strong></PlannerHeading>
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="space-y-4">
+                <label className={label}>Title<input value={plan.title} onChange={(e) => set({ title: e.target.value })} className={`${input} mt-1.5`} /></label>
+                <label className={label}>Participants<input value={plan.participants} onChange={(e) => set({ participants: e.target.value })} placeholder="e.g. 12 farmers and water board staff" className={`${input} mt-1.5`} /></label>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className={label}>Date<input type="date" value={plan.date} onChange={(e) => set({ date: e.target.value })} className={`${input} mt-1.5`} /></label>
+                  <label className={label}>Start time<input type="time" value={plan.start || ""} onChange={(e) => set({ start: e.target.value })} className={`${input} mt-1.5`} /></label>
+                </div>
               </div>
-              <label className="block text-[13px] font-medium text-neutral-800">Participants<input value={plan.participants} onChange={(e) => set({ participants: e.target.value })} placeholder="e.g. 12 farmers and water board staff" className={`${input} mt-1`} /></label>
-              <p className="text-[13px] text-neutral-700">Model: <strong>{modelName}</strong></p>
-            </section>
-            <section className="bg-white rounded-xl border border-slate-200 p-4 space-y-2">
-              <h3 className="text-sm font-semibold text-neutral-900">Start from a template</h3>
-              {WORKSHOP_TEMPLATES.map((t) => (
-                <button key={t.id} onClick={() => applyTemplate(t)} className="w-full text-left rounded-lg border border-slate-200 px-3 py-2 hover:border-lagoon-400 hover:bg-lagoon-50">
-                  <span className="block text-sm font-medium text-neutral-900">{t.title} <span className="font-normal text-neutral-600">({t.length})</span></span>
-                  <span className="block text-[13px] text-neutral-700">{t.text}</span>
-                </button>
-              ))}
-              <p className="text-[13px] text-neutral-600">A template replaces the agenda on the right.</p>
-            </section>
-          </div>
-
-          {/* the agenda */}
-          <section className="space-y-3 min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="se-display text-[16px] font-bold text-neutral-900">Agenda</h3>
-              <span className="text-sm text-neutral-700">{plan.steps.length} steps, {fmtMin(total)}{plan.start && clock(plan.start, total) ? `, ${plan.start} to ${clock(plan.start, total)}` : ""}</span>
-              {Object.keys(warnings).length > 0
-                ? <span className="ml-auto text-[13px] text-amber-800 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-0.5 inline-flex items-center gap-1"><AlertTriangle size={13} />{Object.keys(warnings).length} step{Object.keys(warnings).length === 1 ? "" : "s"} to prepare</span>
-                : plan.steps.length > 0 && <span className="ml-auto text-[13px] text-lagoon-800 bg-lagoon-50 border border-lagoon-200 rounded-full px-2.5 py-0.5 inline-flex items-center gap-1"><Check size={13} />The model is ready</span>}
+              <label className={`${label} flex flex-col`}>Central question
+                <textarea value={plan.question} onChange={(e) => set({ question: e.target.value })} placeholder="e.g. How can peat meadows stay productive while emissions fall?" className={`${input} mt-1.5 flex-1 min-h-[120px] resize-y`} />
+              </label>
             </div>
-            <ol className="space-y-2">
+          </section>
+
+          {/* 2. the agenda */}
+          <section className="bg-white rounded-2xl border border-slate-200 p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <PlannerHeading n={2} title="The agenda">
+                {plan.steps.length} steps, {fmtMin(total)}{plan.start && clock(plan.start, total) ? `, ${plan.start} to ${clock(plan.start, total)}` : ""}. Click a step to change its prompt and notes.
+              </PlannerHeading>
+              {nWarn > 0
+                ? <span className="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-full px-3 py-1 inline-flex items-center gap-1.5"><AlertTriangle size={14} />{nWarn} step{nWarn === 1 ? "" : "s"} to prepare</span>
+                : plan.steps.length > 0 && <span className="text-sm text-lagoon-900 bg-lagoon-50 border border-lagoon-200 rounded-full px-3 py-1 inline-flex items-center gap-1.5"><Check size={14} />The model is ready</span>}
+            </div>
+
+            <div className="mb-4">
+              <div className="text-sm font-semibold text-neutral-800 mb-2">Start from a template <span className="font-normal text-neutral-600">(replaces the agenda below)</span></div>
+              <div className="grid sm:grid-cols-3 gap-2">
+                {WORKSHOP_TEMPLATES.map((t) => (
+                  <button key={t.id} onClick={() => applyTemplate(t)} className="text-left rounded-xl border border-slate-200 px-3.5 py-2.5 hover:border-lagoon-400 hover:bg-lagoon-50">
+                    <span className="block text-[15px] font-semibold text-neutral-900">{t.title}</span>
+                    <span className="block text-[13px] text-neutral-600">{t.length}</span>
+                    <span className="block text-sm text-neutral-700 mt-1">{t.text}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <ol className="rounded-xl border border-slate-200 divide-y divide-slate-100 overflow-hidden">
               {plan.steps.map((s, i) => {
                 const b = BLOCK[s.block] || {};
                 const from = clock(plan.start, at); at += Number(s.minutes) || 0;
+                const open = openStep === s.uid;
+                const kind = KIND[b.kind] || KIND.talk;
                 return (
-                  <li key={s.uid} className="bg-white rounded-xl border border-slate-200 p-3 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <span className="w-6 h-6 rounded-full bg-lagoon-700 text-white text-[13px] font-semibold flex items-center justify-center shrink-0">{i + 1}</span>
-                      <input value={s.title} onChange={(e) => setStep(s.uid, { title: e.target.value })} aria-label="Step title" className="flex-1 min-w-0 text-sm font-semibold text-neutral-900 border border-transparent hover:border-slate-200 focus:border-lagoon-500 focus:outline-none rounded px-1.5 py-0.5" />
-                      <span className={`hidden sm:inline text-[12px] px-2 py-0.5 rounded-full ${KIND[b.kind]?.tone || KIND.talk.tone}`}>{KIND[b.kind]?.label || "Discussion"}</span>
-                      {from && <span className="text-[13px] text-neutral-600 tabular-nums">{from}</span>}
-                      <label className="flex items-center gap-1 text-[13px] text-neutral-700"><input type="number" min={1} max={240} value={s.minutes} onChange={(e) => setStep(s.uid, { minutes: Math.max(1, Math.min(240, Math.round(Number(e.target.value) || 1))) })} className="w-14 text-sm border border-slate-300 rounded px-1.5 py-0.5 text-right" aria-label="Minutes" />min</label>
-                      <span className="flex shrink-0">
-                        <button onClick={() => move(i, -1)} disabled={i === 0} className="p-1 rounded text-neutral-600 hover:bg-slate-100 disabled:opacity-30" aria-label="Move up"><ArrowUp size={14} /></button>
-                        <button onClick={() => move(i, 1)} disabled={i === plan.steps.length - 1} className="p-1 rounded text-neutral-600 hover:bg-slate-100 disabled:opacity-30" aria-label="Move down"><ArrowDown size={14} /></button>
-                        <button onClick={() => set({ steps: plan.steps.filter((x) => x.uid !== s.uid) })} className="p-1 rounded text-neutral-600 hover:text-red-600 hover:bg-red-50" aria-label="Remove this step"><Trash2 size={14} /></button>
-                      </span>
-                    </div>
-                    <textarea value={s.prompt} onChange={(e) => setStep(s.uid, { prompt: e.target.value })} rows={2} aria-label="Prompt for the participants"
-                      className="w-full text-[13px] text-neutral-900 border border-slate-200 rounded px-2 py-1 resize-y focus:outline-none focus:ring-1 focus:ring-lagoon-500" />
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px]">
-                      <button onClick={() => setOpenNotes((o) => (o === s.uid ? null : s.uid))} className="text-neutral-700 hover:text-lagoon-800 inline-flex items-center gap-1">
-                        {openNotes === s.uid ? <ChevronDown size={13} /> : <ChevronRight size={13} />}Facilitator notes{s.notes && openNotes !== s.uid ? ": " : ""}<span className="text-neutral-500 truncate max-w-[320px]">{openNotes !== s.uid ? s.notes : ""}</span>
+                  <li key={s.uid} className={open ? "bg-lagoon-50/40" : "bg-white"}>
+                    <div className="flex items-center gap-3 px-3.5 py-2.5">
+                      <button onClick={() => setOpenStep(open ? null : s.uid)} aria-expanded={open} className="flex-1 min-w-0 flex items-center gap-3 text-left">
+                        <span className="w-7 h-7 rounded-full bg-lagoon-700 text-white text-[13px] font-bold flex items-center justify-center shrink-0">{i + 1}</span>
+                        {plan.start && <span className="w-12 shrink-0 text-sm text-neutral-600 tabular-nums">{from}</span>}
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-[15px] font-semibold text-neutral-900 truncate">{s.title}</span>
+                          {!open && <span className="block text-sm text-neutral-600 truncate">{s.prompt}</span>}
+                        </span>
+                        {warnings[s.uid] && <AlertTriangle size={16} className="shrink-0 text-amber-600" aria-label="To prepare" />}
+                        <span className={`hidden sm:inline shrink-0 text-[13px] px-2.5 py-0.5 rounded-full ${kind.tone}`}>{kind.label}</span>
                       </button>
-                      {(b.tab || b.action) && <span className="text-neutral-600">Opens: {b.action === "combine" ? "Combine maps" : TAB_LABEL[b.tab] || b.tab}</span>}
+                      <label className="shrink-0 flex items-center gap-1.5 text-sm text-neutral-700">
+                        <input type="number" min={1} max={240} value={s.minutes} onChange={(e) => setStep(s.uid, { minutes: Math.max(1, Math.min(240, Math.round(Number(e.target.value) || 1))) })} className="w-16 text-[15px] border border-slate-300 rounded-lg px-2 py-1 text-right" aria-label={`Minutes for ${s.title}`} />min
+                      </label>
+                      <button onClick={() => setOpenStep(open ? null : s.uid)} className="shrink-0 p-1 rounded text-neutral-500 hover:text-neutral-900" aria-label={open ? "Close this step" : "Open this step"}>{open ? <ChevronDown size={18} /> : <ChevronRight size={18} />}</button>
                     </div>
-                    {openNotes === s.uid && (
-                      <textarea value={s.notes} onChange={(e) => setStep(s.uid, { notes: e.target.value })} rows={2} aria-label="Facilitator notes" autoFocus
-                        className="w-full text-[13px] text-neutral-900 bg-amber-50/50 border border-amber-200 rounded px-2 py-1 resize-y focus:outline-none" />
+                    {open && (
+                      <div className="px-4 pb-4 pt-1 sm:pl-14 space-y-3">
+                        <label className={label}>Step title<input value={s.title} onChange={(e) => setStep(s.uid, { title: e.target.value })} className={`${input} mt-1.5`} /></label>
+                        <label className={label}>What participants are asked
+                          <textarea value={s.prompt} onChange={(e) => setStep(s.uid, { prompt: e.target.value })} rows={3} className={`${input} mt-1.5 resize-y`} />
+                        </label>
+                        <label className={label}>Your notes <span className="font-normal text-neutral-600">(only in the facilitator script)</span>
+                          <textarea value={s.notes} onChange={(e) => setStep(s.uid, { notes: e.target.value })} rows={2} className={`${input} mt-1.5 resize-y bg-amber-50/40`} />
+                        </label>
+                        {warnings[s.uid] && <p className="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex items-start gap-2"><AlertTriangle size={15} className="shrink-0 mt-0.5" />{warnings[s.uid]}</p>}
+                        <div className="flex flex-wrap items-center gap-2 text-sm">
+                          {(b.tab || b.action) && <span className="text-neutral-700">During the workshop this step opens <strong>{b.action === "combine" ? "Combine maps" : TAB_LABEL[b.tab] || b.tab}</strong>.</span>}
+                          <span className="ml-auto flex gap-1.5">
+                            <button onClick={() => move(i, -1)} disabled={i === 0} className="px-2.5 py-1 rounded-lg border border-slate-300 text-neutral-800 hover:bg-white disabled:opacity-30 inline-flex items-center gap-1"><ArrowUp size={14} />Earlier</button>
+                            <button onClick={() => move(i, 1)} disabled={i === plan.steps.length - 1} className="px-2.5 py-1 rounded-lg border border-slate-300 text-neutral-800 hover:bg-white disabled:opacity-30 inline-flex items-center gap-1"><ArrowDown size={14} />Later</button>
+                            <button onClick={() => { set({ steps: plan.steps.filter((x) => x.uid !== s.uid) }); setOpenStep(null); }} className="px-2.5 py-1 rounded-lg border border-slate-300 text-neutral-800 hover:text-red-700 hover:border-red-300 hover:bg-red-50 inline-flex items-center gap-1"><Trash2 size={14} />Remove</button>
+                          </span>
+                        </div>
+                      </div>
                     )}
-                    {warnings[s.uid] && <p className="text-[13px] text-amber-800 flex items-start gap-1.5"><AlertTriangle size={13} className="shrink-0 mt-0.5" />{warnings[s.uid]}</p>}
                   </li>
                 );
               })}
+              {!plan.steps.length && <li className="px-4 py-3 text-sm text-neutral-700">The agenda is empty. Choose a template or add a step.</li>}
             </ol>
+
             {adding ? (
-              <div className="bg-white rounded-xl border border-lagoon-300 p-3">
-                <div className="flex items-center justify-between mb-2"><h4 className="text-sm font-semibold text-neutral-900">Add a step</h4><button onClick={() => setAdding(false)} className="text-neutral-600" aria-label="Close"><X size={15} /></button></div>
+              <div className="mt-3 rounded-xl border border-lagoon-300 bg-white p-3">
+                <div className="flex items-center justify-between mb-2"><h4 className="text-[15px] font-semibold text-neutral-900">Add a step</h4><button onClick={() => setAdding(false)} className="text-neutral-600" aria-label="Close"><X size={16} /></button></div>
                 <div className="grid sm:grid-cols-2 gap-1.5">
                   {WORKSHOP_BLOCKS.map((b) => (
-                    <button key={b.id} onClick={() => { set({ steps: [...plan.steps, stepOf(b.id)] }); setAdding(false); }} className="text-left rounded-lg border border-slate-200 px-3 py-1.5 hover:border-lagoon-400 hover:bg-lagoon-50">
-                      <span className="flex items-center gap-2 text-sm text-neutral-900">{b.title}<span className={`ml-auto text-[12px] px-1.5 rounded-full ${KIND[b.kind].tone}`}>{KIND[b.kind].label}</span></span>
+                    <button key={b.id} onClick={() => { const st = stepOf(b.id); set({ steps: [...plan.steps, st] }); setAdding(false); setOpenStep(st.uid); }} className="text-left rounded-lg border border-slate-200 px-3 py-2 hover:border-lagoon-400 hover:bg-lagoon-50">
+                      <span className="flex items-center gap-2 text-[15px] text-neutral-900">{b.title}<span className={`ml-auto text-[13px] px-2 rounded-full ${KIND[b.kind].tone}`}>{KIND[b.kind].label}</span></span>
                     </button>
                   ))}
                 </div>
               </div>
             ) : (
-              <button onClick={() => setAdding(true)} className="w-full rounded-xl border border-dashed border-slate-300 py-2.5 text-sm font-medium text-lagoon-800 hover:border-lagoon-400 hover:bg-white inline-flex items-center justify-center gap-1.5"><Plus size={15} />Add a step</button>
+              <button onClick={() => setAdding(true)} className="mt-3 w-full rounded-xl border border-dashed border-slate-300 py-2.5 text-[15px] font-medium text-lagoon-800 hover:border-lagoon-400 hover:bg-lagoon-50 inline-flex items-center justify-center gap-1.5"><Plus size={16} />Add a step</button>
             )}
+          </section>
+
+          {/* 3. print and run */}
+          <section className="bg-white rounded-2xl border border-slate-200 p-5">
+            <PlannerHeading n={3} title="Print and run">Print the agenda for yourself and the participants, then start the workshop. The plan is saved with this model, in this browser.</PlannerHeading>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => print(true)} className="px-4 py-2 rounded-lg border border-slate-300 text-[15px] text-neutral-900 hover:bg-slate-50 inline-flex items-center gap-2"><ClipboardList size={16} />Print facilitator script</button>
+              <button onClick={() => print(false)} className="px-4 py-2 rounded-lg border border-slate-300 text-[15px] text-neutral-900 hover:bg-slate-50 inline-flex items-center gap-2"><Printer size={16} />Print participant handout</button>
+            </div>
           </section>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 px-5 py-3 bg-white rounded-b-xl border-t border-slate-200">
-          <button onClick={() => print(true)} className="px-3 py-1.5 rounded-md border border-slate-300 text-sm text-neutral-900 hover:bg-slate-50 inline-flex items-center gap-1.5"><ClipboardList size={15} />Print facilitator script</button>
-          <button onClick={() => print(false)} className="px-3 py-1.5 rounded-md border border-slate-300 text-sm text-neutral-900 hover:bg-slate-50 inline-flex items-center gap-1.5"><Printer size={15} />Print participant handout</button>
-          <span className="ml-auto text-[13px] text-neutral-600 hidden md:inline">Saved with this model, in this browser.</span>
-          <button onClick={onStart} disabled={!plan.steps.length} className="px-4 py-1.5 rounded-md bg-coral-500 text-white text-sm font-semibold hover:bg-coral-600 disabled:opacity-40 inline-flex items-center gap-1.5"><Play size={15} />Start the workshop</button>
+        <div className="flex items-center gap-3 px-6 py-3.5 bg-white rounded-b-2xl border-t border-slate-200">
+          <button onClick={onClose} className="px-4 py-2 rounded-lg text-[15px] text-neutral-800 hover:bg-slate-100">Close</button>
+          <span className="ml-auto text-sm text-neutral-600 hidden sm:inline">{plan.steps.length} steps, {fmtMin(total)}</span>
+          <button onClick={onStart} disabled={!plan.steps.length} className="px-5 py-2 rounded-lg bg-coral-500 text-white text-[15px] font-semibold hover:bg-coral-600 disabled:opacity-40 inline-flex items-center gap-2"><Play size={16} />Start the workshop</button>
         </div>
       </div>
     </div>
@@ -298,8 +346,8 @@ export function WorkshopRunBar({ plan, index, setIndex, onGo, onEdit, onEnd }) {
           <span className="text-[13px] text-slate-300">Step {index + 1} of {plan.steps.length}</span>
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-[15px] font-semibold truncate">{step.title}</div>
-          <div className="text-[14px] text-slate-200 line-clamp-2">{step.prompt}</div>
+          <div className="text-[17px] font-semibold truncate">{step.title}</div>
+          <div className="text-[15px] text-slate-100 leading-snug line-clamp-2">{step.prompt}</div>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           <span className={`inline-flex items-center gap-1 font-mono text-[15px] tabular-nums px-2 py-0.5 rounded ${over ? "bg-coral-500 text-white" : "bg-white/10"}`} title="Time left for this step"><Timer size={14} />{mmss}</span>
