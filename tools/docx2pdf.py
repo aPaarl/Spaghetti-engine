@@ -17,11 +17,15 @@ EDGE = next((p for p in _EDGE_CANDIDATES if p and os.path.exists(p)), None)
 if EDGE is None:
     raise SystemExit("No Edge or Chrome found: set EDGE_PATH to a Chromium-based browser executable.")
 W14 = "http://schemas.microsoft.com/office/word/2010/wordml"
+# the footer is set in Arial, like the body text
+ARIAL = next((f for f in ["C:/Windows/Fonts/arial.ttf", "/usr/share/fonts/truetype/msttcorefonts/Arial.ttf", "/Library/Fonts/Arial.ttf"] if os.path.exists(f)), None)
+if ARIAL is None:
+    raise SystemExit("Arial not found: install it, or edit ARIAL in this script.")
 
 CSS = """
 @page { size: A4; margin: 19mm 17mm 21mm 17mm; }
 * { box-sizing: border-box; }
-html { font-family: Inter, "Segoe UI", Arial, sans-serif; font-size: 9.8pt; color: #1e293b; line-height: 1.5; hyphens: auto; }
+html { font-family: Arial, Helvetica, sans-serif; font-size: 9.8pt; color: #1e293b; line-height: 1.5; hyphens: auto; }
 body { margin: 0; }
 h1 { font-size: 19pt; color: #0F1B3D; border-bottom: 3px solid #FFD23F; padding-bottom: 3px; margin: 11mm 0 5mm; break-after: avoid; line-height: 1.2; }
 h2 { font-size: 13.5pt; color: #2456D6; margin: 7mm 0 2.5mm; break-after: avoid; line-height: 1.25; }
@@ -316,10 +320,10 @@ def convert(docx_path, footer_title, out_pdf, meta_title, workdir):
         r = page.rect
         y = r.height - 26
         page.draw_line((51, y - 8), (r.width - 51, y - 8), color=(1.0, 0.824, 0.247), width=0.8)
-        page.insert_text((51, y + 4), footer_title, fontsize=7.5, color=(0.39, 0.45, 0.55), fontname="helv")
+        page.insert_font(fontname="arial", fontfile=ARIAL); page.insert_text((51, y + 4), footer_title, fontsize=7.5, color=(0.39, 0.45, 0.55), fontname="arial")
         label = "Page %d of %d" % (pno + 1, n)
-        tw = fitz.get_text_length(label, fontname="helv", fontsize=7.5)
-        page.insert_text((r.width - 51 - tw, y + 4), label, fontsize=7.5, color=(0.39, 0.45, 0.55), fontname="helv")
+        tw = fitz.Font(fontfile=ARIAL).text_length(label, fontsize=7.5)
+        page.insert_text((r.width - 51 - tw, y + 4), label, fontsize=7.5, color=(0.39, 0.45, 0.55), fontname="arial")
     if headings and not has_toc:
         # no contents page to read the numbers from: find each heading in the text, in order
         at = 0

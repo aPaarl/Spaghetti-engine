@@ -178,6 +178,27 @@ def set_version(doc, old, new, limit_pars):
     return n
 
 
+# --- Arial throughout -------------------------------------------------------------
+def set_arial(doc):
+    """Every font in the styles, the defaults and the runs becomes Arial (theme fonts included)."""
+    parts = [doc.styles.element, doc.element]
+    for s in doc.sections:
+        for hf in (s.header, s.footer, s.first_page_header, s.first_page_footer):
+            parts.append(hf._element)
+    for root in parts:
+        for rf in root.iter(qn("w:rFonts")):
+            for a in ("asciiTheme", "hAnsiTheme", "cstheme", "eastAsiaTheme"):
+                rf.attrib.pop(qn("w:" + a), None)
+            for a in ("ascii", "hAnsi", "cs"):
+                rf.set(qn("w:" + a), "Arial")
+    dd = doc.styles.element.find(qn("w:docDefaults"))
+    if dd is not None:
+        rpr = dd.find(qn("w:rPrDefault") + "/" + qn("w:rPr"))
+        if rpr is not None and rpr.find(qn("w:rFonts")) is None:
+            rf = rpr.makeelement(qn("w:rFonts"), {qn("w:ascii"): "Arial", qn("w:hAnsi"): "Arial", qn("w:cs"): "Arial"})
+            rpr.insert(0, rf)
+
+
 # --- manual and annex ------------------------------------------------------------
 def build_book(kind, src_path, chapters, version, out_path, extra_refs=None):
     doc = docx.Document(src_path)
@@ -214,6 +235,7 @@ def build_book(kind, src_path, chapters, version, out_path, extra_refs=None):
             new = make_par(refs[0], ref)
             (after if after is not None else refs_h).addnext(new)
             refs.insert(refs.index(after) + 1 if after is not None else 0, new)
+    set_arial(doc)
     doc.save(out_path)
 
 
@@ -261,6 +283,7 @@ def build_log(src_path, bl, version, out_path):
         for t in p.iter(qn("w:t")):
             if t.text and "0.5.5" in t.text and kids.index(h1) > 0:
                 pass
+    set_arial(doc)
     doc.save(out_path)
 
 

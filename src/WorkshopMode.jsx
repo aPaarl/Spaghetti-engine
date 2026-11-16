@@ -16,8 +16,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Users, X, Plus, Trash2, ArrowUp, ArrowDown, Printer, Play, Pause, RotateCcw,
-  SkipBack, SkipForward, Check, AlertTriangle, ClipboardList, Timer, Maximize2, ChevronDown, ChevronRight,
+  SkipBack, SkipForward, Check, AlertTriangle, ClipboardList, Timer, Maximize2, ChevronDown, ChevronRight, FileText,
 } from "lucide-react";
+import pkg from "../package.json";
 
 const KEY = (id) => `spaghetti-engine:workshop:v1:${id}`;
 export function loadWorkshop(modelId) {
@@ -33,89 +34,105 @@ export const FORMATS = ["Whole group", "Small groups", "Pairs", "On your own"];
 // `action` something else to open, `check` says what the model still lacks.
 export const WORKSHOP_BLOCKS = [
   { id: "welcome", title: "Welcome and introductions", minutes: 15, kind: "talk", format: "Whole group",
+    method: "Sets the frame: participants hear the question, the boundaries of the system and how their input will be used. This is also the moment for informed consent (section 5).",
     prompt: "Who is in the room, and what brings you here today? We will spend this session on one question together.",
     output: "Everyone knows the question and what will happen with the results.",
     materials: "Name cards; the central question on a flip chart",
     notes: "Keep the round short: name, organisation, one sentence on why the question matters to them. Say who will see the map afterwards." },
   { id: "intro", title: "How a cognitive map works", minutes: 10, kind: "talk", format: "Whole group", tab: "network",
+    method: "A short worked example gives participants the vocabulary (concept, relationship, sign, strength) before they start. Use an example from outside the case, so it does not steer what they put on the map.",
     prompt: "A map like this has two parts: the things that matter, and how they push each other up or down. Once it is drawn, the computer can play it forward.",
     output: "Participants can read a simple map.",
     materials: "",
     notes: "Draw two or three concepts from the case live on screen. Stop after ten minutes; people learn more from doing it themselves." },
   { id: "individual", title: "Draw your own map", minutes: 30, kind: "build", format: "On your own", tab: "network",
+    method: "Individual elicitation records each person's view before group discussion can bring the views together (Özesmi and Özesmi, 2004). The maps can then be compared and combined.",
     prompt: "Draw your own map of the situation: the eight to twelve factors you think matter most, and how they affect each other.",
     output: "One map per participant.",
     materials: "A laptop per participant with the tool open, or the paper worksheet in the handout",
     notes: "If people work on paper, enter their maps afterwards, one model each. Ask everyone who works on a laptop to save with Export JSON and send you the file." },
   { id: "concepts", title: "Collect the important factors", minutes: 20, kind: "build", format: "Small groups", tab: "editor",
+    method: "Open elicitation: participants name the factors themselves, so the map follows their framing rather than the researcher's. Writing in silence before the discussion limits the influence of the most vocal participants.",
     prompt: "What affects the situation we are discussing? Write one factor per sticky note, as something that can go up or down: 'groundwater level' rather than 'drought'.",
     output: "Ten to twenty-five concepts in the Model editor.",
     materials: "Sticky notes, markers, a wall or flip chart",
     notes: "Give five minutes of silent writing first, then collect per group. Cluster duplicates on the wall before you type them in.",
     check: ({ concepts }) => (concepts.length ? null : "The model has no concepts yet. That is fine if the group builds it from scratch.") },
   { id: "modules", title: "Sort the factors into themes", minutes: 10, kind: "build", format: "Whole group", tab: "editor",
+    method: "Grouping concepts into subsystems structures the map and allows analysis per module. It changes the presentation, not the dynamics of the model.",
     prompt: "Which factors belong together? Give each group a short name, such as Water, Farming or Policy.",
     output: "Every concept belongs to a theme (module).",
     materials: "",
     notes: "Themes make the map easier to read and let you look at one part at a time. Do not let the naming take long." },
   { id: "relationships", title: "Connect cause and effect", minutes: 25, kind: "build", format: "Small groups", tab: "network",
+    method: "Elicitation of direct causal links and their sign. Asking for direct effects only avoids counting indirect paths twice; the model computes those itself.",
     prompt: "Take two factors. If the first goes up, what happens to the second: up, down, or nothing? Draw direct effects only.",
     output: "Relationships with a sign and a short reason for each.",
     materials: "Printed list of concepts per group",
     notes: "Work through one theme at a time. Ask 'why?' for every arrow and type the answer into its description; you will need it later.",
     check: ({ concepts }) => (concepts.length >= 2 ? null : "Add at least two concepts first, or put a concept step before this one.") },
   { id: "weights", title: "Agree on how strong each link is", minutes: 15, kind: "build", format: "Whole group", tab: "editor",
+    method: "Strengths are given on a verbal scale and translated into numbers (section 2.3), as is common in participatory mapping (Gray et al., 2015). Recording disagreement instead of averaging it keeps the uncertainty visible.",
     prompt: "For each arrow: compared with the others, is this effect weak, moderate or strong?",
     output: "A weight for every relationship, and a list of points the group did not agree on.",
     materials: "",
     notes: "When people disagree, write both views down rather than splitting the difference. These disagreements are often what the day is really about.",
     check: ({ edges }) => (edges.length ? null : "There are no relationships yet to weigh.") },
   { id: "check", title: "Read the map back", minutes: 10, kind: "build", format: "Whole group", tab: "editor",
+    method: "Face validation: the group checks whether the map is complete and recognisable (Jetter and Kok, 2014).",
     prompt: "Look at the whole map. What is missing? Is there anything you would not recognise from practice?",
     output: "A map the group recognises as its own.",
     materials: "",
     notes: "The Model check at the top of the Model editor lists loose concepts and missing names." },
   { id: "levers", title: "Find the key levers", minutes: 15, kind: "analyse", format: "Whole group", tab: "metrics",
+    method: "Structural analysis of the graph (centrality, transmitters and receivers) points to candidate leverage points without simulation. Participants judge whether these fit their experience.",
     prompt: "These factors push the rest of the system most, and these respond most. Does that match your experience?",
     output: "Two or three levers the group wants to test.",
     materials: "",
     notes: "Explain the three cards at the top, not the method. A surprise points either to a missing link or to something worth knowing.",
     check: ({ edges }) => (edges.length >= 3 ? null : "The map needs a few relationships before levers can be found.") },
   { id: "baseline", title: "Where is the system heading?", minutes: 10, kind: "analyse", format: "Whole group", tab: "equilibrium",
+    method: "Simulation of the map without intervention. The state it settles in is an implication of the map as drawn, not a forecast (Kok, 2009).",
     prompt: "If nothing changes, this is where the map settles. Is this the future you expect?",
     output: "A shared picture of the current course.",
     materials: "",
     notes: "Run the baseline before the session so you know what comes out. Check that the start values describe today's situation.",
     check: ({ concepts }) => (concepts.some((c) => Math.abs(c.initialValue || 0) > 1e-9) ? null : "Every start value is 0, so nothing will move. Give the concepts that describe today a start value.") },
   { id: "scenarios", title: "What if ...?", minutes: 25, kind: "analyse", format: "Small groups", tab: "scenarios",
+    method: "What-if scenarios hold one or more concepts at a set value and compare the new end state with the baseline. They show directions and relative sizes of change.",
     prompt: "Which measure or development would you like to test? What happens to the things you care about, and who notices it first?",
     output: "Two to four scenarios compared with the baseline.",
     materials: "",
     notes: "Prepare two or three scenarios in advance and let each group add one of its own.",
     check: ({ scenarios }) => (scenarios.filter((s) => s.id !== "baseline").length ? null : "No scenarios yet. Prepare them on the Scenarios & Simulation tab.") },
   { id: "transition", title: "How much effort is enough?", minutes: 20, kind: "analyse", format: "Whole group", tab: "transition", advanced: true,
+    method: "Transition point analysis raises one intervention step by step and finds the intensity at which its marginal benefit declines most steeply (Methodological Annex, section 12).",
     prompt: "From what intensity does extra effort on this measure stop paying off as much?",
     output: "A view on how ambitious a measure needs to be.",
     materials: "",
     notes: "Run the analysis beforehand for the main measure and talk through the key findings. Show the matrix only if people ask." },
   { id: "pathways", title: "Which order of measures works best?", minutes: 20, kind: "analyse", format: "Whole group", tab: "pathways", advanced: true,
+    method: "Pathway analysis compares sequences of interventions by their total outcome gain (Methodological Annex, section 13).",
     prompt: "If we can only start with one measure, which should it be, and what comes next?",
     output: "A preferred sequence of measures.",
     materials: "",
     notes: "Prepare the candidate measures and the outcome weights in advance. Show the top three pathways, not the whole table." },
   { id: "combine", title: "Compare the individual maps", minutes: 25, kind: "analyse", format: "Whole group", action: "combine",
+    method: "Individual maps are combined into a group map by averaging the weights over matched concepts (Kosko, 1988; Özesmi and Özesmi, 2004). Links on which participants disagree in sign are discussed rather than averaged away.",
     prompt: "Here are your maps side by side. Where do you agree, and where do the arrows point in opposite directions?",
     output: "A group map and a list of disagreements.",
     materials: "",
     notes: "Import every participant's map before this step. Start the discussion with the links on which the signs differ.",
     check: ({ models }) => (models >= 2 ? null : "Only one map in the library. Import the participants' maps first.") },
   { id: "discussion", title: "Open discussion", minutes: 15, kind: "talk", format: "Whole group",
+    method: "Open discussion collects interpretations that the structured steps do not capture.",
     prompt: "What stands out for you so far?",
     output: "Points to take into the next step or the report.",
     materials: "Flip chart",
     notes: "Write the points on the flip chart as they come up." },
-  { id: "break", title: "Break", minutes: 15, kind: "talk", format: "Whole group", prompt: "Coffee and tea.", output: "", materials: "Coffee and tea", notes: "" },
+  { id: "break", title: "Break", minutes: 15, kind: "talk", format: "Whole group", prompt: "Coffee and tea.", output: "", materials: "Coffee and tea", notes: "", method: "" },
   { id: "reflect", title: "Wrap-up and next steps", minutes: 15, kind: "talk", format: "Whole group",
+    method: "Reflection on what was learned, and a check with the participants of the results before they are reported.",
     prompt: "What did you learn today, and what surprised you? What should happen with this map next?",
     output: "Lessons, open questions and agreed next steps.",
     materials: "",
@@ -196,12 +213,12 @@ const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<
 const cssText = (s) => `"${String(s ?? "").replace(/["\\]/g, "\\$&").replace(/\s+/g, " ")}"`;
 const pageCss = (footer) => `
 @page{size:A4;margin:15mm 16mm 19mm;
-  @bottom-left{content:${cssText(footer)};font:7.5pt Inter,Arial,sans-serif;color:#8a93a3;vertical-align:top;padding-top:4mm}
-  @bottom-right{content:"Page " counter(page) " of " counter(pages);font:7.5pt Inter,Arial,sans-serif;color:#8a93a3;vertical-align:top;padding-top:4mm}}`;
+  @bottom-left{content:${cssText(footer)};font:7.5pt Arial,Helvetica,sans-serif;color:#8a93a3;vertical-align:top;padding-top:4mm}
+  @bottom-right{content:"Page " counter(page) " of " counter(pages);font:7.5pt Arial,Helvetica,sans-serif;color:#8a93a3;vertical-align:top;padding-top:4mm}}`;
 const PRINT_CSS = `
 *{box-sizing:border-box}
-body{font-family:Inter,Arial,sans-serif;color:#1d2433;font-size:10pt;line-height:1.45;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-h1,h2,h3{font-family:"Plus Jakarta Sans",Inter,Arial,sans-serif;color:#0f1b3d;margin:0}
+body{font-family:Arial,Helvetica,sans-serif;color:#1d2433;font-size:10pt;line-height:1.45;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+h1,h2,h3{font-family:Arial,Helvetica,sans-serif;color:#0f1b3d;margin:0}
 .brand{display:flex;align-items:center;gap:8px;font-size:8.5pt;color:#5b6577;letter-spacing:.08em;text-transform:uppercase;border-bottom:2px solid #137d78;padding-bottom:6px;margin-bottom:14px}
 .brand i{display:inline-block;width:10px;height:10px;border-radius:50%;background:#f26b4f}
 h1{font-size:21pt;line-height:1.15;margin-bottom:8px}
@@ -226,7 +243,7 @@ tr.pause td{background:#f4f6f8;color:#5b6577}
 .step h3{margin-bottom:4px}
 .pause{display:flex;gap:10px;align-items:baseline;background:#f4f6f8;border-radius:6px;padding:7px 10px;margin:8px 0;color:#5b6577;break-inside:avoid}
 .pause b{color:#0f1b3d;font-variant-numeric:tabular-nums}
-.tag{display:inline-block;font-size:8pt;border:1px solid #c9d1dc;border-radius:10px;padding:0 6px;margin-left:6px;color:#5b6577;font-family:Inter,Arial,sans-serif;font-weight:500;vertical-align:2px}
+.tag{display:inline-block;font-size:8pt;border:1px solid #c9d1dc;border-radius:10px;padding:0 6px;margin-left:6px;color:#5b6577;font-family:Arial,Helvetica,sans-serif;font-weight:400;vertical-align:2px}
 .ask{margin:2px 0 6px;font-size:10.5pt}
 .rows{display:grid;grid-template-columns:24mm 1fr;gap:2px 8px;font-size:9.3pt}
 .rows b{color:#5b6577;font-weight:500}
@@ -249,11 +266,15 @@ tr.pause td{background:#f4f6f8;color:#5b6577}
 .example svg{width:100%;max-width:150mm;height:auto}
 .legend{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;font-size:9.5pt;margin-top:6px}
 .legend b{color:#0f1b3d}
+table.facts th{width:34mm;text-transform:none;letter-spacing:0;font-size:9.5pt;border-bottom:1px solid #e2e7ee;color:#5b6577;font-weight:400;vertical-align:top}
+table.scale{width:auto;min-width:70mm;margin:4px 0 8px}
+table.design td{font-size:9.2pt}
+.dots{margin:0 0 6px;padding-left:16px}.dots li{margin-bottom:3px}
+.refs p{padding-left:8mm;text-indent:-8mm;font-size:9pt;margin-bottom:4px}
 `;
 
 function shell(title, footer, body) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${esc(title)}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700&display=swap" rel="stylesheet">
 <style>${pageCss(footer)}${PRINT_CSS}</style></head><body>${body}</body></html>`;
 }
 
@@ -315,7 +336,7 @@ ${plan.followUp ? `<p>${esc(plan.followUp)}</p>` : ""}
   return shell(`${plan.title} - facilitator script`, `${plan.title} · facilitator script`, body);
 }
 
-const EXAMPLE_SVG = `<svg viewBox="0 0 520 96" xmlns="http://www.w3.org/2000/svg" font-family="Inter,Arial" font-size="13">
+const EXAMPLE_SVG = `<svg viewBox="0 0 520 96" xmlns="http://www.w3.org/2000/svg" font-family="Arial,Helvetica" font-size="13">
 <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="context-stroke"/></marker></defs>
 <rect x="2" y="34" width="130" height="34" rx="8" fill="#eef7f6" stroke="#137d78" stroke-width="1.5"/><text x="67" y="56" text-anchor="middle" fill="#0f1b3d">Rainfall</text>
 <rect x="195" y="34" width="130" height="34" rx="8" fill="#eef7f6" stroke="#137d78" stroke-width="1.5"/><text x="260" y="56" text-anchor="middle" fill="#0f1b3d">Soil moisture</text>
@@ -365,8 +386,88 @@ ${plan.team?.facilitator ? `<p class="small" style="margin-top:10px">Questions a
   return shell(`${plan.title} - handout`, plan.title, body);
 }
 
+// The workshop protocol: the design of the session with its methodological
+// background, how data are recorded, and the ethical arrangements. Meant for
+// a research file, an ethics application or a methods section.
+const REFS = {
+  gray2015: "Gray, S. A., Gray, S., De Kok, J. L., Helfgott, A. E. R., O'Dwyer, B., Jordan, R., & Nyaki, A. (2015). Using fuzzy cognitive mapping as a participatory approach to analyze change, preferred states, and perceived resilience of social-ecological systems. Ecology and Society, 20(2), 11. https://doi.org/10.5751/ES-07396-200211",
+  jetter2014: "Jetter, A. J., & Kok, K. (2014). Fuzzy cognitive maps for futures studies: A methodological assessment of concepts and methods. Futures, 61, 45-57. https://doi.org/10.1016/j.futures.2014.05.002",
+  kok2009: "Kok, K. (2009). The potential of fuzzy cognitive maps for semi-quantitative scenario development, with an example from Brazil. Global Environmental Change, 19(1), 122-133. https://doi.org/10.1016/j.gloenvcha.2008.08.003",
+  kosko1986: "Kosko, B. (1986). Fuzzy cognitive maps. International Journal of Man-Machine Studies, 24(1), 65-75. https://doi.org/10.1016/S0020-7373(86)80040-2",
+  kosko1988: "Kosko, B. (1988). Hidden patterns in combined and adaptive knowledge networks. International Journal of Approximate Reasoning, 2(4), 377-393. https://doi.org/10.1016/0888-613X(88)90111-9",
+  ozesmi2004: "Özesmi, U., & Özesmi, S. L. (2004). Ecological models based on people's knowledge: A multi-step fuzzy cognitive mapping approach. Ecological Modelling, 176(1-2), 43-64. https://doi.org/10.1016/j.ecolmodel.2003.10.027",
+  voinov2010: "Voinov, A., & Bousquet, F. (2010). Modelling with stakeholders. Environmental Modelling & Software, 25(11), 1268-1281. https://doi.org/10.1016/j.envsoft.2010.03.007",
+};
+
+function workshopProtocol(plan, warnings, modelName, appVersion) {
+  const has = (...ids) => plan.steps.some((s) => ids.includes(s.block));
+  const total = plan.steps.reduce((t, s) => t + (Number(s.minutes) || 0), 0);
+  const team = plan.team || {};
+  const combining = has("individual", "combine");
+  const simulating = has("baseline", "scenarios", "transition", "pathways");
+  let at = 0;
+  const design = plan.steps.map((s, i) => {
+    const from = clock(plan.start, at); at += Number(s.minutes) || 0;
+    const m = BLOCK[s.block]?.method || "";
+    if (isPause(s)) return `<tr class="pause"><td class="t">${from || ""}</td><td colspan="3">${esc(s.title)}, ${esc(s.minutes)} min</td></tr>`;
+    return `<tr><td class="t">${from || i + 1}</td><td><b>${esc(s.title)}</b><br><span class="small">${esc(s.format)}, ${esc(s.minutes)} min</span></td><td>${esc(m)}</td><td>${esc(s.output)}</td></tr>`;
+  }).join("");
+  const cited = ["kosko1986", "voinov2010", "ozesmi2004", "gray2015", "kok2009", "jetter2014", ...(combining ? ["kosko1988"] : [])];
+  const facts = [["Aim", plan.aim], ["Participants", plan.participants], ["Facilitation", [team.facilitator, team.cofacilitator].filter(Boolean).join(" and ")], ["Notes and tool", team.notetaker], ["Duration", fmtMin(total)], ["Model", `${modelName}, built in the Spaghetti Engine${appVersion ? ` (version ${appVersion})` : ""}`]].filter(([, v]) => v);
+
+  const body = `${headerBlock(plan, "Workshop protocol")}
+<h2>1. The workshop</h2>
+<table class="facts"><tbody>${facts.map(([k, v]) => `<tr><th scope="row">${k}</th><td>${esc(v)}</td></tr>`).join("")}</tbody></table>
+
+<h2>2. Methodological background</h2>
+<h3>2.1 Fuzzy cognitive mapping</h3>
+<p>A fuzzy cognitive map is a directed graph of the concepts that make up a system and of the causal relationships between them. Each relationship has a sign, which says whether a change in one concept raises or lowers another, and a weight between 0 and 1 for its strength (Kosko, 1986). Because the map can be run as a simple dynamic model, it shows not only what people believe affects what, but also what those beliefs imply for the system as a whole.</p>
+<h3>2.2 Mapping with stakeholders</h3>
+<p>The map in this workshop is built from the knowledge of the participants. Participatory modelling of this kind makes tacit knowledge explicit, brings different perspectives into one frame, and lets those who know the system check the model (Voinov and Bousquet, 2010). Fuzzy cognitive mapping suits this well because the concepts and the strengths are stated in the participants' own words and need no prior data (Özesmi and Özesmi, 2004; Gray et al., 2015). The facilitator guides the process but does not supply content: concepts and links come from the group.</p>
+<div class="keep"><h3>2.3 From words to numbers</h3>
+<p>Participants judge the strength of each relationship in words. The tool translates these into weights as follows; the sign comes from the direction of the effect.</p>
+<table class="scale"><thead><tr><th>Judgement</th><th>Weight</th></tr></thead><tbody><tr><td>Weak</td><td>0.25</td></tr><tr><td>Moderate</td><td>0.50</td></tr><tr><td>Strong</td><td>0.75</td></tr><tr><td>Very strong</td><td>1.00</td></tr></tbody></table>
+<p>These numbers express relative strength within one map. They are not measured quantities, and small differences between them should not be interpreted.</p></div>
+${simulating ? `<h3>2.4 Running the map</h3>
+<p>To see what the map implies, every concept starts from a value that describes the present situation and is updated repeatedly from the concepts that influence it, until the map settles. Scenarios hold one or more concepts at a chosen value and compare the end state with that of the baseline. The results show directions and relative sizes of change under the assumptions in the map; they are not forecasts and carry no time scale (Kok, 2009; Jetter and Kok, 2014). The simulation settings used are listed in the <i>Method &amp; diagnostics</i> panel of each analysis and should be reported with the results.</p>` : ""}
+${combining ? `<h3>2.${simulating ? 5 : 4} Combining individual maps</h3>
+<p>Maps drawn by individual participants are combined into a group map by matching concepts with the same name and averaging the weights of each relationship over the maps (Kosko, 1988; Özesmi and Özesmi, 2004). The averaging rule, any credibility weights and the concepts that were joined by hand are recorded, because each changes the result. Relationships on which participants disagree in sign are kept as a list for discussion.</p>` : ""}
+
+<h2>3. Design of the session</h2>
+<p>The table gives each step, its format, why it is there, and the result it should give.</p>
+<table class="design"><thead><tr><th>Time</th><th style="width:26%">Step</th><th>Purpose</th><th style="width:22%">Result</th></tr></thead><tbody>${design}</tbody></table>
+
+<h2>4. Data and records</h2>
+<ul class="dots">
+<li>The model is saved as a file (Export JSON) at the end of every building step and at the end of the session, with the date in the file name.</li>
+<li>The reasons participants give for each relationship are typed into its description while the map is built.</li>
+<li>Points on which participants disagree are written down as they arise, with the positions taken, rather than resolved by averaging.</li>
+<li>${team.notetaker ? `${esc(team.notetaker)} keeps` : "One member of the team keeps"} notes of the discussion; flip charts are photographed before they are taken down.</li>
+${combining ? "<li>Individual maps are saved under a participant code, not a name. The key between codes and names is kept separately.</li>" : ""}
+<li>Results are reported with the version of the tool, the simulation settings${combining ? ", the averaging rule for the group map" : ""} and the date of the session.</li>
+</ul>
+<p class="small">The Spaghetti Engine keeps models in the browser on the computer where they were made and sends nothing to a server. Files exported from it are stored according to the data management plan of the project.</p>
+
+<h2>5. Ethics and consent</h2>
+<ul class="check">
+<li>Participants receive information on the aim, the use of the results and the handling of their data before the session</li>
+<li>Participation is voluntary, and participants may stop at any time without giving a reason</li>
+<li>Consent is recorded (written or orally at the start of the recording)</li>
+<li>The map contains no personal data; statements are not attributed to named people in reports</li>
+<li>Photographs and recordings are made only with the consent of everyone present</li>
+<li>Participants receive the results and can comment before publication</li>
+</ul>
+
+<h2>6. Quality and limitations</h2>
+<p>Three things limit what a workshop map can claim. First, the map reflects the people in the room: who is invited shapes what is on it, so the selection of participants is reported. Second, group dynamics and the way questions are put can steer the content; silent individual work before discussion, recording disagreement, and a facilitator who does not add concepts reduce this. Third, the weights rest on verbal judgements, so conclusions should hold for small changes in them; the sensitivity analyses of the tool can test this after the session.</p>
+
+<h2>References</h2>
+<div class="refs">${cited.map((k) => REFS[k]).sort((a, b) => a.localeCompare(b)).map((r) => `<p>${esc(r)}</p>`).join("")}</div>`;
+  return shell(`${plan.title} - workshop protocol`, `${plan.title} · workshop protocol`, body);
+}
+
 // for tests and previews
-export const workshopDocuments = { facilitatorScript, participantHandout };
+export const workshopDocuments = { facilitatorScript, participantHandout, workshopProtocol };
 
 function printDoc(html) {
   const w = window.open("", "_blank");
@@ -432,8 +533,9 @@ export function WorkshopPlanner({ plan, setPlan, modelName, ctx, onStart, onClos
     set({ steps, materials: [...plan.materials, ...materialsFor(steps).filter((m) => !have.has(m.text.toLowerCase()))] });
     setOpenStep(null);
   };
-  const print = (facilitator) => {
-    const ok = printDoc(facilitator ? facilitatorScript(plan, warnings, modelName) : participantHandout(plan));
+  const print = (kind) => {
+    const html = kind === "script" ? facilitatorScript(plan, warnings, modelName) : kind === "protocol" ? workshopProtocol(plan, warnings, modelName, pkg.version) : participantHandout(plan);
+    const ok = printDoc(html);
     if (!ok) notify("The print page was blocked by the browser. Allow pop-ups for this site and try again.");
   };
   const nWarn = Object.keys(warnings).length;
@@ -623,10 +725,11 @@ export function WorkshopPlanner({ plan, setPlan, modelName, ctx, onStart, onClos
 
           {/* 4. print and run */}
           <section className="bg-white rounded-2xl border border-slate-200 p-5">
-            <PlannerHeading n={4} title="Print and run">The facilitator script holds the programme, the preparation lists and every step with its notes. The handout gives participants the programme, a short guide to reading a map, and two worksheets.</PlannerHeading>
+            <PlannerHeading n={4} title="Print and run">The facilitator script holds the programme, the preparation lists and every step with its notes. The handout gives participants the programme, a short guide to reading a map, and worksheets. The protocol sets out the design of the session with its methodological background, how data are recorded, and the ethical arrangements, for a research file or an ethics application.</PlannerHeading>
             <div className="flex flex-wrap gap-2">
-              <button onClick={() => print(true)} className="px-4 py-2 rounded-lg border border-slate-300 text-[15px] text-neutral-900 hover:bg-slate-50 inline-flex items-center gap-2"><ClipboardList size={16} />Print facilitator script</button>
-              <button onClick={() => print(false)} className="px-4 py-2 rounded-lg border border-slate-300 text-[15px] text-neutral-900 hover:bg-slate-50 inline-flex items-center gap-2"><Printer size={16} />Print participant handout</button>
+              <button onClick={() => print("script")} className="px-4 py-2 rounded-lg border border-slate-300 text-[15px] text-neutral-900 hover:bg-slate-50 inline-flex items-center gap-2"><ClipboardList size={16} />Print facilitator script</button>
+              <button onClick={() => print("handout")} className="px-4 py-2 rounded-lg border border-slate-300 text-[15px] text-neutral-900 hover:bg-slate-50 inline-flex items-center gap-2"><Printer size={16} />Print participant handout</button>
+              <button onClick={() => print("protocol")} className="px-4 py-2 rounded-lg border border-slate-300 text-[15px] text-neutral-900 hover:bg-slate-50 inline-flex items-center gap-2"><FileText size={16} />Print workshop protocol</button>
             </div>
             <p className="text-[13px] text-neutral-600 mt-2">Both open in a new window with the print dialog; choose "Save as PDF" there to keep a file. The plan is saved with this model, in this browser.</p>
           </section>

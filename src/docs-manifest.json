@@ -5,17 +5,17 @@
     "manual": {
       "file": "The-Spaghetti-Engine-User-Manual-v0.5.7.pdf",
       "pages": 68,
-      "sizeKB": 1337
+      "sizeKB": 3051
     },
     "annex": {
       "file": "The-Spaghetti-Engine-Methodological-Annex-v0.5.7.pdf",
       "pages": 44,
-      "sizeKB": 755
+      "sizeKB": 1347
     },
     "devlog": {
       "file": "The-Spaghetti-Engine-Development-Log-v0.5.7.pdf",
       "pages": 5,
-      "sizeKB": 156
+      "sizeKB": 754
     }
   }
 }
