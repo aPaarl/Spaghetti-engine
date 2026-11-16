@@ -5,7 +5,7 @@ import {
   X, Lock, Unlock, Info, ClipboardPaste, Check,
   Undo2, Redo2, Copy, Maximize2, HelpCircle, SlidersHorizontal,
   BarChart3, LayoutGrid, GitBranch, Shuffle, Activity, FlaskConical, TrendingUp,
-  Eye, EyeOff, Route, Layers, Waypoints, PanelLeftClose, Search, Dices, Sparkles, FolderOpen, Pencil, CopyPlus, FilePlus, Compass, CheckCircle2, Circle, Presentation,
+  Eye, EyeOff, Route, Layers, Waypoints, PanelLeftClose, Search, Dices, Sparkles, FolderOpen, Pencil, CopyPlus, FilePlus, Compass, CheckCircle2, Circle, Presentation, Hourglass, Minus,
   Merge,
 } from "lucide-react";
 import {
@@ -232,6 +232,26 @@ function structuralSettings(settings) {
   return settings?.squashFunction === "linear" ? { ...settings, squashFunction: "tanh" } : settings;
 }
 
+// The time lag of a relationship, in whole iterations: how many iterations
+// pass before a change in the source reaches the target. 0 (the default, and
+// what any older model without the field gets) is the ordinary FCM update.
+const MAX_EDGE_LAG = 10;
+function edgeLag(e) {
+  const n = Math.round(Number(e?.lag));
+  return Number.isFinite(n) && n > 0 ? Math.min(n, MAX_EDGE_LAG) : 0;
+}
+// A "Method & diagnostics" row naming the lagged relationships, for models
+// that have any (none otherwise, so models without lags read as before).
+function lagStats(edges) {
+  const lags = (edges || []).map(edgeLag).filter((l) => l > 0);
+  if (!lags.length) return [];
+  return [{
+    label: "Relationship lags",
+    value: `${lags.length} of ${edges.length}, up to ${Math.max(...lags)} iteration${Math.max(...lags) === 1 ? "" : "s"}`,
+    hint: "A lagged relationship passes on its source's value from that many iterations earlier (Park & Kim 1995; Nair et al. 2020). Lags change the path to equilibrium and the time it takes, not where a settled run ends; a run counts as settled only once nothing has changed for the longest lag plus one iterations.",
+  }];
+}
+
 // Array.prototype.sort with a random comparator (the previous asynchronous-
 // mode update order) is a well-known biased shuffle: sort implementations
 // don't call the comparator on every pair, so the resulting permutation
@@ -269,8 +289,20 @@ function simulate(concepts, edges, scenario, settings, rand = Math.random) {
   ids.forEach((id) => (incoming[id] = []));
   edges.forEach((e) => {
     const w = scenario?.weightOverrides?.[e.id] ?? e.weight;
-    if (incoming[e.target]) incoming[e.target].push({ source: e.source, weight: w });
+    if (incoming[e.target]) incoming[e.target].push({ source: e.source, weight: w, lag: edgeLag(e) });
   });
+  // Time lags (Park & Kim 1995; Nair et al. 2020): a relationship with lag L
+  // passes on the source's value from L iterations earlier, so it reads
+  // A_j(t - L) instead of A_j(t). Before the run starts the system is taken
+  // to have stood at its starting state, except that a locked concept (a
+  // driver) is an intervention that starts at iteration 0: before that it
+  // stood at its own starting value from the model. So a lagged relationship
+  // out of a driver passes the intervention on L iterations later than an
+  // unlagged one would. Lag 0 is the ordinary FCM update. A lag does not move the fixed points of the update (at a
+  // fixed point every past state equals the present one), but it changes the
+  // path to them, the time to settle, whether the run settles at all, and,
+  // where there is more than one, which one is reached.
+  const maxLag = edges.reduce((m, e) => Math.max(m, edgeLag(e)), 0);
 
   let current = { ...initial };
   Object.keys(locked).forEach((id) => (current[id] = locked[id]));
@@ -291,29 +323,46 @@ function simulate(concepts, edges, scenario, settings, rand = Math.random) {
   let lastDelta = Infinity;
   let t = 0;
 
+  // With lags the state of the system is the last maxLag + 1 iterations, not
+  // just the present one, so a run has only settled once the largest change
+  // has stayed below the threshold for maxLag + 1 iterations in a row (with
+  // no lags, that is the usual single-iteration test).
+  let calm = 0;
+  // The value relationship input from `source` with lag L reads at iteration
+  // t: the state L iterations before the one being updated from.
+  const before = { ...initial };
+  Object.keys(locked).forEach((id) => {
+    const c = concepts.find((c) => c.id === id);
+    if (c) before[id] = c.initialValue;
+  });
+  const pastValue = (source, lag) => (t - 1 - lag >= 0 ? series[t - 1 - lag].values[source] : before[source]);
+
   for (t = 1; t <= maxIter; t++) {
     let next = { ...current };
     if (settings.mode === "asynchronous") {
+      // A lagged relationship reads the recorded past; an unlagged one reads
+      // the value as already updated earlier in this sweep, as before.
       const order = shuffled(ids, rand);
       order.forEach((id) => {
         if (locked[id] !== undefined) { next[id] = locked[id]; return; }
-        const sum = incoming[id].reduce((s, { source, weight }) => s + next[source] * weight, 0);
+        const sum = incoming[id].reduce((s, { source, weight, lag }) => s + (lag ? pastValue(source, lag) : next[source]) * weight, 0);
         next[id] = bound(squash((isRelative ? next[id] : 0) + sum));
       });
     } else {
       ids.forEach((id) => {
         if (locked[id] !== undefined) { next[id] = locked[id]; return; }
-        const sum = incoming[id].reduce((s, { source, weight }) => s + current[source] * weight, 0);
+        const sum = incoming[id].reduce((s, { source, weight, lag }) => s + (lag ? pastValue(source, lag) : current[source]) * weight, 0);
         next[id] = bound(squash((isRelative ? current[id] : 0) + sum));
       });
     }
     if (unbounded && ids.some((id) => !Number.isFinite(next[id]))) { diverged = true; t -= 1; break; }
     const maxDelta = Math.max(...ids.map((id) => Math.abs(next[id] - current[id])));
     lastDelta = maxDelta;
+    calm = maxDelta < threshold ? calm + 1 : 0;
     current = next;
     series.push({ iteration: t, values: { ...current } });
     if (unbounded && ids.some((id) => Math.abs(current[id]) > LINEAR_DIVERGENCE_LIMIT)) { diverged = true; break; }
-    if (maxDelta < threshold) { converged = true; break; }
+    if (calm > maxLag) { converged = true; break; }
   }
 
   // A loop that ran to its cap leaves t one past it.
@@ -998,7 +1047,11 @@ function sanitizeModel(data) {
     let id = raw.id === undefined || raw.id === null || raw.id === "" ? uid("e") : String(raw.id);
     if (edgeIds.has(id)) id = uid("e");
     edgeIds.add(id);
-    edges.push({ ...raw, id, source, target, weight: clamp1(w), description: raw.description === undefined || raw.description === null ? "" : String(raw.description) });
+    const edge = { ...raw, id, source, target, weight: clamp1(w), description: raw.description === undefined || raw.description === null ? "" : String(raw.description) };
+    // A time lag is kept only as a whole number of iterations above 0 (see edgeLag).
+    const lag = edgeLag(raw);
+    if (lag) edge.lag = lag; else delete edge.lag;
+    edges.push(edge);
   });
   note(dangling, "1 relationship pointed to a concept that does not exist and was left out.", "{n} relationships pointed to concepts that do not exist and were left out.");
   note(dupPairs, "1 relationship repeated another between the same two concepts and was left out.", "{n} relationships repeated others between the same two concepts and were left out.");
@@ -3811,6 +3864,8 @@ function InfluenceEdge({
   if (dragThis?.end === "target") { tx = dragThis.x; ty = dragThis.y; }
 
   const w = data?.edge?.weight ?? 0;
+  // A lagged relationship carries its delay on the label, e.g. "+0.50 · lag 2".
+  const lagNote = data?.edge && edgeLag(data.edge) ? ` \u00b7 lag ${edgeLag(data.edge)}` : "";
   // A bundled link (folded modules) stands for several relationships: its
   // colour says whether they all increase, all decrease, or are mixed, its
   // thickness grows with how many there are, and its label gives the count
@@ -4005,7 +4060,7 @@ function InfluenceEdge({
           >
             {agg
               ? `${agg.count}× ${agg.sum >= 0 ? "+" : ""}${round2(agg.sum).toFixed(2)}`
-              : `${w >= 0 ? "+" : ""}${round2(w).toFixed(2)}`}
+              : `${w >= 0 ? "+" : ""}${round2(w).toFixed(2)}${lagNote}`}
           </div>
           ) : !data?.hideLabel ? (
           <div
@@ -4021,7 +4076,7 @@ function InfluenceEdge({
           >
             {agg
               ? `${agg.count} link${agg.count === 1 ? "" : "s"} \u00b7 ${agg.sum >= 0 ? "+" : ""}${round2(agg.sum).toFixed(2)}`
-              : `${w >= 0 ? "+" : ""}${round2(w).toFixed(2)}`}
+              : `${w >= 0 ? "+" : ""}${round2(w).toFixed(2)}${lagNote}`}
           </div>
           ) : (
           <div
@@ -5868,11 +5923,13 @@ function NetworkTabInner({
           const w = e.weight;
           const reverseExists = edges.some((o) => o.source === e.target && o.target === e.source);
           const setWeight = (v) => { commitHistory(); updateEdge(e.id, { weight: round2(v) }); };
+          const lag = edgeLag(e);
+          const setLag = (v) => { commitHistory(); updateEdge(e.id, { lag: Math.max(0, Math.min(MAX_EDGE_LAG, v)) }); };
           const magnitude = Math.abs(w) || 0.5;
           return (
             <div className="space-y-3">
               <div className="rounded-md border border-slate-200 bg-slate-50 p-2.5 text-xs text-neutral-900 leading-snug">
-                {relationshipSentence(src?.name, tgt?.name, w)}
+                {relationshipSentence(src?.name, tgt?.name, w)}{lag > 0 && ` The effect arrives ${lag} iteration${lag === 1 ? "" : "s"} later than the others.`}
               </div>
               <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 items-baseline text-xs">
                 <span className="text-neutral-700">From</span>
@@ -5901,6 +5958,18 @@ function NetworkTabInner({
                   ))}
                 </div>
               </div>
+              {(!basic || lag > 0) && <div>
+                <div className="text-xs text-neutral-700 mb-1 flex items-center gap-1"><Hourglass size={12} aria-hidden="true" />Delay</div>
+                <div className="flex items-center gap-2">
+                  <div className="inline-flex items-center border border-slate-300 rounded-md overflow-hidden">
+                    <button onClick={() => setLag(lag - 1)} disabled={lag === 0} aria-label="Shorter delay" className="px-2 py-1.5 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"><Minus size={12} /></button>
+                    <span className="px-2 font-mono text-xs min-w-[2ch] text-center" aria-live="polite">{lag}</span>
+                    <button onClick={() => setLag(lag + 1)} disabled={lag >= MAX_EDGE_LAG} aria-label="Longer delay" className="px-2 py-1.5 border-l border-slate-300 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"><Plus size={12} /></button>
+                  </div>
+                  <span className="text-[14px] text-neutral-900">{lag === 0 ? "No delay" : `${lag} iteration${lag === 1 ? "" : "s"}`}</span>
+                </div>
+                <p className="text-[14px] text-neutral-600 mt-1">How many extra iterations pass before a change in {src?.name} reaches {tgt?.name}. Leave it at 0 unless this effect is clearly slower than the others.</p>
+              </div>}
               <details className="pt-2 border-t border-slate-100 group">
                 <summary className="cursor-pointer text-xs font-semibold text-neutral-900 flex items-center gap-1">
                   <ChevronRight size={13} className="group-open:rotate-90 transition-transform" />Exact weight and description
@@ -6769,6 +6838,7 @@ function InfluenceMetricsTab({ concepts, edges, settings, onHighlight, multiScal
           { label: "Concepts / relationships", value: `${concepts.length} / ${edges.length}` },
           { label: "Simulation runs behind these scores", value: concepts.length, hint: "Influence and Sensitivity need one full driven run per concept. Structural columns (degree, centrality, role) need none." },
           { label: "Transfer function / λ", value: transferFunctionLabel(structuralSettings(settings)), hint: settings.squashFunction === "linear" ? "The simulation settings currently use no squashing function, but Influence and Sensitivity are only meaningful on a bounded scale (an unbounded model can run away), so these scores use tanh at the same steepness." : undefined },
+          ...lagStats(edges),
           {
             label: "Feedback loops found",
             value: stats.loops.capped ? `${stats.loops.total}+ (capped)` : stats.loops.total,
@@ -8149,6 +8219,7 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
                 hint: "One full run per sweep point per scenario for the response curves, plus two runs per concept (low end and high end) for the tornado chart.",
               },
               { label: "Transfer function / λ", value: transferFunctionLabel(settings) },
+              ...lagStats(edges),
               {
                 label: "Tornado entries shown",
                 value: `${result.tornado.length} of ${Math.max(0, concepts.length - 1)}`,
@@ -8971,7 +9042,12 @@ function BaselineEquilibriumTab({
                 <FigureExportButton targetRef={convergencePanelsRef} baseName="baseline-convergence" title="Baseline Equilibrium: how the system settles" />
               </div>
             </div>
-            <p className="text-[14px] text-neutral-600 mb-3">{convLayout === "all" ? "All concepts in one figure, coloured by module." : "One panel per module."} Each line is a concept, from its starting value at iteration 0 to where it ends on the right, with its final value. A line that runs flat has settled.</p>
+            <p className="text-[14px] text-neutral-600 mb-3">{convLayout === "all" ? "All concepts in one figure, coloured by module." : "One panel per module."} Each line is a concept, from its starting value at iteration 0 to where it ends on the right, with its final value. A line that runs flat has settled.{(() => {
+              const lags = edges.map(edgeLag).filter((l) => l > 0);
+              if (!lags.length) return null;
+              const most = Math.max(...lags);
+              return ` ${lags.length} relationship${lags.length === 1 ? " acts" : "s act"} with a delay of up to ${most} iteration${most === 1 ? "" : "s"}, so the lines also show when each effect arrives. A run counts as settled only once nothing has changed for ${most + 1} iterations in a row.`;
+            })()}</p>
             <div ref={convergencePanelsRef} data-chart="baseline-convergence" className="overflow-x-auto">
               <ConvergenceChart series={result.series} concepts={concepts} converged={result.converged} diverged={result.diverged} iterationsRun={result.iterationsRun} linear={effectiveSquash === "linear"} layout={convLayout} />
             </div>
@@ -9442,16 +9518,21 @@ function makePathwayEngine(concepts, edges, settings) {
   edges.forEach((e) => {
     const s = index.get(e.source), t = index.get(e.target);
     if (s === undefined || t === undefined) return;
-    incoming[t].push([s, Number(e.weight) || 0]);
+    incoming[t].push([s, Number(e.weight) || 0, edgeLag(e)]);
   });
   const start = new Int32Array(n + 1);
-  const src = [], wts = [];
+  const src = [], wts = [], lags = [];
   incoming.forEach((list, t) => {
     start[t] = src.length;
-    list.forEach(([s, w]) => { src.push(s); wts.push(w); });
+    list.forEach(([s, w, l]) => { src.push(s); wts.push(w); lags.push(l); });
   });
   start[n] = src.length;
-  const SRC = Int32Array.from(src), W = Float64Array.from(wts);
+  const SRC = Int32Array.from(src), W = Float64Array.from(wts), LAG = Int32Array.from(lags);
+  // Relationship lags, as in simulate(): the last maxLag + 1 states are kept
+  // in a ring of maxLag + 2 buffers (one more than is read, so the state
+  // being written never overwrites one still being read).
+  const maxLag = lags.reduce((m, l) => Math.max(m, l), 0);
+  const ringSize = maxLag + 2;
   const squash = makeSquash(settings.squashFunction, settings.lambda);
   // Same treatment as simulate(): no squashing function means no clamp, and
   // a run whose activation passes LINEAR_DIVERGENCE_LIMIT is stopped and
@@ -9469,8 +9550,14 @@ function makePathwayEngine(concepts, edges, settings) {
   // held at lockVal, until the largest change falls below the threshold.
   function equilibrate(A0, lockIdx, lockVal) {
     runs += 1;
-    let cur = Float64Array.from(A0);
-    let next = new Float64Array(n);
+    const ring = Array.from({ length: ringSize }, () => new Float64Array(n));
+    ring[0].set(A0);
+    // Before the stage starts, the system stood at A0 with the new lever not
+    // yet applied (see simulate()): lagged relationships read that until
+    // their lag has passed.
+    const before = maxLag ? Float64Array.from(A0) : null;
+    let cur = ring[0];
+    let next;
     const locked = new Uint8Array(n);
     const lv = new Float64Array(n);
     for (let k = 0; k < lockIdx.length; k++) {
@@ -9479,14 +9566,21 @@ function makePathwayEngine(concepts, edges, settings) {
       cur[lockIdx[k]] = lockVal[k];
     }
     let precise = false, runaway = false, lastDelta = Infinity, t;
+    // Consecutive iterations below the run-on and the acceptance threshold:
+    // with lags a run has settled only after maxLag + 1 of them in a row.
+    let calm = 0, calmAccept = 0;
     for (t = 1; t <= maxIter; t++) {
+      next = ring[t % ringSize];
       let maxDelta = 0;
       for (let j = 0; j < n; j++) {
         let v;
         if (locked[j]) v = lv[j];
         else {
           let sum = 0;
-          for (let p = start[j]; p < start[j + 1]; p++) sum += cur[SRC[p]] * W[p];
+          for (let p = start[j]; p < start[j + 1]; p++) {
+            const l = LAG[p];
+            sum += (l ? (t - 1 - l >= 0 ? ring[(t - 1 - l) % ringSize] : before) : cur)[SRC[p]] * W[p];
+          }
           v = squash((relative ? cur[j] : 0) + sum);
           if (!unbounded) v = clamp(v);
         }
@@ -9495,13 +9589,15 @@ function makePathwayEngine(concepts, edges, settings) {
         const d = Math.abs(v - cur[j]);
         if (d > maxDelta) maxDelta = d;
       }
-      const tmp = cur; cur = next; next = tmp;
+      cur = next;
       lastDelta = maxDelta;
+      calm = maxDelta < threshold ? calm + 1 : 0;
+      calmAccept = maxDelta < accept ? calmAccept + 1 : 0;
       if (runaway) break;
-      if (maxDelta < threshold) { precise = true; break; }
+      if (calm > maxLag) { precise = true; break; }
     }
     if (!precise) imprecise += 1;
-    return { state: cur, converged: !runaway && lastDelta < accept, precise, iterations: Math.min(t, maxIter) };
+    return { state: cur, converged: !runaway && calmAccept > maxLag, precise, iterations: Math.min(t, maxIter) };
   }
   return { n, index, initial, equilibrate, runs: () => runs, imprecise: () => imprecise };
 }
@@ -10931,7 +11027,7 @@ async function buildAnalysisWorkbook({
     { item: "Isolated concepts", value: !v || v.showIsolated ? "Included" : "Excluded (concepts with no relationship inside the view)" },
     { item: "Concepts analysed", value: v ? `${v.visibleConcepts} of ${v.totalConcepts}` : String(concepts.length) },
     { item: "Relationships analysed", value: v ? `${v.visibleEdges} of ${v.totalEdges}` : String(edges.length) },
-    { item: "Sheets describing the complete model", value: "Model Structure, Adjacency Matrix" },
+    { item: "Sheets describing the complete model", value: edges.some((e) => edgeLag(e) > 0) ? "Model Structure, Adjacency Matrix, Relationship Lags" : "Model Structure, Adjacency Matrix" },
     { item: "Sheets describing the analysed network", value: "Network Metrics, Category Metrics, Baseline, Scenarios, Sensitivity, Transition Point, Influence Routes, Bridge Concepts, Feedback Loops, System Overview and every chart" },
     { item: "Sheets at fixed scales (independent of the view)", value: "Multi-scale Ranks, Leverage by Scale: always the full nexus, each module on its own, and the nexus interface" },
   ];
@@ -10975,6 +11071,15 @@ async function buildAnalysisWorkbook({
     });
     return row;
   }), usedNames);
+
+  // ==== Relationship Lags (only when the model has any) =================
+  const laggedEdges = edges.filter((e) => edgeLag(e) > 0);
+  if (laggedEdges.length) {
+    const nameOfId = new Map(concepts.map((c) => [c.id, c.name]));
+    addDataSheet(workbook, "Relationship Lags", [
+      { header: "From", key: "from" }, { header: "To", key: "to" }, { header: "Weight", key: "weight" }, { header: "Lag (iterations)", key: "lag" },
+    ], laggedEdges.map((e) => ({ from: nameOfId.get(e.source), to: nameOfId.get(e.target), weight: e.weight, lag: edgeLag(e) })), usedNames);
+  }
 
   // ==== Network Metrics ===================================================
   addDataSheet(workbook, "Network Metrics", [
@@ -11941,6 +12046,7 @@ function TransitionPointAnalysisTab({ concepts, edges, scenarios, activeScenario
                 hint: "A transition point can only ever be reported at one of the sampled levels, so the sweep resolution sets how precise it can possibly be.",
               },
               { label: "Transfer function / λ", value: transferFunctionLabel(settings) },
+              ...lagStats(edges),
               {
                 label: "Near-flat outcomes",
                 value: `${result.rows.filter((r) => r.range <= result.flatThreshold).length} of ${result.rows.length}`,
@@ -13281,6 +13387,7 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
               ...(result.imprecise !== undefined ? [{ label: `Settled to ${result.settingsUsed.convergenceThreshold}`, value: `${(result.runs - result.imprecise).toLocaleString()} of ${result.runs.toLocaleString()}`, tone: result.imprecise ? "warn" : undefined, hint: `Transition points compare neighbouring changes of the gain curve, which magnifies whatever is left of a run that has not quite settled, so every run continues until no concept changes by more than ${result.settingsUsed.convergenceThreshold} per iteration. Runs that stop short of that at the iteration limit give less precise transition points.` }] : []),
               { label: "Transition point precision", value: `±${round2(1 / result.N)}`, hint: "A transition point can only fall on one of the sampled intensity steps." },
               { label: "Transfer function / λ", value: transferFunctionLabel(result.settingsUsed) },
+              ...lagStats(edges),
               { label: "Update / iterations", value: `${result.settingsUsed.updateRule ?? "relative"}, synchronous, ≤ ${result.settingsUsed.maxIterations}`, hint: `Pathway runs are always synchronous (deterministic) and use this analysis's own iteration limit (at least ${TP_MIN_ITERATIONS}); everything else follows the global simulation settings.` },
               { label: "Path dependence", value: result.invariance.tested ? `${result.invariance.pathDependent} of ${result.invariance.tested} lever sets` : "not tested", tone: result.invariance.pathDependent ? "warn" : undefined, hint: "Invariance test: the lever sets of the top pathways were simulated in every order at the same intensities. Different end states mean the order decides where the system ends up." },
             ]}
@@ -13719,7 +13826,7 @@ function SpaghettiEngineApp() {
   // so dragging nodes around never recomputes it.
   const structureSignature = useMemo(() => {
     const c = concepts.map((c) => `${c.id}:${moduleKey(c.category)}:${c.name}`).join(",");
-    const e = edges.map((e) => `${e.id}:${e.source}:${e.target}:${e.weight}`).join(",");
+    const e = edges.map((e) => `${e.id}:${e.source}:${e.target}:${e.weight}:${edgeLag(e)}`).join(",");
     return `${c}|${e}|${JSON.stringify(settings)}`;
   }, [concepts, edges, settings]);
   const needMultiScale = tab === "metrics";
@@ -13769,7 +13876,7 @@ function SpaghettiEngineApp() {
   // the model itself had been edited.
   const simSignature = useMemo(() => {
     const c = aConcepts.map((c) => `${c.id}:${c.initialValue}`).join(",");
-    const e = aEdges.map((e) => `${e.id}:${e.source}:${e.target}:${e.weight}`).join(",");
+    const e = aEdges.map((e) => `${e.id}:${e.source}:${e.target}:${e.weight}:${edgeLag(e)}`).join(",");
     return `${c}|${e}|${JSON.stringify(settings)}`;
   }, [aConcepts, aEdges, settings]);
   const [modelVersion, setModelVersion] = useState(0);
@@ -14344,7 +14451,7 @@ function SpaghettiEngineApp() {
       out: edges.filter((e) => e.source === c.id).length, in: edges.filter((e) => e.target === c.id).length,
     }));
     const relationshipRows = edges.map((e) => ({
-      from: nameOf.get(e.source), to: nameOf.get(e.target), weight: e.weight,
+      from: nameOf.get(e.source), to: nameOf.get(e.target), weight: e.weight, lag: edgeLag(e),
       effect: e.weight > 0 ? "increases" : e.weight < 0 ? "decreases" : "no effect",
       strength: strengthWord(e.weight).replace(/^an? /, ""),
       sentence: relationshipSentence(nameOf.get(e.source), nameOf.get(e.target), e.weight),
@@ -14357,7 +14464,7 @@ function SpaghettiEngineApp() {
     return { conceptRows, relationshipRows, matrixHeader: ["", ...concepts.map((c) => c.name)], matrix };
   };
   const CONCEPT_COLUMNS = [["id", "ID"], ["name", "Concept"], ["module", "Module"], ["definition", "Definition"], ["start", "Starting value"], ["out", "Relationships out"], ["in", "Relationships in"]];
-  const RELATIONSHIP_COLUMNS = [["from", "From"], ["to", "To"], ["weight", "Weight"], ["effect", "Effect"], ["strength", "Strength"], ["sentence", "In words"], ["fromModule", "From module"], ["toModule", "To module"], ["between", "Between modules"], ["description", "Description"], ["fromId", "From ID"], ["toId", "To ID"]];
+  const RELATIONSHIP_COLUMNS = [["from", "From"], ["to", "To"], ["weight", "Weight"], ["lag", "Lag (iterations)"], ["effect", "Effect"], ["strength", "Strength"], ["sentence", "In words"], ["fromModule", "From module"], ["toModule", "To module"], ["between", "Between modules"], ["description", "Description"], ["fromId", "From ID"], ["toId", "To ID"]];
   const exportModelTable = (kind) => {
     const t = modelTables();
     if (kind === "concepts") downloadCSV([CONCEPT_COLUMNS.map((c) => c[1]), ...t.conceptRows.map((r) => CONCEPT_COLUMNS.map((c) => r[c[0]]))], "spaghetti-engine-concepts.csv");
@@ -14954,8 +15061,19 @@ function SpaghettiEngineApp() {
                       <button onClick={() => { commitHistory(); removeEdge(e.id); }} className="text-neutral-500 hover:text-red-500 shrink-0" title="Delete this relationship"><Trash2 size={14} /></button>
                     </div>
                     <WeightSlider value={e.weight} onChange={(v) => updateEdge(e.id, { weight: v })} />
+                    {(!basic || edgeLag(e) > 0) && (
+                      <label className="mt-1.5 flex items-center gap-1.5 text-[14px] text-neutral-700" title="How many extra iterations pass before a change in the source reaches the target (0 = no delay).">
+                        <Hourglass size={12} aria-hidden="true" />Delay
+                        <input
+                          type="number" min={0} max={MAX_EDGE_LAG} step={1} value={edgeLag(e)}
+                          onChange={(ev) => updateEdge(e.id, { lag: edgeLag({ lag: ev.target.value }) })}
+                          className="w-14 text-xs border border-slate-200 rounded px-1.5 py-1"
+                        />
+                        iterations
+                      </label>
+                    )}
                     <p className="text-[14px] text-neutral-700 mt-1">
-                      {relationshipSentence(concepts.find((c) => c.id === e.source)?.name, concepts.find((c) => c.id === e.target)?.name, e.weight)}
+                      {relationshipSentence(concepts.find((c) => c.id === e.source)?.name, concepts.find((c) => c.id === e.target)?.name, e.weight)}{edgeLag(e) > 0 && ` The effect arrives ${edgeLag(e)} iteration${edgeLag(e) === 1 ? "" : "s"} later than the others.`}
                     </p>
                   </div>
                 )} />
@@ -15423,6 +15541,7 @@ function SpaghettiEngineApp() {
                 stats={[
                   { label: "Scenarios simulated", value: 1 + comparedIds.length, hint: "The baseline plus every scenario selected for comparison. Each is an independent run." },
                   { label: "Transfer function / λ", value: transferFunctionLabel(settings) },
+                  ...lagStats(aEdges),
                   { label: "Update rule / mode", value: `${settings.updateRule ?? "relative"} / ${settings.mode ?? "synchronous"}` },
                   {
                     label: "All runs converged",
