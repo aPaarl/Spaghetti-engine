@@ -6,7 +6,7 @@ import {
   Undo2, Redo2, Copy, Maximize2, HelpCircle, SlidersHorizontal,
   BarChart3, LayoutGrid, GitBranch, Shuffle, Activity, FlaskConical, TrendingUp,
   Eye, EyeOff, Route, Layers, Waypoints, PanelLeftClose, Search, Dices, Sparkles, FolderOpen, Pencil, CopyPlus, FilePlus, Compass, CheckCircle2, Circle, Presentation, Hourglass, Minus,
-  Merge, ArrowRight, Users,
+  Merge, ArrowRight, Users, Database,
 } from "lucide-react";
 import {
   LineChart, Line, BarChart, Bar, Cell, LabelList, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
@@ -40,6 +40,7 @@ import { metroRows } from "./pathwayMetroLayout.js";
 import { bootLibrary, saveModel, loadModel, setActive, createModel, renameModel, duplicateModel, deleteModel, readIndex, modelKey } from "./modelLibrary.js";
 import { BrandMark } from "./brand.jsx";
 import CombineMapsDialog from "./CombineMapsDialog.jsx";
+import EmpiricalDataDialog from "./EmpiricalDataDialog.jsx";
 import { WorkshopPlanner, WorkshopRunBar, loadWorkshop, saveWorkshop, newWorkshopPlan, WORKSHOP_BLOCK_TARGETS } from "./WorkshopMode.jsx";
 import { TableToolsHost } from "./TableEditor.jsx";
 
@@ -13978,6 +13979,7 @@ function SpaghettiEngineApp() {
   const activeModelName = library?.models.find((m) => m.id === activeModelId)?.name || "Untitled model";
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [combineOpen, setCombineOpen] = useState(false);
+  const [dataOpen, setDataOpen] = useState(false);
   // Workshop mode: the plan of the open model, the planner, and the step
   // being run (null when no workshop is running).
   const [workshopPlan, setWorkshopPlanState] = useState(null);
@@ -15042,6 +15044,7 @@ function SpaghettiEngineApp() {
             { divider: true },
             { icon: Upload, label: "Import JSON", hint: "Open a model from a .json file", onClick: () => fileInputRef.current?.click() },
             { icon: Merge, label: "Combine maps", hint: "Aggregate several stakeholder maps into one group map", onClick: () => { saveNow(); setCombineOpen(true); } },
+            { icon: Database, label: "Empirical data", hint: "Fuzzify measured data for start values, a check of the model, or suggested weights", onClick: () => setDataOpen(true) },
             { icon: Download, label: "Export JSON", hint: "Keep a copy, or move the model to another computer", onClick: exportModel },
             { icon: Table2, label: exportingWorkbook ? "Building workbook…" : "Export Analysis Workbook (.xlsx)", hint: "Model structure, metrics, baseline and every analysis that has been run", onClick: exportAnalysisWorkbook, disabled: exportingWorkbook },
           ]}
@@ -15130,6 +15133,24 @@ function SpaghettiEngineApp() {
           ctx={{ concepts, edges, scenarios, models: library?.models.length || 0 }}
           onStart={startWorkshop} onClose={() => setWorkshopPlannerOpen(false)}
           notify={(t) => notify(t, { title: "Workshop" })}
+        />
+      )}
+
+      {dataOpen && (
+        <EmpiricalDataDialog
+          concepts={concepts} edges={edges} settings={settings}
+          simulate={(start) => simulate(concepts.map((c) => ({ ...c, initialValue: start[c.id] ?? c.initialValue })), edges, null, settings)}
+          onSetStart={(values, label) => {
+            commitHistory();
+            setConcepts((cs) => cs.map((c) => (values[c.id] === undefined ? c : { ...c, initialValue: clamp(values[c.id]), currentValue: clamp(values[c.id]) })));
+            notify(`${Object.keys(values).length} start values taken from the data (${label}). Undo (Ctrl+Z) brings the old ones back.`, { kind: "note", title: "Start values set" });
+          }}
+          onSetWeights={(w) => {
+            commitHistory();
+            setEdges((es) => es.map((e) => (w[e.id] === undefined ? e : { ...e, weight: clamp(w[e.id]) })));
+            notify(`${Object.keys(w).length} relationship weight${Object.keys(w).length === 1 ? "" : "s"} changed using the data. Undo (Ctrl+Z) brings the old ones back.`, { kind: "note", title: "Weights updated" });
+          }}
+          onClose={() => setDataOpen(false)}
         />
       )}
 
