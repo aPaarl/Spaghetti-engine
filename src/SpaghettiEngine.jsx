@@ -6,7 +6,7 @@ import {
   Undo2, Redo2, Copy, Maximize2, HelpCircle, SlidersHorizontal,
   BarChart3, LayoutGrid, GitBranch, Shuffle, Activity, FlaskConical, TrendingUp,
   Eye, EyeOff, Route, Layers, Waypoints, PanelLeftClose, Search, Dices, Sparkles, FolderOpen, Pencil, CopyPlus, FilePlus, Compass, CheckCircle2, Circle, Presentation, Hourglass, Minus,
-  Merge, ArrowRight,
+  Merge, ArrowRight, Users,
 } from "lucide-react";
 import {
   LineChart, Line, BarChart, Bar, Cell, LabelList, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
@@ -40,6 +40,7 @@ import { metroRows } from "./pathwayMetroLayout.js";
 import { bootLibrary, saveModel, loadModel, setActive, createModel, renameModel, duplicateModel, deleteModel, readIndex, modelKey } from "./modelLibrary.js";
 import { BrandMark } from "./brand.jsx";
 import CombineMapsDialog from "./CombineMapsDialog.jsx";
+import { WorkshopPlanner, WorkshopRunBar, loadWorkshop, saveWorkshop, newWorkshopPlan, WORKSHOP_BLOCK_TARGETS } from "./WorkshopMode.jsx";
 import { TableToolsHost } from "./TableEditor.jsx";
 
 // ============================================================================
@@ -13977,6 +13978,11 @@ function SpaghettiEngineApp() {
   const activeModelName = library?.models.find((m) => m.id === activeModelId)?.name || "Untitled model";
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [combineOpen, setCombineOpen] = useState(false);
+  // Workshop mode: the plan of the open model, the planner, and the step
+  // being run (null when no workshop is running).
+  const [workshopPlan, setWorkshopPlanState] = useState(null);
+  const [workshopPlannerOpen, setWorkshopPlannerOpen] = useState(false);
+  const [workshopStep, setWorkshopStep] = useState(null);
   // Basic shows the core of the tool; Advanced shows every tab and setting.
   // Someone arriving with a model from an earlier version starts in Advanced,
   // where everything they used before still is; a new user starts in Basic.
@@ -14867,6 +14873,28 @@ function SpaghettiEngineApp() {
     setTab("network");
     notify(`"${name}" combines ${report.maps} maps into ${report.concepts} concepts and ${report.relationships} relationships. Each relationship's description lists the weights it was combined from. Use Arrange on the Network tab to tidy the layout.`, { kind: "note", title: "Combined map created" });
   };
+  const setWorkshopPlan = (plan) => { setWorkshopPlanState(plan); saveWorkshop(activeModelId, plan); };
+  const openWorkshopPlanner = () => {
+    saveNow();
+    setWorkshopPlanState(loadWorkshop(activeModelId) || newWorkshopPlan(activeModelName));
+    setWorkshopPlannerOpen(true);
+  };
+  // A workshop step opens what it needs: its tab (switching to Advanced for
+  // the advanced analyses) or Combine maps.
+  const goToWorkshopStep = (step) => {
+    const b = WORKSHOP_BLOCK_TARGETS[step?.block];
+    if (!b) return;
+    if (b.action === "combine") { saveNow(); setCombineOpen(true); return; }
+    if (b.tab) { if (basic && !BASIC_TABS.has(b.tab)) setUiLevel("advanced"); setTab(b.tab); }
+  };
+  // A workshop plan belongs to one model: switching models ends it.
+  useEffect(() => { setWorkshopStep(null); setWorkshopPlannerOpen(false); setWorkshopPlanState(null); }, [activeModelId]);
+  const startWorkshop = () => {
+    setWorkshopPlannerOpen(false);
+    setGuide({ open: false });
+    setWorkshopStep(0);
+    goToWorkshopStep(workshopPlan?.steps[0]);
+  };
   const renameActiveOr = (id, name) => setLibrary(renameModel(id, name));
   const duplicateInLibrary = (id) => { if (id === activeModelId) saveNow(); setLibrary(duplicateModel(id)); };
   const deleteFromLibrary = async (id) => {
@@ -15051,6 +15079,7 @@ function SpaghettiEngineApp() {
             items={[
               { icon: Compass, label: `Getting started guide (${guideSteps.filter((st) => st.done).length} of ${guideSteps.length} done)`, hint: "The first steps of building a map, one at a time", onClick: () => { setGameOpen(false); setGuide({ open: true, collapsed: false }); } },
               { icon: Gamepad2, label: gameOpen ? "Close the Meinweg game" : "Play the Meinweg game", hint: "A 30-minute tutorial: build your own model of a national park in trouble", onClick: () => setGameOpen(!gameOpen) },
+              { icon: Users, label: workshopStep !== null ? "Workshop agenda" : "Prepare a workshop", hint: "Plan a workshop with this model, then run it step by step with the group", onClick: openWorkshopPlanner },
               { divider: true },
               { icon: Info, label: "About & documentation", hint: `What the tool is for, the user manual, and contact. Version ${APP_VERSION}`, onClick: () => setTab("about") },
             ]}
@@ -15058,6 +15087,15 @@ function SpaghettiEngineApp() {
         </div>
         <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={importModel} />
       </div>
+
+      {workshopStep !== null && workshopPlan && !gameMode && (
+        <WorkshopRunBar
+          plan={workshopPlan} index={workshopStep} setIndex={setWorkshopStep}
+          onGo={goToWorkshopStep}
+          onEdit={() => setWorkshopPlannerOpen(true)}
+          onEnd={() => setWorkshopStep(null)}
+        />
+      )}
 
       <ModuleSuggestions concepts={concepts} />
 
@@ -15083,6 +15121,15 @@ function SpaghettiEngineApp() {
           onImport={() => fileInputRef.current?.click()} onExport={exportModel}
           onCombine={() => { setLibraryOpen(false); setCombineOpen(true); }}
           onClose={() => setLibraryOpen(false)}
+        />
+      )}
+
+      {workshopPlannerOpen && workshopPlan && (
+        <WorkshopPlanner
+          plan={workshopPlan} setPlan={setWorkshopPlan} modelName={activeModelName}
+          ctx={{ concepts, edges, scenarios, models: library?.models.length || 0 }}
+          onStart={startWorkshop} onClose={() => setWorkshopPlannerOpen(false)}
+          notify={(t) => notify(t, { title: "Workshop" })}
         />
       )}
 
@@ -15830,7 +15877,7 @@ function SpaghettiEngineApp() {
         )}
 
         {/* ============================= ABOUT & DOCUMENTATION ============================= */}
-        {tab === "about" && <AboutTab onOpenTab={(t) => { if (basic && !BASIC_TABS.has(t)) setUiLevel("advanced"); setTab(t); }} onOpenCombine={() => { saveNow(); setCombineOpen(true); }} onOpenGuide={() => { setGameOpen(false); setGuide({ open: true, collapsed: false }); }} onOpenGame={() => setGameOpen(true)} />}
+        {tab === "about" && <AboutTab onOpenTab={(t) => { if (basic && !BASIC_TABS.has(t)) setUiLevel("advanced"); setTab(t); }} onOpenCombine={() => { saveNow(); setCombineOpen(true); }} onOpenWorkshop={openWorkshopPlanner} onOpenGuide={() => { setGameOpen(false); setGuide({ open: true, collapsed: false }); }} onOpenGame={() => setGameOpen(true)} />}
 
         {/* ============================= TRANSITION PATHWAYS ============================= */}
         {tab === "pathways" && (

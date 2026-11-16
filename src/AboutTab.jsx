@@ -72,7 +72,7 @@ function SectionTitle({ kicker, title, children }) {
 
 // One group's page: why they would use the tool, a typical way of working
 // (each step opens its tab), what they take away and what to keep in mind.
-function AudiencePage({ id, onBack, onSwitch, onOpenTab, onOpenGuide, onOpenGame, onOpenCombine }) {
+function AudiencePage({ id, onBack, onSwitch, onOpenTab, onOpenGuide, onOpenGame, onOpenCombine, onOpenWorkshop }) {
   const page = AUDIENCE_PAGES[id];
   const meta = AUDIENCES.find((a) => a.id === id);
   const doc = DOCS.find((d) => d.key === page.doc);
@@ -81,6 +81,7 @@ function AudiencePage({ id, onBack, onSwitch, onOpenTab, onOpenGuide, onOpenGame
     combine: { run: onOpenCombine, label: "Open Combine maps", icon: Merge },
     guide: { run: onOpenGuide, label: "Open the guide", icon: Compass },
     game: { run: onOpenGame, label: "Play the game", icon: Gamepad2 },
+    workshop: { run: onOpenWorkshop, label: "Prepare a workshop", icon: Users },
   };
   const Icon = meta.icon;
   const DocIcon = doc?.icon;
@@ -166,7 +167,7 @@ function AudiencePage({ id, onBack, onSwitch, onOpenTab, onOpenGuide, onOpenGame
   );
 }
 
-export default function AboutTab({ onOpenTab, onOpenGuide, onOpenGame, onOpenCombine }) {
+export default function AboutTab({ onOpenTab, onOpenGuide, onOpenGame, onOpenCombine, onOpenWorkshop }) {
   const [copied, setCopied] = useState(false);
   const [audience, setAudience] = useState(null);
   const showAudience = (id) => { setAudience(id); setTimeout(() => document.querySelector(".se-about")?.scrollIntoView({ block: "start" }), 0); };
@@ -186,7 +187,7 @@ export default function AboutTab({ onOpenTab, onOpenGuide, onOpenGame, onOpenCom
       <AudiencePage
         id={audience} onSwitch={showAudience}
         onBack={() => { setAudience(null); setTimeout(() => document.getElementById("about-who")?.scrollIntoView({ block: "start" }), 0); }}
-        onOpenTab={onOpenTab} onOpenGuide={onOpenGuide} onOpenGame={onOpenGame} onOpenCombine={onOpenCombine}
+        onOpenTab={onOpenTab} onOpenGuide={onOpenGuide} onOpenGame={onOpenGame} onOpenCombine={onOpenCombine} onOpenWorkshop={onOpenWorkshop}
       />
     );
   }

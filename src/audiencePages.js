@@ -44,6 +44,7 @@ export const AUDIENCE_PAGES = {
       "Show participants immediately what their map implies, which keeps them engaged and invites revision.",
     ],
     steps: [
+      { title: "Plan the workshop", text: "Build an agenda from ready-made steps, check that the model is ready, and print a script and a handout.", action: "workshop" },
       { title: "Prepare a starting map", text: "Add the central question and a few concepts, or start from an empty map with the group.", tab: "editor" },
       { title: "Draw with the group", text: "Add concepts and relationships as they come up. Ask for the direction and strength of each one.", tab: "network" },
       { title: "Show what it implies", text: "Run the baseline and one or two what-if scenarios the group proposes.", tab: "equilibrium" },
