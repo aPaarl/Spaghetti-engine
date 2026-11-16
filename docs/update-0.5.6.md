@@ -75,7 +75,7 @@ The four steps of the figure editor (section U.5) are unchanged. Under *Fine-tun
 
 - click any colour of the figure and replace it with another;
 - rename labels for the export only, with a search field; the concepts in the model keep their names;
-- centre the title and set its size;
+- center the title and set its size;
 - choose three more fonts: Calibri, Garamond and a monospace font.
 
 ### U.18 The Meinweg game
@@ -99,7 +99,7 @@ The Veldmeer game (sections U.3 and U.8) is replaced by the Meinweg game, opened
 
 **Exercises.** Each chapter opens with a goal and a bar that shows how many of its tasks are done. Each exercise lists the clicks to make as numbered steps, followed by a live check that states what is done and what is still missing. The checks read the player's own model, which is kept separate from the player's other models.
 
-**Layout.** The reading chapters (1, 2, 3 and 8) fill the whole screen in a centred column. In the hands-on chapters (4 to 7) the game sits beside the tool, and the side menu is hidden while the game is open.
+**Layout.** The reading chapters (1, 2, 3 and 8) fill the whole screen in a centered column. In the hands-on chapters (4 to 7) the game sits beside the tool, and the side menu is hidden while the game is open.
 
 **Ending.** The game ends with points (at most 325), a rank and an advice note to the board that can be downloaded. The advice note lists the feedback loops of the player's map automatically.
 
