@@ -6,6 +6,7 @@ import {
   Undo2, Redo2, Copy, Maximize2, HelpCircle, SlidersHorizontal,
   BarChart3, LayoutGrid, GitBranch, Shuffle, Activity, FlaskConical, TrendingUp,
   Eye, EyeOff, Route, Layers, Waypoints, PanelLeftClose, Search, Dices, Sparkles, FolderOpen, Pencil, CopyPlus, FilePlus, Compass, CheckCircle2, Circle, Presentation,
+  Merge,
 } from "lucide-react";
 import {
   LineChart, Line, BarChart, Bar, Cell, LabelList, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
@@ -38,6 +39,7 @@ import { ConvergenceChart, SteadyStateBars, ScenarioComparisonFigure, ScenarioGr
 import { metroRows } from "./pathwayMetroLayout.js";
 import { bootLibrary, saveModel, loadModel, setActive, createModel, renameModel, duplicateModel, deleteModel, readIndex, modelKey } from "./modelLibrary.js";
 import { BrandMark } from "./brand.jsx";
+import CombineMapsDialog from "./CombineMapsDialog.jsx";
 import { TableToolsHost } from "./TableEditor.jsx";
 
 // ============================================================================
@@ -13392,7 +13394,7 @@ function GettingStartedGuide({ steps, tab, collapsed, setCollapsed, onClose, onG
 // The model library: every model saved in this browser, with the open one
 // marked. Open, rename (in place), copy, and delete; start a new model, or
 // import a file as a new model.
-function ModelLibraryDialog({ library, activeId, onOpen, onNew, onRename, onDuplicate, onDelete, onImport, onExport, onClose }) {
+function ModelLibraryDialog({ library, activeId, onOpen, onNew, onRename, onDuplicate, onDelete, onImport, onExport, onCombine, onClose }) {
   const [editing, setEditing] = useState(null); // { id, name }
   const models = [...(library?.models || [])].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   const when = (t) => (t ? new Date(t).toLocaleString([], { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "");
@@ -13412,6 +13414,7 @@ function ModelLibraryDialog({ library, activeId, onOpen, onNew, onRename, onDupl
           <Btn onClick={onNew}><FilePlus size={14} />New model</Btn>
           <Btn variant="outline" onClick={onImport} title="Open a .json file saved with Export JSON, as a new model"><Upload size={14} />Import a file</Btn>
           <Btn variant="outline" onClick={onExport} title="Download the open model as a .json file"><Download size={14} />Export the open model</Btn>
+          <Btn variant="outline" onClick={onCombine} disabled={(library?.models.length || 0) < 2} title="Aggregate two or more of these models into one group map"><Merge size={14} />Combine maps</Btn>
         </div>
         <ul className="overflow-auto divide-y divide-slate-100">
           {models.map((m) => {
@@ -13596,6 +13599,7 @@ function SpaghettiEngineApp() {
   activeModelIdRef.current = activeModelId;
   const activeModelName = library?.models.find((m) => m.id === activeModelId)?.name || "Untitled model";
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [combineOpen, setCombineOpen] = useState(false);
   // Basic shows the core of the tool; Advanced shows every tab and setting.
   // Someone arriving with a model from an earlier version starts in Advanced,
   // where everything they used before still is; a new user starts in Basic.
@@ -14464,6 +14468,17 @@ function SpaghettiEngineApp() {
     setTab("network");
     return r.id;
   };
+  // A combined map is saved as a new model and opened; the maps it was made
+  // from stay as they were.
+  const createCombined = (name, payload, report) => {
+    saveNow();
+    const r = createModel(name, payload);
+    setLibrary(r.index);
+    switchToModel(r.id, cleanStored(r.payload));
+    setCombineOpen(false);
+    setTab("network");
+    notify(`"${name}" combines ${report.maps} maps into ${report.concepts} concepts and ${report.relationships} relationships. Each relationship's description lists the weights it was combined from. Use Arrange on the Network tab to tidy the layout.`, { kind: "note", title: "Combined map created" });
+  };
   const renameActiveOr = (id, name) => setLibrary(renameModel(id, name));
   const duplicateInLibrary = (id) => { if (id === activeModelId) saveNow(); setLibrary(duplicateModel(id)); };
   const deleteFromLibrary = async (id) => {
@@ -14610,6 +14625,7 @@ function SpaghettiEngineApp() {
             { icon: FolderOpen, label: "My models", hint: "Open another model, start a new one, rename, copy or delete", onClick: () => { saveNow(); setLibraryOpen(true); } },
             { divider: true },
             { icon: Upload, label: "Import JSON", hint: "Open a model from a .json file", onClick: () => fileInputRef.current?.click() },
+            { icon: Merge, label: "Combine maps", hint: "Aggregate several stakeholder maps into one group map", onClick: () => { saveNow(); setCombineOpen(true); } },
             { icon: Download, label: "Export JSON", hint: "Keep a copy, or move the model to another computer", onClick: exportModel },
             { icon: Table2, label: exportingWorkbook ? "Building workbook…" : "Export Analysis Workbook (.xlsx)", hint: "Model structure, metrics, baseline and every analysis that has been run", onClick: exportAnalysisWorkbook, disabled: exportingWorkbook },
           ]}
@@ -14677,7 +14693,17 @@ function SpaghettiEngineApp() {
           onOpen={openModel} onNew={() => newModel()} onRename={renameActiveOr}
           onDuplicate={duplicateInLibrary} onDelete={deleteFromLibrary}
           onImport={() => fileInputRef.current?.click()} onExport={exportModel}
+          onCombine={() => { setLibraryOpen(false); setCombineOpen(true); }}
           onClose={() => setLibraryOpen(false)}
+        />
+      )}
+
+      {combineOpen && (
+        <CombineMapsDialog
+          library={library} activeId={activeModelId}
+          readModel={(id) => cleanStored(loadModel(id))}
+          onCreate={createCombined}
+          onClose={() => setCombineOpen(false)}
         />
       )}
 
