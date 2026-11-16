@@ -5993,8 +5993,8 @@ function NetworkTabInner({
   // is built once per such change instead of on every frame of a drag or a
   // hover on the canvas.
   // The Inspector opens only while something on the map is selected, so the
-  // map has the full width otherwise. How to build a map, and the keyboard
-  // shortcuts, are under Help in the top bar.
+  // map has the full width otherwise. The keyboard shortcuts are described in
+  // the User Manual.
   const nothingSelected = !selectedConcept && !selectedEdge && selected?.kind !== "module" && selected?.kind !== "aggregate";
   const showInspector = !inspectorCollapsed && !nothingSelected;
   const inspectorPanel = useMemo(() => (!showInspector ? null : (
@@ -15254,7 +15254,7 @@ function SpaghettiEngineApp() {
       )}
 
       <div className="flex-1 min-h-0 flex">
-      {/* Side menu (laptop and desktop): the four steps, each a fold-out
+      {/* Side menu (laptop and desktop): the five steps, each a fold-out
           with its tabs. The step you are in is open; click another step to
           see its tabs. */}
       <nav aria-label="Workspace sections" className={`se-sidenav hidden ${gameMode ? "" : "lg:flex"} flex-col w-56 shrink-0 border-r border-slate-200 bg-white overflow-y-auto py-3`}>
