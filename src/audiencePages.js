@@ -132,3 +132,132 @@ export const AUDIENCE_PAGES = {
     doc: "manual",
   },
 };
+
+// The same pages in Dutch (shown when the interface is set to NL).
+export const AUDIENCE_PAGES_NL = {
+  researchers: {
+    title: "Onderzoekers",
+    lead: "Bouw transparante, reproduceerbare modellen van complexe sociaal-ecologische systemen en analyseer ze grondig. Elke methode is gedocumenteerd en elk getal is te herleiden tot een formule in de Methodologische bijlage.",
+    purpose: [
+      "Kwalitatieve kennis uit interviews, workshops of literatuur omzetten in een semi-kwantitatief causaal model.",
+      "Bepalen welke concepten het systeem sturen en welke er vooral op reageren, en langs welke routes invloed loopt.",
+      "Toetsen hoe robuust conclusies zijn voor onzekere gewichten, met gevoeligheidsanalyse en Monte Carlo-simulatie.",
+      "Kantelpunten vinden en routes naar een gewenste toestand van het systeem vergelijken.",
+    ],
+    steps: [
+      { title: "Bouw of importeer de kaart", text: "Teken de kaart op het tabblad Netwerk, of importeer kaarten die elders zijn gemaakt als .json-bestand.", tab: "network" },
+      { title: "Combineer kaarten van belanghebbenden", text: "Voeg individuele kaarten samen tot één groepskaart, met geloofwaardigheidsgewichten, en vergelijk hoe sterk de kaarten op elkaar lijken.", action: "combine" },
+      { title: "Analyseer de structuur", text: "Centraliteit, zenders en ontvangers, terugkoppelingen en invloedsroutes.", tab: "metrics" },
+      { title: "Simuleer scenario's", text: "Vergelijk interventies met het evenwicht van de basislijn.", tab: "scenarios" },
+      { title: "Toets de robuustheid", text: "Varieer de gewichten één voor één of allemaal tegelijk, en zie welke conclusies blijven staan.", tab: "sensitivity" },
+      { title: "Verken transities", text: "Zoek kantelpunten en rangschik routes naar hun totale opbrengst.", tab: "transition" },
+    ],
+    outputs: [
+      "Een analysewerkboek (.xlsx) met de modelstructuur, de maten en elke uitgevoerde analyse.",
+      "Figuren klaar voor publicatie, met instelbare grootte, lettertype en kleurenblind-veilige paletten.",
+      "Een modelbestand (.json) waarmee anderen de resultaten kunnen herhalen.",
+    ],
+    caveats: [
+      "Resultaten zijn gevolgen van de kaart zoals die getekend is, geen voorspellingen. Vermeld de gebruikte instellingen (overdrachtsfunctie, updateregel, lambda).",
+      "Gewichten die mensen geven zijn oordelen. Vermeld hoe ze zijn verkregen en hoe gevoelig de conclusies ervoor zijn.",
+    ],
+    doc: "annex",
+  },
+  facilitators: {
+    title: "Facilitatoren",
+    lead: "Gebruik de kaart als gedeeld object in workshops en interviews, zodat deelnemers hun beeld van het systeem expliciet maken, erover praten en meteen zien wat het betekent.",
+    purpose: [
+      "Een gesprek structureren rond concepten en oorzaak-gevolgrelaties in plaats van rond standpunten.",
+      "Samen met een groep live een kaart bouwen op een groot scherm, in de presentatieweergave.",
+      "Individuele kaarten verzamelen en samenvoegen tot een groepskaart, zodat zichtbaar wordt waar mensen het eens en oneens zijn.",
+      "Deelnemers direct laten zien wat hun kaart betekent; dat houdt ze betrokken en nodigt uit tot bijstellen.",
+    ],
+    steps: [
+      { title: "Plan de workshop", text: "Stel een programma samen uit kant-en-klare stappen, controleer of het model klaar is en druk een draaiboek en een hand-out af.", action: "workshop" },
+      { title: "Bereid een startkaart voor", text: "Zet de centrale vraag en een paar concepten klaar, of begin met de groep op een lege kaart.", tab: "editor" },
+      { title: "Teken samen met de groep", text: "Voeg concepten en relaties toe zodra ze genoemd worden. Vraag bij elke relatie naar de richting en de sterkte.", tab: "network" },
+      { title: "Laat zien wat het betekent", text: "Draai de basislijn en een of twee wat-als-scenario's die de groep voorstelt.", tab: "equilibrium" },
+      { title: "Combineer kaarten", text: "Als deelnemers hun eigen kaart tekenden: voeg ze samen en bespreek de relaties waarover de tekens verschillen.", action: "combine" },
+    ],
+    outputs: [
+      "Een kaart die het gedeelde beeld van de groep vastlegt, met een toelichting bij elke relatie.",
+      "Een lijst met punten van onenigheid (tegengestelde tekens) voor een volgende sessie.",
+      "Figuren voor een workshopverslag.",
+    ],
+    caveats: [
+      "Gebruik de basisweergave in sessies met nieuwkomers; de schakelaar Geavanceerde functies toont meer analyses, maar ook meer keuzes.",
+      "Modellen worden opgeslagen in de browser van de gebruikte computer. Gebruik na elke sessie Export JSON.",
+    ],
+    doc: "manual",
+  },
+  policy: {
+    title: "Beleidsmakers",
+    lead: "Verken wat-als-vragen voordat u zich vastlegt op een maatregel: welke knoppen ertoe doen, welke bijwerkingen te verwachten zijn en of een maatregel sterk genoeg is om het systeem in een andere toestand te brengen.",
+    purpose: [
+      "Maatregelen naast elkaar vergelijken met de huidige koers van het systeem.",
+      "Indirecte en onbedoelde effecten zien die via de kaart doorwerken, niet alleen de directe.",
+      "Nagaan hoeveel verandering nodig is voordat de gewenste verschuiving in uitkomsten optreedt.",
+      "Kaarten van verschillende groepen gebruiken om te voorzien waar steun en weerstand kunnen ontstaan.",
+    ],
+    steps: [
+      { title: "Lees de kaart", text: "Kijk welke concepten veel andere beïnvloeden (de knoppen) en welke vooral reageren.", tab: "metrics" },
+      { title: "Test maatregelen", text: "Maak van elke maatregel een scenario en vergelijk de uitkomsten met de basislijn.", tab: "scenarios" },
+      { title: "Bekijk de kantelpunten", text: "Zie vanaf welke intensiteit een maatregel gaat lonen.", tab: "transition" },
+      { title: "Vergelijk routes", text: "Rangschik combinaties en volgordes van maatregelen naar hun totale opbrengst.", tab: "pathways" },
+    ],
+    outputs: [
+      "Een vergelijking van maatregelen met hun directe en indirecte effecten.",
+      "Inzicht in afwegingen tussen uitkomsten, en in maatregelen die elkaar versterken.",
+    ],
+    caveats: [
+      "Een kaart toont de richting en de relatieve grootte van effecten, geen exacte hoeveelheden of tijdstippen. Gebruik haar om een besluit te structureren, niet om het te vervangen.",
+      "Vraag wie de kaart heeft getekend. Een kaart van één groep weerspiegelt het beeld van die groep.",
+    ],
+    doc: "manual",
+  },
+  stakeholders: {
+    title: "Lokale belanghebbenden",
+    lead: "Boeren, bewoners, waterbeheerders, natuurorganisaties en bedrijven weten veel van hoe hun systeem werkt. De kaart maakt die kennis zichtbaar en zet haar op gelijke voet met andere bronnen.",
+    purpose: [
+      "Laten zien hoe u het systeem ziet: wat ertoe doet en wat wat beïnvloedt.",
+      "Uw kaart vergelijken met die van anderen en ontdekken waar beelden verschillen.",
+      "Verkennen wat voorgestelde maatregelen betekenen voor de dingen die u belangrijk vindt.",
+    ],
+    steps: [
+      { title: "Leer de basis", text: "Volg de startgids terwijl u uw eerste kaart tekent.", action: "guide" },
+      { title: "Teken uw kaart", text: "Voeg de concepten toe die voor u belangrijk zijn en verbind ze.", tab: "network" },
+      { title: "Zie wat het betekent", text: "Draai de basislijn en probeer een verandering, bijvoorbeeld een maatregel die besproken wordt.", tab: "scenarios" },
+    ],
+    outputs: [
+      "Uw eigen kaart, die u kunt bewaren, delen of als bestand meenemen naar een overleg.",
+    ],
+    caveats: [
+      "Er bestaat geen foute kaart: zij legt vast hoe u het systeem ziet. Een toelichting bij de relaties helpt anderen uw redenering te begrijpen.",
+      "Alles blijft in uw eigen browser. Er wordt niets naar een server gestuurd.",
+    ],
+    doc: "manual",
+  },
+  education: {
+    title: "Studenten en docenten",
+    lead: "Leer systeemdenken door te doen: bouw een causale kaart, laat haar draaien en zie hoe terugkoppelingen, indirecte effecten en kantelpunten voortkomen uit de structuur van een systeem.",
+    purpose: [
+      "Fuzzy cognitive mapping en systeemdenken in een vak introduceren, zonder software te installeren.",
+      "Studenten hun eigen modellen van een casus laten bouwen en vergelijken.",
+      "De volledige modelleercyclus oefenen: structuur, simulatie, scenario's en robuustheid.",
+    ],
+    steps: [
+      { title: "Speel het Meinweg-spel", text: "Een les van 30 minuten waarin studenten een model van een nationaal park bouwen en de vragen ervan beantwoorden.", action: "game" },
+      { title: "Volg de gids", text: "Stapsgewijze hulp die studenten door de tabbladen leidt.", action: "guide" },
+      { title: "Bouw een model van een casus", text: "Studenten tekenen hun eigen kaart van een casus uit het vak.", tab: "network" },
+      { title: "Vergelijk de kaarten van de groep", text: "Voeg de kaarten van de studenten samen en bespreek waar ze verschillen.", action: "combine" },
+    ],
+    outputs: [
+      "Studentmodellen als .json-bestand, die kunnen worden ingeleverd en door de docent geopend.",
+      "Figuren en een analysewerkboek voor opdrachten.",
+    ],
+    caveats: [
+      "De handleiding bevat een inleiding op fuzzy cognitive maps en een woordenlijst, geschikt als leesstof bij een vak.",
+    ],
+    doc: "manual",
+  },
+};

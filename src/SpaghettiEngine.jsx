@@ -40,6 +40,7 @@ import { metroRows } from "./pathwayMetroLayout.js";
 import { bootLibrary, saveModel, loadModel, setActive, createModel, renameModel, duplicateModel, deleteModel, readIndex, modelKey } from "./modelLibrary.js";
 import { BrandMark } from "./brand.jsx";
 import CombineMapsDialog from "./CombineMapsDialog.jsx";
+import { t as tr, getLang, setLang } from "./i18n.js";
 import EmpiricalDataDialog from "./EmpiricalDataDialog.jsx";
 import { WorkshopPlanner, WorkshopRunBar, loadWorkshop, saveWorkshop, newWorkshopPlan, WORKSHOP_BLOCK_TARGETS } from "./WorkshopMode.jsx";
 import { TableToolsHost } from "./TableEditor.jsx";
@@ -13912,50 +13913,50 @@ const GROUP_TONES = {
 };
 const TAB_GROUPS = [
   {
-    id: "building", label: "Model building", short: "Build", icon: Share2, tone: "lagoon",
-    hint: "Draw and edit the model. Well suited to working through with participants.",
+    id: "building", label: tr("Model building"), short: tr("Build"), icon: Share2, tone: "lagoon",
+    hint: tr("Draw and edit the model. Well suited to working through with participants."),
     tabs: [
-      { id: "editor", label: "Model editor", icon: Table2 },
-      { id: "network", label: "Network", icon: Share2 },
+      { id: "editor", label: tr("Model editor"), icon: Table2 },
+      { id: "network", label: tr("Network"), icon: Share2 },
     ],
   },
   {
-    id: "structure", label: "Structural analysis", short: "Structure", icon: BarChart3, tone: "emerald",
-    hint: "Read the structure of the map: which concepts drive the system, and along which routes influence travels.",
+    id: "structure", label: tr("Structural analysis"), short: tr("Structure"), icon: BarChart3, tone: "emerald",
+    hint: tr("Read the structure of the map: which concepts drive the system, and along which routes influence travels."),
     tabs: [
-      { id: "metrics", label: "Influence Metrics", icon: BarChart3 },
-      { id: "routes", label: "Influence Routes", icon: Route },
+      { id: "metrics", label: tr("Influence Metrics"), icon: BarChart3 },
+      { id: "routes", label: tr("Influence Routes"), icon: Route },
     ],
   },
   {
-    id: "state", label: "State and scenario analysis", short: "Explore", icon: Activity, tone: "sky",
-    hint: "See where the system settles, and compare what-if scenarios.",
+    id: "state", label: tr("State and scenario analysis"), short: tr("Explore"), icon: Activity, tone: "sky",
+    hint: tr("See where the system settles, and compare what-if scenarios."),
     tabs: [
-      { id: "equilibrium", label: "Baseline Equilibrium", icon: Activity },
-      { id: "scenarios", label: "Scenarios & Simulation", icon: GitCompare },
+      { id: "equilibrium", label: tr("Baseline Equilibrium"), icon: Activity },
+      { id: "scenarios", label: tr("Scenarios & Simulation"), icon: GitCompare },
     ],
   },
   {
-    id: "transition", label: "Transition analyses", short: "Change", icon: TrendingUp, tone: "violet",
-    hint: "Find tipping points and effective routes to change. Mainly for the analyst.",
+    id: "transition", label: tr("Transition analyses"), short: tr("Change"), icon: TrendingUp, tone: "violet",
+    hint: tr("Find tipping points and effective routes to change. Mainly for the analyst."),
     tabs: [
-      { id: "transition", label: "Transition Point Analysis", icon: TrendingUp },
-      { id: "pathways", label: "Transition Pathways", icon: Waypoints },
+      { id: "transition", label: tr("Transition Point Analysis"), icon: TrendingUp },
+      { id: "pathways", label: tr("Transition Pathways"), icon: Waypoints },
     ],
   },
   {
-    id: "sensitivity", label: "Sensitivity analyses", short: "Test", icon: SlidersHorizontal, tone: "amber",
-    hint: "Test how far the results depend on the weights and starting values. Mainly for the analyst.",
+    id: "sensitivity", label: tr("Sensitivity analyses"), short: tr("Test"), icon: SlidersHorizontal, tone: "amber",
+    hint: tr("Test how far the results depend on the weights and starting values. Mainly for the analyst."),
     tabs: [
-      { id: "sensitivity", label: "Sensitivity Analysis", icon: SlidersHorizontal },
-      { id: "montecarlo", label: "Monte Carlo", icon: Dices },
+      { id: "sensitivity", label: tr("Sensitivity Analysis"), icon: SlidersHorizontal },
+      { id: "montecarlo", label: tr("Monte Carlo"), icon: Dices },
     ],
   },
   {
-    id: "about", label: "About & documentation", accent: true, icon: Info,
-    hint: "What the tool is for, the documentation as PDF, and who to contact.",
+    id: "about", label: tr("About & documentation"), accent: true, icon: Info,
+    hint: tr("What the tool is for, the documentation as PDF, and who to contact."),
     tabs: [
-      { id: "about", label: "About the Spaghetti Engine", icon: Info },
+      { id: "about", label: tr("About the Spaghetti Engine"), icon: Info },
     ],
   },
 ];
@@ -15033,37 +15034,43 @@ function SpaghettiEngineApp() {
         <TopBarMenu
           align="left"
           buttonClass="inline-flex items-center gap-2 max-w-[200px] sm:max-w-[320px] rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-sm text-ink hover:bg-white hover:border-slate-300"
-          title="Your model: switch to another, start a new one, import or export"
+          title={tr("Your model: switch to another, start a new one, import or export")}
           button={<>
             <FolderOpen size={15} className="text-lagoon-700 shrink-0" />
             <span className="truncate font-medium">{activeModelName}</span>
             <ChevronDown size={13} className="shrink-0" />
           </>}
           items={[
-            { icon: FolderOpen, label: "My models", hint: "Open another model, start a new one, rename, copy or delete", onClick: () => { saveNow(); setLibraryOpen(true); } },
+            { icon: FolderOpen, label: tr("My models"), hint: tr("Open another model, start a new one, rename, copy or delete"), onClick: () => { saveNow(); setLibraryOpen(true); } },
             { divider: true },
-            { icon: Upload, label: "Import JSON", hint: "Open a model from a .json file", onClick: () => fileInputRef.current?.click() },
-            { icon: Merge, label: "Combine maps", hint: "Aggregate several stakeholder maps into one group map", onClick: () => { saveNow(); setCombineOpen(true); } },
-            { icon: Database, label: "Empirical data", hint: "Fuzzify measured data for start values, a check of the model, or suggested weights", onClick: () => setDataOpen(true) },
-            { icon: Download, label: "Export JSON", hint: "Keep a copy, or move the model to another computer", onClick: exportModel },
-            { icon: Table2, label: exportingWorkbook ? "Building workbook…" : "Export Analysis Workbook (.xlsx)", hint: "Model structure, metrics, baseline and every analysis that has been run", onClick: exportAnalysisWorkbook, disabled: exportingWorkbook },
+            { icon: Upload, label: tr("Import JSON"), hint: tr("Open a model from a .json file"), onClick: () => fileInputRef.current?.click() },
+            { icon: Merge, label: tr("Combine maps"), hint: tr("Aggregate several stakeholder maps into one group map"), onClick: () => { saveNow(); setCombineOpen(true); } },
+            { icon: Database, label: tr("Empirical data"), hint: tr("Fuzzify measured data for start values, a check of the model, or suggested weights"), onClick: () => setDataOpen(true) },
+            { icon: Download, label: tr("Export JSON"), hint: tr("Keep a copy, or move the model to another computer"), onClick: exportModel },
+            { icon: Table2, label: exportingWorkbook ? tr("Building workbook…") : tr("Export Analysis Workbook (.xlsx)"), hint: tr("Model structure, metrics, baseline and every analysis that has been run"), onClick: exportAnalysisWorkbook, disabled: exportingWorkbook },
           ]}
         />
         {saveFailed ? (
           <span className="text-[14px] text-amber-700 flex items-center gap-1" title="This browser refused to store the model (storage blocked or full). Use Export JSON to keep a copy.">
-            <Info size={12} />Not saved: use Export JSON
+            <Info size={12} />{tr("Not saved: use Export JSON")}
           </span>
         ) : savedAt && (
           <span className="hidden lg:flex text-[14px] text-slate-500 items-center gap-1" title="Your models are saved automatically in this browser. Use Export JSON to keep a file copy or move a model to another computer.">
-            <Check size={12} className="text-lagoon-600" />Saved {new Date(savedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            <Check size={12} className="text-lagoon-600" />{tr("Saved")} {new Date(savedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
           </span>
         )}
         <div className="ml-auto flex items-center gap-1.5 sm:gap-3">
+          <div className="inline-flex rounded-md border border-slate-200 overflow-hidden text-[13px] font-semibold" role="group" aria-label={tr("Language")}>
+            {[["en", "EN"], ["nl", "NL"]].map(([code, lbl]) => (
+              <button key={code} onClick={() => { if (code === getLang()) return; saveNow(); setLang(code); window.location.reload(); }} aria-pressed={getLang() === code}
+                title={code === "nl" ? "Nederlands" : "English"} className={`px-2 py-1 ${getLang() === code ? "bg-ink text-white" : "bg-white text-slate-700 hover:bg-slate-50"}`}>{lbl}</button>
+            ))}
+          </div>
           <label
             className="inline-flex items-center gap-2 cursor-pointer select-none text-sm text-slate-700 hover:text-ink"
             title={basic ? "Show every analysis tab, the analysis scope, module folding and the simulation settings" : "Back to the essentials: building a map, and seeing where it settles and what scenarios change"}
           >
-            <span className="hidden sm:inline">Advanced tools</span>
+            <span className="hidden sm:inline">{tr("Advanced tools")}</span>
             <button
               role="switch" aria-checked={!basic} aria-label="Advanced tools"
               onClick={() => setUiLevel(basic ? "advanced" : "basic")}
@@ -15074,17 +15081,17 @@ function SpaghettiEngineApp() {
           </label>
           <TopBarMenu
             buttonClass={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm ${gameOpen ? "bg-coral-500 text-white border-coral-500 font-semibold" : "border-slate-200 text-ink hover:bg-slate-50"}`}
-            title="Help: the Getting started guide, the Meinweg game, and the documentation"
+            title={tr("Help: the Getting started guide, the Meinweg game, and the documentation")}
             width="w-96"
             button={<>
-              <HelpCircle size={15} className={gameOpen ? "text-white" : "text-coral-600"} /><span className="hidden sm:inline">Help</span><ChevronDown size={13} />
+              <HelpCircle size={15} className={gameOpen ? "text-white" : "text-coral-600"} /><span className="hidden sm:inline">{tr("Help")}</span><ChevronDown size={13} />
             </>}
             items={[
-              { icon: Compass, label: `Getting started guide (${guideSteps.filter((st) => st.done).length} of ${guideSteps.length} done)`, hint: "The first steps of building a map, one at a time", onClick: () => { setGameOpen(false); setGuide({ open: true, collapsed: false }); } },
-              { icon: Gamepad2, label: gameOpen ? "Close the Meinweg game" : "Play the Meinweg game", hint: "A 30-minute tutorial: build your own model of a national park in trouble", onClick: () => setGameOpen(!gameOpen) },
-              { icon: Users, label: workshopStep !== null ? "Workshop agenda" : "Prepare a workshop", hint: "Plan a workshop with this model, then run it step by step with the group", onClick: openWorkshopPlanner },
+              { icon: Compass, label: tr("Getting started guide ({done} of {all} done)", { done: guideSteps.filter((st) => st.done).length, all: guideSteps.length }), hint: tr("The first steps of building a map, one at a time"), onClick: () => { setGameOpen(false); setGuide({ open: true, collapsed: false }); } },
+              { icon: Gamepad2, label: gameOpen ? tr("Close the Meinweg game") : tr("Play the Meinweg game"), hint: tr("A 30-minute tutorial: build your own model of a national park in trouble"), onClick: () => setGameOpen(!gameOpen) },
+              { icon: Users, label: workshopStep !== null ? tr("Workshop agenda") : tr("Prepare a workshop"), hint: tr("Plan a workshop with this model, then run it step by step with the group"), onClick: openWorkshopPlanner },
               { divider: true },
-              { icon: Info, label: "About & documentation", hint: `What the tool is for, the user manual, and contact. Version ${APP_VERSION}`, onClick: () => setTab("about") },
+              { icon: Info, label: tr("About & documentation"), hint: tr("What the tool is for, the user manual, and contact. Version {v}", { v: APP_VERSION }), onClick: () => setTab("about") },
             ]}
           />
         </div>
@@ -15105,10 +15112,10 @@ function SpaghettiEngineApp() {
       {restoreNotice && !gameMode && (
         <div className="flex items-center gap-2 px-3 sm:px-5 py-1.5 text-[14px] bg-lagoon-50 border-b border-lagoon-100 text-ink"
           title={`Opened from this browser${restored?.savedAt ? `, as saved on ${new Date(restored.savedAt).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}` : ""}. Analysis results are not saved, so re-run any analysis you need.`}>
-          <span className="min-w-0 truncate">Welcome back to <strong>{activeModelName}</strong> <span className="text-slate-500">({concepts.length} concept{concepts.length === 1 ? "" : "s"})</span></span>
+          <span className="min-w-0 truncate">{tr("Welcome back to")} <strong>{activeModelName}</strong> <span className="text-slate-500">({concepts.length} {concepts.length === 1 ? tr("concept") : tr("concepts")})</span></span>
           <span className="ml-auto flex items-center gap-1.5 shrink-0">
-            <button onClick={() => { setRestoreNotice(false); saveNow(); setLibraryOpen(true); }} className="px-2.5 py-0.5 rounded-full border border-lagoon-200 bg-white text-lagoon-800 hover:border-lagoon-400">Other model</button>
-            <button onClick={() => newModel()} className="hidden sm:inline px-2.5 py-0.5 rounded-full border border-lagoon-200 bg-white text-lagoon-800 hover:border-lagoon-400">New model</button>
+            <button onClick={() => { setRestoreNotice(false); saveNow(); setLibraryOpen(true); }} className="px-2.5 py-0.5 rounded-full border border-lagoon-200 bg-white text-lagoon-800 hover:border-lagoon-400">{tr("Other model")}</button>
+            <button onClick={() => newModel()} className="hidden sm:inline px-2.5 py-0.5 rounded-full border border-lagoon-200 bg-white text-lagoon-800 hover:border-lagoon-400">{tr("New model")}</button>
             <button onClick={() => setRestoreNotice(false)} className="p-1 rounded-full text-slate-500 hover:text-ink hover:bg-white" aria-label="Dismiss" title="Continue with this model"><X size={15} /></button>
           </span>
         </div>
@@ -15312,7 +15319,7 @@ function SpaghettiEngineApp() {
             <div className="text-[14px] text-slate-600">
               <div className="flex items-center gap-1.5">
                 <span className={`w-2 h-2 rounded-full ${viewInfo.isFiltered ? "bg-amber-500" : "bg-lagoon-600"}`} />
-                <span>Analysing <strong className="text-ink">{viewInfo.label}</strong></span>
+                <span>{tr("Analysing")} <strong className="text-ink">{viewInfo.label}</strong></span>
               </div>
               {modules.length > 0 && (
                 <button onClick={() => setScopeOpen((o) => !o)} className="mt-1 text-lagoon-700 hover:underline">{scopeOpen ? "Close scope options" : "Change scope"}</button>
@@ -15322,7 +15329,7 @@ function SpaghettiEngineApp() {
           <button
             onClick={() => setTab("about")}
             className={`flex items-center gap-2 text-[15px] ${tab === "about" ? "font-semibold text-ink" : "text-slate-700 hover:text-ink"}`}
-          ><Info size={16} className="text-coral-700" />About &amp; documentation</button>
+          ><Info size={16} className="text-coral-700" />{tr("About & documentation")}</button>
         </div>
       </nav>
       <div className="se-content flex-1 min-w-0 overflow-auto p-3 sm:p-5 bg-[#f5f7f7]" data-tone={activeGroup.tone || "about"}>
@@ -15922,8 +15929,8 @@ function SpaghettiEngineApp() {
 
       <div className={`px-3 sm:px-5 py-1.5 border-t border-slate-200 bg-[#f5f7f7] text-[14.5px] text-slate-600 items-center gap-1.5 ${gameMode ? "hidden" : "flex"}`}>
         <Info size={12} className="shrink-0" />
-        <span className="flex-1 truncate" title="Prototype scope: runs entirely in your browser. Your model is saved automatically in this browser only; use Export JSON in the model menu to keep a copy or move it to another computer. Analysis results are not saved and are re-run on demand. Figures export as PNG, SVG or PDF; full reports in Word or PowerPoint are not yet available.">Prototype: runs in your browser, and your model is saved in this browser only. To keep a copy, use Export JSON in the model menu at the top left.</span>
-        <a href={`mailto:${CONTACT.email}?subject=${encodeURIComponent(`The Spaghetti Engine v${APP_VERSION}`)}`} className="shrink-0 text-lagoon-700 hover:underline" title={`Contact ${CONTACT.name}`}>Contact: {CONTACT.name}</a>
+        <span className="flex-1 truncate" title={tr("Prototype scope: runs entirely in your browser. Your model is saved automatically in this browser only; use Export JSON in the model menu to keep a copy or move it to another computer. Analysis results are not saved and are re-run on demand. Figures export as PNG, SVG or PDF; full reports in Word or PowerPoint are not yet available.")}>{tr("Prototype: runs in your browser, and your model is saved in this browser only. To keep a copy, use Export JSON in the model menu at the top left.")}</span>
+        <a href={`mailto:${CONTACT.email}?subject=${encodeURIComponent(`The Spaghetti Engine v${APP_VERSION}`)}`} className="shrink-0 text-lagoon-700 hover:underline" title={`${tr("Contact")} ${CONTACT.name}`}>{tr("Contact")}: {CONTACT.name}</a>
       </div>
     </div>
   );
