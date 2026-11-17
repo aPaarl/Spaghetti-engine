@@ -1852,5 +1852,7 @@ const NL = {
   "Vision": "Toekomstbeeld",
   "Describe the future you want, then work back to the steps that lead there.": "Beschrijf de toekomst die u wilt, en werk terug naar de stappen die daarheen leiden.",
   "Vision and backcasting": "Toekomstbeeld en backcasting",
+  "Forward casting": "Vooruitkijken",
+  "Backward": "Terug",
 };
 export default NL;

@@ -13945,7 +13945,7 @@ const TAB_GROUPS = [
     ],
   },
   {
-    id: "transition", label: tr("Transitions from today"), short: tr("Forward"), icon: TrendingUp, tone: "violet",
+    id: "transition", label: tr("Forward casting"), short: tr("Forward"), icon: TrendingUp, tone: "violet",
     hint: tr("Start from today and look forward: tipping points and the best order of measures. Mainly for the analyst."),
     tabs: [
       { id: "transition", label: tr("Transition Point Analysis"), icon: TrendingUp },
@@ -13953,7 +13953,7 @@ const TAB_GROUPS = [
     ],
   },
   {
-    id: "vision", label: tr("Back from a vision"), short: tr("Vision"), icon: Flag, tone: "rose",
+    id: "vision", label: tr("Backcasting"), short: tr("Backward"), icon: Flag, tone: "rose",
     hint: tr("Describe the future you want, then work back to the steps that lead there."),
     tabs: [
       { id: "backcasting", label: tr("Vision and backcasting"), icon: Flag },
