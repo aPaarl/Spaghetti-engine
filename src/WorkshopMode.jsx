@@ -119,6 +119,19 @@ export const WORKSHOP_BLOCKS = [
     output: "A preferred sequence of measures.",
     materials: "",
     notes: "Prepare the candidate measures and the outcome weights in advance. Show the top three pathways, not the whole table." },
+  { id: "envision", title: "Draw the future you want", minutes: 30, kind: "build", format: "Small groups", tab: "network",
+    prompt: "Imagine the area in 2050, the way you would like it to be. What is different from today: which factors are higher or lower, which links are new, stronger or gone, and what new actors or practices exist?",
+    output: "An envisioned version of the map.",
+    materials: "A copy of today's map for each group",
+    notes: "Make the copy first (Backcasting tab, Create an envisioned version) and open it. Change values and links; do not redraw the map from scratch, so the two maps stay comparable.",
+    method: "Visioning describes a desired future state without asking first whether it is reachable, which frees participants from the limits of current trends (Robinson, 1990). Working on a copy of today's map keeps the vision comparable with the present." },
+  { id: "backcast", title: "Work back from the vision", minutes: 25, kind: "analyse", format: "Whole group", tab: "backcasting",
+    prompt: "What has to be in place just before the vision is reached, and what has to come before that? Does this order make sense to you?",
+    output: "An ordered set of steps from today to the vision, with milestones.",
+    materials: "",
+    notes: "Run the Backcasting tab beforehand. Read the path from the vision back to today, and ask the group whether each step is realistic and who would take it.",
+    method: "Backcasting works back from a desired future to the present to identify the steps that connect them (Robinson, 1990). The tool proposes an order by searching for the steps that bring today's map closest to the envisioned one; the group judges its feasibility.",
+    check: ({ models }) => (models >= 2 ? null : "There is no envisioned map yet. Make one in the Backcasting tab.") },
   { id: "combine", title: "Compare the individual maps", minutes: 25, kind: "analyse", format: "Whole group", action: "combine",
     method: "Individual maps are combined into a group map by averaging the weights over matched concepts (Kosko, 1988; Özesmi and Özesmi, 2004). Links on which participants disagree in sign are discussed rather than averaged away.",
     prompt: "Here are your maps side by side. Where do you agree, and where do the arrows point in opposite directions?",
@@ -156,6 +169,8 @@ export const WORKSHOP_TEMPLATES = [
     blocks: ["welcome", "intro", "check", "levers", "baseline", "break", "scenarios", "transition", "reflect"] },
   { id: "compare", title: "Compare stakeholder views", length: "about 2.5 hours", text: "Everyone draws a map of their own; the maps are then combined and discussed.",
     blocks: ["welcome", "intro", "individual", "break", "combine", "discussion", "baseline", "reflect"] },
+  { id: "backcasting", title: "From today to a shared vision", length: "about 3 hours", text: "Map today's system, draw the future the group wants, and work back to the steps that connect them.",
+    blocks: ["welcome", "intro", "check", "baseline", "break", "envision", "backcast", "discussion", "reflect"] },
   { id: "short", title: "A first introduction", length: "about 1 hour", text: "A short session to show what mapping can do, on a small prepared map.",
     blocks: ["welcome", "intro", "relationships", "baseline", "reflect"] },
 ];
@@ -402,6 +417,7 @@ const REFS = {
   jetter2014: "Jetter, A. J., & Kok, K. (2014). Fuzzy cognitive maps for futures studies: A methodological assessment of concepts and methods. Futures, 61, 45-57. https://doi.org/10.1016/j.futures.2014.05.002",
   kok2009: "Kok, K. (2009). The potential of fuzzy cognitive maps for semi-quantitative scenario development, with an example from Brazil. Global Environmental Change, 19(1), 122-133. https://doi.org/10.1016/j.gloenvcha.2008.08.003",
   kosko1986: "Kosko, B. (1986). Fuzzy cognitive maps. International Journal of Man-Machine Studies, 24(1), 65-75. https://doi.org/10.1016/S0020-7373(86)80040-2",
+  robinson1990: "Robinson, J. B. (1990). Futures under glass: A recipe for people who hate to predict. Futures, 22(8), 820-842. https://doi.org/10.1016/0016-3287(90)90018-D",
   kosko1988: "Kosko, B. (1988). Hidden patterns in combined and adaptive knowledge networks. International Journal of Approximate Reasoning, 2(4), 377-393. https://doi.org/10.1016/0888-613X(88)90111-9",
   ozesmi2004: "Özesmi, U., & Özesmi, S. L. (2004). Ecological models based on people's knowledge: A multi-step fuzzy cognitive mapping approach. Ecological Modelling, 176(1-2), 43-64. https://doi.org/10.1016/j.ecolmodel.2003.10.027",
   voinov2010: "Voinov, A., & Bousquet, F. (2010). Modelling with stakeholders. Environmental Modelling & Software, 25(11), 1268-1281. https://doi.org/10.1016/j.envsoft.2010.03.007",
@@ -420,7 +436,7 @@ function workshopProtocol(plan, warnings, modelName, appVersion) {
     if (isPause(s)) return `<tr class="pause"><td class="t">${from || ""}</td><td colspan="3">${esc(s.title)}, ${esc(s.minutes)} min</td></tr>`;
     return `<tr><td class="t">${from || i + 1}</td><td><b>${esc(s.title)}</b><br><span class="small">${esc(fmtF(s.format))}, ${esc(s.minutes)} min</span></td><td>${esc(m)}</td><td>${esc(s.output)}</td></tr>`;
   }).join("");
-  const cited = ["kosko1986", "voinov2010", "ozesmi2004", "gray2015", "kok2009", "jetter2014", ...(combining ? ["kosko1988"] : [])];
+  const cited = ["kosko1986", "voinov2010", "ozesmi2004", "gray2015", "kok2009", "jetter2014", ...(combining ? ["kosko1988"] : []), ...(has("envision", "backcast") ? ["robinson1990"] : [])];
   const facts = [[tr("Aim"), plan.aim], [tr("Participants"), plan.participants], [tr("Facilitation"), [team.facilitator, team.cofacilitator].filter(Boolean).join(getLang() === "nl" ? " en " : " and ")], [tr("Notes and tool"), team.notetaker], [tr("Duration"), fmtMin(total)], [tr("Model"), `${modelName}, ${tr("built in the Spaghetti Engine")}${appVersion ? ` (${tr("version")} ${appVersion})` : ""}`]].filter(([, v]) => v);
 
   const body = `${headerBlock(plan, tr("Workshop protocol"))}
@@ -755,7 +771,7 @@ export function WorkshopPlanner({ plan, setPlan, modelName, ctx, onStart, onClos
 
 const TAB_LABEL = {
   editor: "Model editor", network: "Network", metrics: "Influence Metrics", equilibrium: "Baseline Equilibrium",
-  scenarios: "Scenarios & Simulation", transition: "Transition Point Analysis", pathways: "Transition Pathways",
+  scenarios: "Scenarios & Simulation", transition: "Transition Point Analysis", pathways: "Transition Pathways", backcasting: "Backcasting",
 };
 
 // The bar shown during the workshop, under the top bar.

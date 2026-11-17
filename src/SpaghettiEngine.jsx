@@ -6,7 +6,7 @@ import {
   Undo2, Redo2, Copy, Maximize2, HelpCircle, SlidersHorizontal,
   BarChart3, LayoutGrid, GitBranch, Shuffle, Activity, FlaskConical, TrendingUp,
   Eye, EyeOff, Route, Layers, Waypoints, PanelLeftClose, Search, Dices, Sparkles, FolderOpen, Pencil, CopyPlus, FilePlus, Compass, CheckCircle2, Circle, Presentation, Hourglass, Minus,
-  Merge, ArrowRight, Users, Database,
+  Merge, ArrowRight, Users, Database, Flag,
 } from "lucide-react";
 import {
   LineChart, Line, BarChart, Bar, Cell, LabelList, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
@@ -42,6 +42,7 @@ import { BrandMark } from "./brand.jsx";
 import CombineMapsDialog from "./CombineMapsDialog.jsx";
 import { t as tr, getLang, setLang } from "./i18n.js";
 import EmpiricalDataDialog from "./EmpiricalDataDialog.jsx";
+import BackcastingTab from "./BackcastingTab.jsx";
 import { WorkshopPlanner, WorkshopRunBar, loadWorkshop, saveWorkshop, newWorkshopPlan, WORKSHOP_BLOCK_TARGETS } from "./WorkshopMode.jsx";
 import { TableToolsHost } from "./TableEditor.jsx";
 
@@ -13948,6 +13949,7 @@ const TAB_GROUPS = [
     tabs: [
       { id: "transition", label: tr("Transition Point Analysis"), icon: TrendingUp },
       { id: "pathways", label: tr("Transition Pathways"), icon: Waypoints },
+      { id: "backcasting", label: tr("Backcasting"), icon: Flag },
     ],
   },
   {
@@ -14906,6 +14908,17 @@ function SpaghettiEngineApp() {
   };
   const renameActiveOr = (id, name) => setLibrary(renameModel(id, name));
   const duplicateInLibrary = (id) => { if (id === activeModelId) saveNow(); setLibrary(duplicateModel(id)); };
+  // Backcasting: a copy of the open map becomes the envisioned system, and is
+  // opened so it can be changed into the vision.
+  const readModelForBackcast = useCallback((id) => cleanStored(loadModel(id)), []);
+  const createVision = () => {
+    saveNow();
+    const r = createModel(`${activeModelName} (vision)`, { concepts, edges, scenarios, settings });
+    setLibrary(r.index);
+    switchToModel(r.id, cleanStored(r.payload));
+    setTab("network");
+    notify(tr("This copy is the envisioned system. Change it into the system you want: values, relationships, new or removed concepts. Then open today's model again and go to Backcasting."), { kind: "note", title: tr("Envisioned version created") });
+  };
   const deleteFromLibrary = async (id) => {
     const m = library?.models.find((x) => x.id === id);
     if (!m) return;
@@ -15914,6 +15927,15 @@ function SpaghettiEngineApp() {
         {tab === "about" && <AboutTab onOpenTab={(t) => { if (basic && !BASIC_TABS.has(t)) setUiLevel("advanced"); setTab(t); }} onOpenCombine={() => { saveNow(); setCombineOpen(true); }} onOpenWorkshop={openWorkshopPlanner} onOpenGuide={() => { setGameOpen(false); setGuide({ open: true, collapsed: false }); }} onOpenGame={() => setGameOpen(true)} />}
 
         {/* ============================= TRANSITION PATHWAYS ============================= */}
+        {tab === "backcasting" && (
+          <BackcastingTab
+            concepts={aConcepts} edges={aEdges} settings={settings}
+            library={library} activeModelId={activeModelId} activeModelName={activeModelName}
+            readModel={readModelForBackcast} simulate={simulate}
+            onCreateVision={createVision} onOpenModel={openModel}
+          />
+        )}
+
         {tab === "pathways" && (
           <TransitionPathwaysTab
             concepts={aConcepts} edges={aEdges} settings={settings}
