@@ -8,11 +8,12 @@
 import React, { useMemo, useState } from "react";
 import { Merge, X, AlertTriangle } from "lucide-react";
 import { aggregateMaps, compareMaps, matchConcepts, DEFAULT_AGGREGATION } from "./mapAggregation.js";
+import { t as tr } from "./i18n.js";
 
 const RULES = [
-  { id: "all", label: "All maps", hint: "A map without the relationship counts as 0 (Kosko 1988). Relationships only a few people drew become weaker." },
-  { id: "both", label: "Maps with both concepts", hint: "Only maps that contain both concepts count; a map that has them but no link between them counts as 0." },
-  { id: "present", label: "Maps with the relationship", hint: "Only the maps that drew the relationship count. Keeps each relationship at the strength its authors gave it." },
+  { id: "all", label: tr("All maps"), hint: tr("A map without the relationship counts as 0 (Kosko 1988). Relationships only a few people drew become weaker.") },
+  { id: "both", label: tr("Maps with both concepts"), hint: tr("Only maps that contain both concepts count; a map that has them but no link between them counts as 0.") },
+  { id: "present", label: tr("Maps with the relationship"), hint: tr("Only the maps that drew the relationship count. Keeps each relationship at the strength its authors gave it.") },
 ];
 
 const pct = (v) => (v === null || v === undefined ? "-" : `${Math.round(v * 100)}%`);
@@ -23,7 +24,7 @@ export default function CombineMapsDialog({ library, activeId, readModel, onCrea
   const [cred, setCred] = useState({});
   const [opts, setOpts] = useState(DEFAULT_AGGREGATION);
   const [merges, setMerges] = useState({});
-  const [name, setName] = useState("Combined map");
+  const [name, setName] = useState(tr("Combined map"));
   const [showAll, setShowAll] = useState(false);
 
   // the picked models' contents, in the order shown in the list
@@ -54,7 +55,7 @@ export default function CombineMapsDialog({ library, activeId, readModel, onCrea
 
   const create = () => {
     if (!result) return;
-    onCreate(name.trim() || "Combined map", { concepts: result.concepts, edges: result.edges, settings: result.settings }, result.report);
+    onCreate(name.trim() || tr("Combined map"), { concepts: result.concepts, edges: result.edges, settings: result.settings }, result.report);
   };
 
   const box = "border border-slate-200 rounded-lg";
@@ -64,17 +65,17 @@ export default function CombineMapsDialog({ library, activeId, readModel, onCrea
         onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}>
         <div className="flex items-center justify-between gap-3 px-5 pt-4 pb-3 border-b border-slate-200">
           <div>
-            <h2 id="se-combine-title" className="text-base font-semibold text-neutral-900 flex items-center gap-2"><Merge size={17} className="text-lagoon-700" />Combine maps</h2>
-            <p className="text-sm text-neutral-700 mt-0.5">Aggregate several stakeholder maps into one group map. Concepts with the same name are matched, and relationship weights are averaged (Kosko 1988; Özesmi and Özesmi 2004). The maps you pick are not changed.</p>
+            <h2 id="se-combine-title" className="text-base font-semibold text-neutral-900 flex items-center gap-2"><Merge size={17} className="text-lagoon-700" />{tr("Combine maps")}</h2>
+            <p className="text-sm text-neutral-700 mt-0.5">{tr("Aggregate several stakeholder maps into one group map. Concepts with the same name are matched, and relationship weights are averaged (Kosko 1988; Özesmi and Özesmi 2004). The maps you pick are not changed.")}</p>
           </div>
-          <button onClick={onClose} className="text-neutral-600 hover:text-neutral-900" aria-label="Close"><X size={16} /></button>
+          <button onClick={onClose} className="text-neutral-600 hover:text-neutral-900" aria-label={tr("Close")}><X size={16} /></button>
         </div>
 
         <div className="overflow-auto px-5 py-4 space-y-5">
           {/* 1. maps and credibility */}
           <section>
-            <h3 className="text-sm font-semibold text-neutral-900 mb-1.5">1. Maps to combine</h3>
-            <p className="text-[13px] text-neutral-700 mb-2">Credibility weights how much each map counts (1 = equal weight; 2 = twice as much; 0 = left out of the averages).</p>
+            <h3 className="text-sm font-semibold text-neutral-900 mb-1.5">{tr("1. Maps to combine")}</h3>
+            <p className="text-[13px] text-neutral-700 mb-2">{tr("Credibility weights how much each map counts (1 = equal weight; 2 = twice as much; 0 = left out of the averages).")}</p>
             <ul className={`${box} divide-y divide-slate-100 max-h-56 overflow-auto`}>
               {models.map((m) => {
                 const on = picked.includes(m.id);
@@ -97,13 +98,13 @@ export default function CombineMapsDialog({ library, activeId, readModel, onCrea
                 );
               })}
             </ul>
-            {!ready && <p className="text-[13px] text-amber-800 mt-1.5">Pick at least two maps. To combine maps from other people, import their .json files first (Import JSON in the model menu).</p>}
+            {!ready && <p className="text-[13px] text-amber-800 mt-1.5">{tr("Pick at least two maps. To combine maps from other people, import their .json files first (Import JSON in the model menu).")}</p>}
           </section>
 
           {ready && (<>
             {/* 2. averaging rule */}
             <section>
-              <h3 className="text-sm font-semibold text-neutral-900 mb-1.5">2. How relationships are averaged</h3>
+              <h3 className="text-sm font-semibold text-neutral-900 mb-1.5">{tr("2. How relationships are averaged")}</h3>
               <div className="grid sm:grid-cols-3 gap-2">
                 {RULES.map((r) => (
                   <label key={r.id} className={`${box} p-2.5 cursor-pointer ${opts.rule === r.id ? "border-lagoon-500 bg-lagoon-50" : "hover:bg-slate-50"}`}>
@@ -131,14 +132,14 @@ export default function CombineMapsDialog({ library, activeId, readModel, onCrea
             {/* 3. concept matching */}
             <section>
               <div className="flex items-baseline justify-between gap-3 mb-1.5">
-                <h3 className="text-sm font-semibold text-neutral-900">3. Matching concepts</h3>
-                <label className="text-[13px] text-neutral-800 flex items-center gap-1.5"><input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />Show concepts found in every map too</label>
+                <h3 className="text-sm font-semibold text-neutral-900">{tr("3. Matching concepts")}</h3>
+                <label className="text-[13px] text-neutral-800 flex items-center gap-1.5"><input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />{tr("Show concepts found in every map too")}</label>
               </div>
-              <p className="text-[13px] text-neutral-700 mb-2">Concepts are matched on their name, ignoring capitals and punctuation. When two names mean the same thing (for example "Farm income" and "Income of farmers"), join one into the other.</p>
+              <p className="text-[13px] text-neutral-700 mb-2">{tr("Concepts are matched on their name, ignoring capitals and punctuation. When two names mean the same thing (for example \"Farm income\" and \"Income of farmers\"), join one into the other.")}</p>
               <div className={`${box} max-h-64 overflow-auto`}>
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50 text-left text-[13px] text-neutral-800 sticky top-0">
-                    <tr><th className="px-3 py-1.5 font-medium">Concept</th><th className="px-3 py-1.5 font-medium">Found in</th><th className="px-3 py-1.5 font-medium">Same as</th></tr>
+                    <tr><th className="px-3 py-1.5 font-medium">{tr("Concept")}</th><th className="px-3 py-1.5 font-medium">{tr("Found in")}</th><th className="px-3 py-1.5 font-medium">{tr("Same as")}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {shownGroups.map((g) => (
@@ -147,7 +148,7 @@ export default function CombineMapsDialog({ library, activeId, readModel, onCrea
                         <td className="px-3 py-1.5 text-neutral-800">{g.mapIndexes.length} of {maps.length}: <span className="text-neutral-600">{g.mapIndexes.map((mi) => maps[mi].name).join(", ")}</span></td>
                         <td className="px-3 py-1.5">
                           {g.ownKeys.length > 1 ? (
-                            <button onClick={() => separate(g)} className="text-[13px] text-lagoon-700 underline hover:no-underline">Separate again</button>
+                            <button onClick={() => separate(g)} className="text-[13px] text-lagoon-700 underline hover:no-underline">{tr("Separate again")}</button>
                           ) : (
                             <select value="" onChange={(e) => joinInto(g, e.target.value)} className="border border-slate-300 rounded px-1.5 py-0.5 text-sm max-w-[220px]">
                               <option value="">(its own concept)</option>
@@ -157,7 +158,7 @@ export default function CombineMapsDialog({ library, activeId, readModel, onCrea
                         </td>
                       </tr>
                     ))}
-                    {!shownGroups.length && <tr><td colSpan={3} className="px-3 py-2 text-neutral-700">Every concept is found in every map.</td></tr>}
+                    {!shownGroups.length && <tr><td colSpan={3} className="px-3 py-2 text-neutral-700">{tr("Every concept is found in every map.")}</td></tr>}
                   </tbody>
                 </table>
               </div>
@@ -165,12 +166,12 @@ export default function CombineMapsDialog({ library, activeId, readModel, onCrea
 
             {/* 4. how alike the maps are */}
             <section>
-              <h3 className="text-sm font-semibold text-neutral-900 mb-1.5">4. How alike the maps are</h3>
+              <h3 className="text-sm font-semibold text-neutral-900 mb-1.5">{tr("4. How alike the maps are")}</h3>
               <p className="text-[13px] text-neutral-700 mb-2">Shared concepts and shared relationships are Jaccard indices (shared / all). Same sign is the share of shared relationships that point the same way. Weight difference is the mean absolute difference in weight among the concepts both maps contain (0 = identical, 2 = opposite).</p>
               <div className={`${box} overflow-auto`}>
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50 text-left text-[13px] text-neutral-800">
-                    <tr><th className="px-3 py-1.5 font-medium">Maps</th><th className="px-3 py-1.5 font-medium text-right">Shared concepts</th><th className="px-3 py-1.5 font-medium text-right">Shared relationships</th><th className="px-3 py-1.5 font-medium text-right">Same sign</th><th className="px-3 py-1.5 font-medium text-right">Weight difference</th></tr>
+                    <tr><th className="px-3 py-1.5 font-medium">{tr("Maps")}</th><th className="px-3 py-1.5 font-medium text-right">{tr("Shared concepts")}</th><th className="px-3 py-1.5 font-medium text-right">{tr("Shared relationships")}</th><th className="px-3 py-1.5 font-medium text-right">{tr("Same sign")}</th><th className="px-3 py-1.5 font-medium text-right">{tr("Weight difference")}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {pairs.map((p) => (
@@ -189,7 +190,7 @@ export default function CombineMapsDialog({ library, activeId, readModel, onCrea
 
             {/* 5. the result */}
             <section>
-              <h3 className="text-sm font-semibold text-neutral-900 mb-1.5">5. Combined map</h3>
+              <h3 className="text-sm font-semibold text-neutral-900 mb-1.5">{tr("5. Combined map")}</h3>
               <p className="text-sm text-neutral-900">
                 {result.report.concepts} concepts ({result.report.conceptsInAll} in every map, {result.report.conceptsInOne} in one map only) and {result.report.relationships} of {result.report.candidateRelationships} relationships.
                 {result.report.dropped.fewMaps > 0 && ` ${result.report.dropped.fewMaps} left out because too few maps drew them.`}
@@ -214,8 +215,8 @@ export default function CombineMapsDialog({ library, activeId, readModel, onCrea
           <label className="flex items-center gap-2 text-sm text-neutral-900 mr-auto">Name
             <input value={name} onChange={(e) => setName(e.target.value)} className="border border-slate-300 rounded px-2 py-1 text-sm w-56" />
           </label>
-          <button onClick={onClose} className="px-3 py-1.5 rounded-md border border-slate-300 text-sm text-neutral-900 hover:bg-slate-50">Cancel</button>
-          <button onClick={create} disabled={!ready || !result?.concepts.length} className="px-3 py-1.5 rounded-md bg-lagoon-700 text-white text-sm hover:bg-lagoon-800 disabled:opacity-40">Create combined model</button>
+          <button onClick={onClose} className="px-3 py-1.5 rounded-md border border-slate-300 text-sm text-neutral-900 hover:bg-slate-50">{tr("Cancel")}</button>
+          <button onClick={create} disabled={!ready || !result?.concepts.length} className="px-3 py-1.5 rounded-md bg-lagoon-700 text-white text-sm hover:bg-lagoon-800 disabled:opacity-40">{tr("Create combined model")}</button>
         </div>
       </div>
     </div>

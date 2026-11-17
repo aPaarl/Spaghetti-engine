@@ -9,11 +9,12 @@
 import React, { useMemo, useRef, useState } from "react";
 import { Database, X, Upload, Download, Check, AlertTriangle } from "lucide-react";
 import { parseTable, matchColumns, defaultSpec, centersFor, fuzzify, fuzzifiedTable, compareWithModel, suggestWeights, blendWeight, TERM_SETS, quantile } from "./empiricalData.js";
+import { t as tr } from "./i18n.js";
 
 const METHODS = [
-  { id: "minmax", label: "Linear between two values" },
-  { id: "percentile", label: "Linear between the 5th and 95th percentile" },
-  { id: "linguistic", label: "Linguistic terms (low, medium, high)" },
+  { id: "minmax", label: tr("Linear between two values") },
+  { id: "percentile", label: tr("Linear between the 5th and 95th percentile") },
+  { id: "linguistic", label: tr("Linguistic terms (low, medium, high)") },
 ];
 const r2 = (v) => (Number.isFinite(v) ? (Math.round(v * 100) / 100).toFixed(2) : "-");
 const fmt = (v) => (Number.isFinite(v) ? String(Math.round(v * 1000) / 1000) : "-");
@@ -106,22 +107,22 @@ export default function EmpiricalDataDialog({ concepts, edges, settings, simulat
           <div className="flex items-center gap-3">
             <span className="w-10 h-10 rounded-xl bg-lagoon-700 text-white flex items-center justify-center shrink-0"><Database size={20} /></span>
             <div>
-              <h2 id="se-data-title" className="se-display text-xl font-bold text-neutral-900">Empirical data</h2>
-              <p className="text-sm text-neutral-700">Bring measured values onto the scale of the map, and use them for start values, to check the model, or to suggest weights.</p>
+              <h2 id="se-data-title" className="se-display text-xl font-bold text-neutral-900">{tr("Empirical data")}</h2>
+              <p className="text-sm text-neutral-700">{tr("Bring measured values onto the scale of the map, and use them for start values, to check the model, or to suggest weights.")}</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-neutral-600 hover:bg-slate-100" aria-label="Close"><X size={20} /></button>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-neutral-600 hover:bg-slate-100" aria-label={tr("Close")}><X size={20} /></button>
         </div>
 
         <div className="overflow-auto px-6 py-5 space-y-6">
           <section className={box}>
-            <Head n={1} title="Load a table">One column per variable, one row per year or case. A first column with years or names labels the rows. CSV from Excel (comma or semicolon) or pasted cells both work.</Head>
+            <Head n={1} title={tr("Load a table")}>{tr("One column per variable, one row per year or case. A first column with years or names labels the rows. CSV from Excel (comma or semicolon) or pasted cells both work.")}</Head>
             <div className="flex flex-wrap items-start gap-3">
-              <button onClick={() => fileRef.current?.click()} className="px-4 py-2 rounded-lg bg-lagoon-700 text-white text-sm font-semibold hover:bg-lagoon-800 inline-flex items-center gap-2"><Upload size={15} />Choose a CSV file</button>
+              <button onClick={() => fileRef.current?.click()} className="px-4 py-2 rounded-lg bg-lagoon-700 text-white text-sm font-semibold hover:bg-lagoon-800 inline-flex items-center gap-2"><Upload size={15} />{tr("Choose a CSV file")}</button>
               <input ref={fileRef} type="file" accept=".csv,.txt,.tsv" className="hidden" onChange={readFile} />
               <div className="flex-1 min-w-[260px] flex gap-2">
                 <textarea value={paste} onChange={(e) => setPaste(e.target.value)} rows={2} placeholder={"or paste from Excel, e.g.\nYear\tGroundwater level\tGrass yield"} className={`${input} flex-1 font-mono text-xs`} />
-                <button onClick={() => load(paste)} disabled={!paste.trim()} className="px-3 py-1.5 rounded-lg border border-slate-300 text-sm hover:bg-slate-50 disabled:opacity-40 self-start">Read</button>
+                <button onClick={() => load(paste)} disabled={!paste.trim()} className="px-3 py-1.5 rounded-lg border border-slate-300 text-sm hover:bg-slate-50 disabled:opacity-40 self-start">{tr("Read")}</button>
               </div>
             </div>
             {error && <p className="mt-2 text-sm text-red-700">{error}</p>}
@@ -131,17 +132,17 @@ export default function EmpiricalDataDialog({ concepts, edges, settings, simulat
           {table && (
             <section className={box}>
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <Head n={2} title="Match and fuzzify">Each column becomes a concept value. Choose the concept, how the measured values are mapped onto the scale, and whether a higher measurement means a lower concept value.</Head>
+                <Head n={2} title={tr("Match and fuzzify")}>{tr("Each column becomes a concept value. Choose the concept, how the measured values are mapped onto the scale, and whether a higher measurement means a lower concept value.")}</Head>
                 <label className="text-sm text-neutral-800 flex items-center gap-2">Scale
                   <select value={scale} onChange={(e) => { setScale(e.target.value); setComparison(null); setSuggested(null); }} className={input}>
-                    <option value="unit">0 to 1</option><option value="signed">-1 to +1</option>
+                    <option value="unit">{tr("0 to 1")}</option><option value="signed">{tr("-1 to +1")}</option>
                   </select>
                 </label>
               </div>
               <div className="overflow-auto rounded-xl border border-slate-200">
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50 text-left text-[13px] text-neutral-700">
-                    <tr><th className="px-3 py-2 font-medium">Column</th><th className="px-3 py-2 font-medium">Concept</th><th className="px-3 py-2 font-medium">Fuzzification</th><th className="px-3 py-2 font-medium">Reverse</th><th className="px-3 py-2 font-medium">Result</th></tr>
+                    <tr><th className="px-3 py-2 font-medium">{tr("Column")}</th><th className="px-3 py-2 font-medium">{tr("Concept")}</th><th className="px-3 py-2 font-medium">{tr("Fuzzification")}</th><th className="px-3 py-2 font-medium">{tr("Reverse")}</th><th className="px-3 py-2 font-medium">{tr("Result")}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {table.columns.map((col, i) => {
@@ -156,20 +157,20 @@ export default function EmpiricalDataDialog({ concepts, edges, settings, simulat
                               <option value="">(not used)</option>
                               {concepts.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                             </select>
-                            {usedTwice.has(mapping[i]) && <div className="text-[12px] text-amber-800 mt-1">Used by two columns</div>}
+                            {usedTwice.has(mapping[i]) && <div className="text-[12px] text-amber-800 mt-1">{tr("Used by two columns")}</div>}
                           </td>
                           <td className="px-3 py-2 align-top space-y-1.5">
                             <select value={sp.method} onChange={(e) => setSpec(i, { method: e.target.value })} className={`${input} max-w-[250px]`}>
                               {METHODS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
                             </select>
                             {sp.method === "minmax" && (
-                              <div className="flex items-center gap-1.5 text-[13px] text-neutral-700">from <input type="number" value={sp.low} onChange={(e) => setSpec(i, { low: Number(e.target.value) })} className={`${input} w-24`} /> to <input type="number" value={sp.high} onChange={(e) => setSpec(i, { high: Number(e.target.value) })} className={`${input} w-24`} /></div>
+                              <div className="flex items-center gap-1.5 text-[13px] text-neutral-700">{tr("from")} <input type="number" value={sp.low} onChange={(e) => setSpec(i, { low: Number(e.target.value) })} className={`${input} w-24`} /> {tr("to")} <input type="number" value={sp.high} onChange={(e) => setSpec(i, { high: Number(e.target.value) })} className={`${input} w-24`} /></div>
                             )}
                             {sp.method === "percentile" && <div className="text-[13px] text-neutral-700">from {fmt(quantile(col.values, 0.05))} to {fmt(quantile(col.values, 0.95))}</div>}
                             {sp.method === "linguistic" && (
                               <div className="space-y-1">
                                 <select value={sp.centers.length} onChange={(e) => setSpec(i, { centers: centersFor(col.values, Number(e.target.value)) })} className={`${input} text-[13px]`}>
-                                  <option value={3}>3 terms</option><option value={5}>5 terms</option>
+                                  <option value={3}>{tr("3 terms")}</option><option value={5}>{tr("5 terms")}</option>
                                 </select>
                                 <div className="flex flex-wrap gap-1.5">
                                   {sp.centers.map((cv, j) => (
@@ -198,7 +199,7 @@ export default function EmpiricalDataDialog({ concepts, edges, settings, simulat
 
           {table && matched.length > 0 && (
             <section className={box}>
-              <Head n={3} title="Use the data" />
+              <Head n={3} title={tr("Use the data")} />
               <div className="inline-flex gap-1 rounded-xl bg-slate-200/60 p-1 mb-4" role="tablist">
                 {[["start", "Start values"], ["compare", "Compare with the model"], ["weights", "Suggest weights"]].map(([id, label]) => (
                   <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={`px-3.5 py-1.5 rounded-lg text-sm font-medium ${tab === id ? "bg-white shadow-sm text-lagoon-800" : "text-slate-700 hover:bg-white/60"}`}>{label}</button>
@@ -207,9 +208,9 @@ export default function EmpiricalDataDialog({ concepts, edges, settings, simulat
 
               {tab === "start" && (
                 <div className="space-y-3">
-                  <p className="text-sm text-neutral-800">Take the start values of the matched concepts from one row of the data, for example the most recent year. Concepts without data keep their own start value.</p>
+                  <p className="text-sm text-neutral-800">{tr("Take the start values of the matched concepts from one row of the data, for example the most recent year. Concepts without data keep their own start value.")}</p>
                   <label className="text-sm text-neutral-800 flex items-center gap-2">Row {rowSelect(startRow, setStartRow, "Row for the start values")}</label>
-                  <table className="text-sm"><thead><tr className="text-left text-[13px] text-neutral-600"><th className="pr-6 py-1 font-medium">Concept</th><th className="pr-6 py-1 font-medium">Now</th><th className="py-1 font-medium">From the data</th></tr></thead>
+                  <table className="text-sm"><thead><tr className="text-left text-[13px] text-neutral-600"><th className="pr-6 py-1 font-medium">{tr("Concept")}</th><th className="pr-6 py-1 font-medium">{tr("Now")}</th><th className="py-1 font-medium">{tr("From the data")}</th></tr></thead>
                     <tbody>{Object.entries(startValues).map(([id, v]) => <tr key={id}><td className="pr-6 py-0.5">{nameOf(id)}</td><td className="pr-6 tabular-nums">{fmt(concepts.find((c) => c.id === id)?.initialValue)}</td><td className="tabular-nums font-medium">{fmt(v)}</td></tr>)}</tbody>
                   </table>
                   <button onClick={() => onSetStart(startValues, table.labels[startRow])} disabled={!Object.keys(startValues).length} className="px-4 py-2 rounded-lg bg-lagoon-700 text-white text-sm font-semibold hover:bg-lagoon-800 disabled:opacity-40">Set {Object.keys(startValues).length} start values</button>
@@ -218,19 +219,19 @@ export default function EmpiricalDataDialog({ concepts, edges, settings, simulat
 
               {tab === "compare" && (
                 <div className="space-y-3">
-                  <p className="text-sm text-neutral-800">The model starts from the data in one row and runs until it settles; the end state is compared with the data in a later row. This checks whether the map moves the way the measurements did. The model has no calendar time, so read it as a check of direction and rough size, not of timing.</p>
+                  <p className="text-sm text-neutral-800">{tr("The model starts from the data in one row and runs until it settles; the end state is compared with the data in a later row. This checks whether the map moves the way the measurements did. The model has no calendar time, so read it as a check of direction and rough size, not of timing.")}</p>
                   <div className="flex flex-wrap items-center gap-3 text-sm text-neutral-800">
                     <label className="flex items-center gap-2">Start from {rowSelect(fromRow, setFromRow, "Start row")}</label>
                     <label className="flex items-center gap-2">compare with {rowSelect(toRow, setToRow, "Comparison row")}</label>
-                    <button onClick={runCompare} className="px-4 py-1.5 rounded-lg bg-lagoon-700 text-white text-sm font-semibold hover:bg-lagoon-800">Compare</button>
+                    <button onClick={runCompare} className="px-4 py-1.5 rounded-lg bg-lagoon-700 text-white text-sm font-semibold hover:bg-lagoon-800">{tr("Compare")}</button>
                   </div>
                   {comparison && (
                     <>
                       <p className="text-sm text-neutral-900">
-                        Mean difference <strong>{r2(comparison.mae)}</strong>{comparison.directionAgreement !== null && <>; the direction of change agrees for <strong>{Math.round(comparison.directionAgreement * 100)}%</strong> of the concepts</>}.
-                        {!comparison.converged && <span className="text-amber-800"> The model did not settle, so the end state is the last iteration.</span>}
+                        Mean difference <strong>{r2(comparison.mae)}</strong>{comparison.directionAgreement !== null && <>; the direction of change agrees for <strong>{Math.round(comparison.directionAgreement * 100)}%</strong> {tr("of the concepts")}</>}.
+                        {!comparison.converged && <span className="text-amber-800"> {tr("The model did not settle, so the end state is the last iteration.")}</span>}
                       </p>
-                      <table className="w-full text-sm"><thead><tr className="text-left text-[13px] text-neutral-600 border-b border-slate-200"><th className="py-1 font-medium">Concept</th><th className="py-1 font-medium text-right">Data</th><th className="py-1 font-medium text-right">Model</th><th className="py-1 font-medium text-right">Difference</th><th className="py-1 font-medium text-right">Change in data</th><th className="py-1 font-medium text-right">Change in model</th><th className="py-1 font-medium text-center">Same direction</th></tr></thead>
+                      <table className="w-full text-sm"><thead><tr className="text-left text-[13px] text-neutral-600 border-b border-slate-200"><th className="py-1 font-medium">{tr("Concept")}</th><th className="py-1 font-medium text-right">{tr("Data")}</th><th className="py-1 font-medium text-right">{tr("Model")}</th><th className="py-1 font-medium text-right">{tr("Difference")}</th><th className="py-1 font-medium text-right">{tr("Change in data")}</th><th className="py-1 font-medium text-right">{tr("Change in model")}</th><th className="py-1 font-medium text-center">{tr("Same direction")}</th></tr></thead>
                         <tbody className="divide-y divide-slate-100">{comparison.rows.map((r) => (
                           <tr key={r.id}><td className="py-1">{r.name}</td><td className="text-right tabular-nums">{fmt(r.observed)}</td><td className="text-right tabular-nums">{fmt(r.simulated)}</td><td className={`text-right tabular-nums ${Math.abs(r.difference) > 0.25 ? "text-orange-700 font-medium" : ""}`}>{fmt(r.difference)}</td><td className="text-right tabular-nums">{fmt(r.obsChange)}</td><td className="text-right tabular-nums">{fmt(r.simChange)}</td><td className="text-center">{r.direction === null ? "-" : r.direction ? <Check size={15} className="inline text-lagoon-700" /> : <X size={15} className="inline text-orange-700" />}</td></tr>
                         ))}</tbody>
@@ -242,21 +243,21 @@ export default function EmpiricalDataDialog({ concepts, edges, settings, simulat
 
               {tab === "weights" && (
                 <div className="space-y-3">
-                  <p className="text-sm text-neutral-800">For a time series, the update rule of the model is fitted to consecutive rows, for every concept whose causes all have data. Only the relationships already on the map are fitted, so the structure stays the experts'. Correlation in data is not causation: use the suggestions to question the weights, not to replace the group's judgement.</p>
-                  {table.labels.length < 4 ? <p className="text-sm text-amber-800">This needs a time series of at least four rows.</p> : (
-                    <button onClick={runSuggest} className="px-4 py-1.5 rounded-lg bg-lagoon-700 text-white text-sm font-semibold hover:bg-lagoon-800">Suggest weights</button>
+                  <p className="text-sm text-neutral-800">{tr("For a time series, the update rule of the model is fitted to consecutive rows, for every concept whose causes all have data. Only the relationships already on the map are fitted, so the structure stays the experts'. Correlation in data is not causation: use the suggestions to question the weights, not to replace the group's judgement.")}</p>
+                  {table.labels.length < 4 ? <p className="text-sm text-amber-800">{tr("This needs a time series of at least four rows.")}</p> : (
+                    <button onClick={runSuggest} className="px-4 py-1.5 rounded-lg bg-lagoon-700 text-white text-sm font-semibold hover:bg-lagoon-800">{tr("Suggest weights")}</button>
                   )}
-                  {settings?.squashFunction === "trivalent" && <p className="text-sm text-amber-800">The trivalent transfer function cannot be fitted; choose another one in the simulation settings.</p>}
+                  {settings?.squashFunction === "trivalent" && <p className="text-sm text-amber-800">{tr("The trivalent transfer function cannot be fitted; choose another one in the simulation settings.")}</p>}
                   {suggested && (
                     <>
-                      {!suggested.results.length && <p className="text-sm text-neutral-800">No relationship could be fitted.</p>}
+                      {!suggested.results.length && <p className="text-sm text-neutral-800">{tr("No relationship could be fitted.")}</p>}
                       {suggested.results.length > 0 && (
                         <>
-                          <table className="w-full text-sm"><thead><tr className="text-left text-[13px] text-neutral-600 border-b border-slate-200"><th className="py-1 font-medium">Use</th><th className="py-1 font-medium">Relationship</th><th className="py-1 font-medium text-right">Expert</th><th className="py-1 font-medium text-right">Data</th><th className="py-1 font-medium text-right">New</th><th className="py-1 font-medium text-right">Fit (R²)</th><th className="py-1 font-medium text-right">Steps</th></tr></thead>
+                          <table className="w-full text-sm"><thead><tr className="text-left text-[13px] text-neutral-600 border-b border-slate-200"><th className="py-1 font-medium">{tr("Use")}</th><th className="py-1 font-medium">{tr("Relationship")}</th><th className="py-1 font-medium text-right">{tr("Expert")}</th><th className="py-1 font-medium text-right">{tr("Data")}</th><th className="py-1 font-medium text-right">{tr("New")}</th><th className="py-1 font-medium text-right">Fit (R²)</th><th className="py-1 font-medium text-right">{tr("Steps")}</th></tr></thead>
                             <tbody className="divide-y divide-slate-100">{suggested.results.map((r) => (
                               <tr key={r.edgeId} className={r.signAgrees ? "" : "bg-orange-50/60"}>
-                                <td className="py-1"><input type="checkbox" checked={!!include[r.edgeId]} onChange={(e) => setInclude((s) => ({ ...s, [r.edgeId]: e.target.checked }))} className="w-4 h-4 accent-lagoon-700" aria-label="Use this suggestion" /></td>
-                                <td className="py-1">{nameOf(r.source)} → {nameOf(r.target)}{!r.signAgrees && <span className="ml-2 text-[12px] text-orange-800 inline-flex items-center gap-1"><AlertTriangle size={12} />opposite sign</span>}</td>
+                                <td className="py-1"><input type="checkbox" checked={!!include[r.edgeId]} onChange={(e) => setInclude((s) => ({ ...s, [r.edgeId]: e.target.checked }))} className="w-4 h-4 accent-lagoon-700" aria-label={tr("Use this suggestion")} /></td>
+                                <td className="py-1">{nameOf(r.source)} → {nameOf(r.target)}{!r.signAgrees && <span className="ml-2 text-[12px] text-orange-800 inline-flex items-center gap-1"><AlertTriangle size={12} />{tr("opposite sign")}</span>}</td>
                                 <td className="text-right tabular-nums">{fmt(r.expert)}</td><td className="text-right tabular-nums">{fmt(r.data)}</td>
                                 <td className="text-right tabular-nums font-medium">{include[r.edgeId] ? fmt(blendWeight(r.expert, r.data, share)) : "-"}</td>
                                 <td className="text-right tabular-nums">{r2(r.r2)}</td><td className="text-right tabular-nums">{r.n}</td>
@@ -269,7 +270,7 @@ export default function EmpiricalDataDialog({ concepts, edges, settings, simulat
                               <span className="tabular-nums w-10">{Math.round(share * 100)}%</span>
                             </label>
                             <button onClick={() => onSetWeights(Object.fromEntries(suggested.results.filter((r) => include[r.edgeId]).map((r) => [r.edgeId, blendWeight(r.expert, r.data, share)])))}
-                              disabled={!suggested.results.some((r) => include[r.edgeId])} className="ml-auto px-4 py-2 rounded-lg bg-lagoon-700 text-white text-sm font-semibold hover:bg-lagoon-800 disabled:opacity-40">Apply the new weights</button>
+                              disabled={!suggested.results.some((r) => include[r.edgeId])} className="ml-auto px-4 py-2 rounded-lg bg-lagoon-700 text-white text-sm font-semibold hover:bg-lagoon-800 disabled:opacity-40">{tr("Apply the new weights")}</button>
                           </div>
                         </>
                       )}

@@ -2256,15 +2256,15 @@ function EditorSection({ title, children }) {
 function readinessChecks(built, s) {
   const out = [];
   const pt = built.printedPt;
-  out.push({ id: "text", ok: pt >= 5 && pt <= 9.5, text: `Text ${pt.toFixed(1)} pt`, hint: "Most journals ask for 5 to 9 pt at the printed size." });
-  if (built.minLinePt != null) out.push({ id: "lines", ok: built.minLinePt >= 0.249, text: built.minLinePt >= 0.249 ? "Lines at least 0.25 pt" : `Thinnest line ${built.minLinePt.toFixed(2)} pt`, hint: "Lines thinner than 0.25 pt may vanish in print. Clean for print (Fine-tune) thickens them." });
+  out.push({ id: "text", ok: pt >= 5 && pt <= 9.5, text: `Text ${pt.toFixed(1)} pt`, hint: tr("Most journals ask for 5 to 9 pt at the printed size.") });
+  if (built.minLinePt != null) out.push({ id: "lines", ok: built.minLinePt >= 0.249, text: built.minLinePt >= 0.249 ? tr("Lines at least 0.25 pt") : `Thinnest line ${built.minLinePt.toFixed(2)} pt`, hint: tr("Lines thinner than 0.25 pt may vanish in print. Clean for print (Fine-tune) thickens them.") });
   out.push(s.format === "svg"
-    ? { id: "res", ok: true, text: "Vector (any size)" }
-    : { id: "res", ok: s.dpi >= 600, text: `${s.dpi} dpi`, hint: "Charts and line art need 600 dpi or more; 300 dpi suits photographs." });
+    ? { id: "res", ok: true, text: tr("Vector (any size)") }
+    : { id: "res", ok: s.dpi >= 600, text: `${s.dpi} dpi`, hint: tr("Charts and line art need 600 dpi or more; 300 dpi suits photographs.") });
   const col = EXPORT_WIDTHS.find((w) => Math.abs(w.mm - built.widthMm) < 1.5);
-  out.push({ id: "width", ok: col ? true : null, text: col ? col.label.replace(/ \(.*\)/, "").replace("Double column", "2 columns").replace("Single column", "1 column").replace("1.5 column", "1.5 columns") + ` (${col.mm} mm)` : `Custom width ${built.widthMm.toFixed(0)} mm`, hint: "Common column widths: 85 mm, 120 mm and 174 mm. Check your journal." });
-  out.push({ id: "colours", ok: s.palette === "asShown" ? false : true, text: s.palette === "asShown" ? "Screen colours" : s.palette === "grayscale" ? "Greyscale" : "Colour-blind safe colours", hint: "Choose a colour-blind safe palette under Fine-tune." });
-  out.push({ id: "title", ok: s.showTitle ? null : true, text: s.showTitle ? "Title in the figure" : "Title left for the caption" });
+  out.push({ id: "width", ok: col ? true : null, text: col ? col.label.replace(/ \(.*\)/, "").replace("Double column", "2 columns").replace("Single column", "1 column").replace("1.5 column", "1.5 columns") + ` (${col.mm} mm)` : `Custom width ${built.widthMm.toFixed(0)} mm`, hint: tr("Common column widths: 85 mm, 120 mm and 174 mm. Check your journal.") });
+  out.push({ id: "colours", ok: s.palette === "asShown" ? false : true, text: s.palette === "asShown" ? tr("Screen colours") : s.palette === "grayscale" ? "Greyscale" : tr("Colour-blind safe colours"), hint: tr("Choose a colour-blind safe palette under Fine-tune.") });
+  out.push({ id: "title", ok: s.showTitle ? null : true, text: s.showTitle ? tr("Title in the figure") : tr("Title left for the caption") });
   return out;
 }
 
@@ -2290,7 +2290,7 @@ function FigureLabelList({ labels, map, onChange }) {
   const shown = all || q ? hits : hits.slice(0, 8);
   return (
     <div className="space-y-1.5">
-      {labels.length > 8 && <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a label" aria-label="Find a label" className="w-full border border-slate-300 rounded px-2 py-1 text-xs" />}
+      {labels.length > 8 && <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={tr("Find a label")} aria-label={tr("Find a label")} className="w-full border border-slate-300 rounded px-2 py-1 text-xs" />}
       {shown.map((l) => (
         <input key={l} defaultValue={map[l] ?? l} onBlur={(e) => onChange(l, e.target.value.trim())} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
           aria-label={`Label ${l}`} title={l} className={`w-full border rounded px-2 py-1 text-xs ${map[l] ? "border-lagoon-400 bg-lagoon-50" : "border-slate-300"}`} />
@@ -2349,7 +2349,7 @@ function FigureEditor({ req }) {
       try {
         const r = await captureFigureLayout(req.el, { widthPx: layoutW, heightPx: layoutH, autoHeight: !req.isChart });
         if (!live) return;
-        if (!r) setError("This figure is not on the page any more. Close this window and open the figure again.");
+        if (!r) setError(tr("This figure is not on the page any more. Close this window and open the figure again."));
         setRaw(r);
       } catch (e) {
         if (live) setError(String(e?.message || e));
@@ -2380,11 +2380,11 @@ function FigureEditor({ req }) {
       const name = req.baseName;
       if (s.format === "svg") { saveBlob(new Blob([built.svgText], { type: "image/svg+xml" }), `${name}.svg`); return; }
       const png = await renderFigurePng(built.svgText, built.widthMm, built.heightMm, s.dpi, s.format === "png" && s.background === "transparent");
-      if (!png) { notify("The figure could not be drawn as an image in this browser. Try SVG instead.", { title: "Export failed" }); return; }
+      if (!png) { notify(tr("The figure could not be drawn as an image in this browser. Try SVG instead."), { title: tr("Export failed") }); return; }
       if (s.format === "pdf") {
         const pdf = await pngBlobToPdfBlob(png, s.dpi);
         if (pdf) saveBlob(pdf, `${name}.pdf`);
-        else { saveBlob(await pngWithDpi(png, s.dpi), `${name}.png`); notify("This browser cannot write PDF files, so a PNG at the same resolution was saved instead.", { kind: "info", title: "Saved as PNG" }); }
+        else { saveBlob(await pngWithDpi(png, s.dpi), `${name}.png`); notify(tr("This browser cannot write PDF files, so a PNG at the same resolution was saved instead."), { kind: "info", title: tr("Saved as PNG") }); }
         return;
       }
       saveBlob(await pngWithDpi(png, s.dpi), `${name}.png`);
@@ -2402,14 +2402,14 @@ function FigureEditor({ req }) {
   const tpl = FIGURE_TEMPLATES.find((t) => t.id === s.template);
 
   return (
-    <div className="fixed inset-0 z-[60] bg-slate-900/50 flex items-center justify-center p-2 sm:p-6" role="dialog" aria-modal="true" aria-label="Edit and export figure" onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}>
+    <div className="fixed inset-0 z-[60] bg-slate-900/50 flex items-center justify-center p-2 sm:p-6" role="dialog" aria-modal="true" aria-label={tr("Edit and export figure")} onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}>
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-[1280px] h-full max-h-[920px] flex flex-col overflow-hidden">
         <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-200">
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-neutral-900">Edit and export figure</h2>
+            <h2 className="text-sm font-semibold text-neutral-900">{tr("Edit and export figure")}</h2>
             <p className="text-[14.5px] text-neutral-600 truncate">{req.title || req.baseName}</p>
           </div>
-          <button onClick={close} className="text-neutral-600 hover:text-neutral-900 p-1" aria-label="Close"><X size={16} /></button>
+          <button onClick={close} className="text-neutral-600 hover:text-neutral-900 p-1" aria-label={tr("Close")}><X size={16} /></button>
         </div>
         <div className="flex-1 min-h-0 flex flex-col md:flex-row">
           <div className="flex-1 min-h-[240px] bg-slate-100 flex flex-col">
@@ -2417,17 +2417,17 @@ function FigureEditor({ req }) {
               {preview ? (
                 <img src={preview} alt="Preview of the exported figure" className="max-w-full h-auto shadow-md" style={{ background: s.background === "transparent" ? "repeating-conic-gradient(#e5e7eb 0% 25%, #ffffff 0% 50%) 50% / 16px 16px" : "#ffffff", opacity: capturing ? 0.5 : 1 }} />
               ) : (
-                <div className="text-xs text-neutral-600 mt-10">{error || "Preparing the figure…"}</div>
+                <div className="text-xs text-neutral-600 mt-10">{error || tr("Preparing the figure…")}</div>
               )}
             </div>
             <div className="px-4 py-2 border-t border-slate-200 bg-white text-[14.5px] text-neutral-700 space-y-1">
               <div className="flex flex-wrap gap-x-4 gap-y-1">
                 {built && <span><span className="font-semibold">{built.widthMm.toFixed(0)} × {built.heightMm.toFixed(0)} mm</span>{s.format !== "svg" && ` · ${Math.round((built.widthMm / 25.4) * s.dpi)} × ${Math.round((built.heightMm / 25.4) * s.dpi)} px`}</span>}
-                {capturing && <span className="text-lagoon-700">Laying the figure out again…</span>}
+                {capturing && <span className="text-lagoon-700">{tr("Laying the figure out again…")}</span>}
                 {error && preview && <span className="text-red-700">{error}</span>}
               </div>
               {built && (
-                <ul className="flex flex-wrap gap-x-4 gap-y-1" aria-label="Checks for a journal">
+                <ul className="flex flex-wrap gap-x-4 gap-y-1" aria-label={tr("Checks for a journal")}>
                   {readinessChecks(built, s).map((c) => (
                     <li key={c.id} className={`flex items-center gap-1 ${c.ok === true ? "text-green-800" : c.ok === false ? "text-amber-800" : "text-neutral-600"}`} title={c.hint || ""}>
                       {c.ok === true ? <CheckCircle2 size={13} /> : c.ok === false ? <Info size={13} /> : <Circle size={13} />}{c.text}
@@ -2435,103 +2435,103 @@ function FigureEditor({ req }) {
                   ))}
                 </ul>
               )}
-              {built && built.isViewBox && built.printedPt < s.textPt - 0.3 && <p className="text-amber-700">This figure keeps its own layout, so its text cannot be enlarged without overlapping. A wider size makes the text larger.</p>}
-              {tall && <p className="text-amber-700">Taller than a journal page (about 240 mm). A wider size or a smaller text size makes it shorter.</p>}
+              {built && built.isViewBox && built.printedPt < s.textPt - 0.3 && <p className="text-amber-700">{tr("This figure keeps its own layout, so its text cannot be enlarged without overlapping. A wider size makes the text larger.")}</p>}
+              {tall && <p className="text-amber-700">{tr("Taller than a journal page (about 240 mm). A wider size or a smaller text size makes it shorter.")}</p>}
             </div>
           </div>
           <div className="w-full md:w-[340px] shrink-0 border-t md:border-t-0 md:border-l border-slate-200 overflow-y-auto p-4 space-y-4">
-            <EditorStep n={1} title="Style">
+            <EditorStep n={1} title={tr("Style")}>
               <div className="grid grid-cols-3 gap-1.5">
                 {FIGURE_TEMPLATES.map((t) => (
                   <button key={t.id} onClick={() => applyTemplate(t)} className={`text-left rounded-md border px-2 py-1.5 text-xs leading-snug ${s.template === t.id ? "border-lagoon-600 bg-lagoon-50 text-lagoon-900" : "border-slate-200 hover:border-slate-400 text-neutral-900"}`}>
                     <span className="block font-semibold">{t.id === "sans" ? "Journal" : t.id === "serif" ? "Serif" : "Screen"}</span>
-                    <span className="block text-[13.5px] text-neutral-600">{t.id === "sans" ? "Arial 7 pt" : t.id === "serif" ? "Times 8 pt, PDF" : "As in the app"}</span>
+                    <span className="block text-[13.5px] text-neutral-600">{t.id === "sans" ? tr("Arial 7 pt") : t.id === "serif" ? tr("Times 8 pt, PDF") : tr("As in the app")}</span>
                   </button>
                 ))}
               </div>
-              <p className="text-[14px] text-neutral-600 leading-snug">{tpl ? tpl.note : "Custom: a template setting was changed under Fine-tune."}</p>
+              <p className="text-[14px] text-neutral-600 leading-snug">{tpl ? tpl.note : tr("Custom: a template setting was changed under Fine-tune.")}</p>
             </EditorStep>
 
-            <EditorStep n={2} title="Width in the paper">
+            <EditorStep n={2} title={tr("Width in the paper")}>
               <div className="grid grid-cols-3 gap-1.5">
                 {EXPORT_WIDTHS.filter((w) => w.id !== "page").map((w) => (
                   <button key={w.id} onClick={() => set({ widthMm: w.mm })} className={`rounded-md border px-2 py-1.5 text-xs leading-snug ${s.widthMm === w.mm ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 hover:border-slate-500 text-neutral-900"}`} title={w.label}>
-                    <span className="block font-semibold">{w.id === "single" ? "1 column" : w.id === "onehalf" ? "1.5 column" : "2 columns"}</span>
+                    <span className="block font-semibold">{w.id === "single" ? tr("1 column") : w.id === "onehalf" ? tr("1.5 column") : tr("2 columns")}</span>
                     <span className={`block text-[13.5px] ${s.widthMm === w.mm ? "text-slate-300" : "text-neutral-600"}`}>{w.mm} mm</span>
                   </button>
                 ))}
               </div>
             </EditorStep>
 
-            <EditorStep n={3} title="Panel letter and title">
-              <EditorRow label="Panel letter (a, b, c)">
-                <input value={s.panelLabel} onChange={(e) => setS((p) => ({ ...p, panelLabel: e.target.value.slice(0, 4) }))} placeholder="none" aria-label="Panel letter" className="w-16 border border-slate-300 rounded px-1.5 py-0.5 text-xs" />
+            <EditorStep n={3} title={tr("Panel letter and title")}>
+              <EditorRow label={tr("Panel letter (a, b, c)")}>
+                <input value={s.panelLabel} onChange={(e) => setS((p) => ({ ...p, panelLabel: e.target.value.slice(0, 4) }))} placeholder={"none"} aria-label={tr("Panel letter")} className="w-16 border border-slate-300 rounded px-1.5 py-0.5 text-xs" />
               </EditorRow>
-              <label className="flex items-center gap-2 text-xs text-neutral-900"><input type="checkbox" checked={s.showTitle} onChange={(e) => set({ showTitle: e.target.checked })} />Title inside the figure</label>
+              <label className="flex items-center gap-2 text-xs text-neutral-900"><input type="checkbox" checked={s.showTitle} onChange={(e) => set({ showTitle: e.target.checked })} />{tr("Title inside the figure")}</label>
               {s.showTitle ? (
                 <>
-                  <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" aria-label="Title" className="w-full border border-slate-300 rounded px-2 py-1 text-xs" />
-                  <input value={subtitle} onChange={(e) => setSubtitle(e.target.value)} placeholder="Subtitle (optional)" aria-label="Subtitle" className="w-full border border-slate-300 rounded px-2 py-1 text-xs" />
-                  <EditorRow group label="Title position">
+                  <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={tr("Title")} aria-label={tr("Title")} className="w-full border border-slate-300 rounded px-2 py-1 text-xs" />
+                  <input value={subtitle} onChange={(e) => setSubtitle(e.target.value)} placeholder={tr("Subtitle (optional)")} aria-label={tr("Subtitle")} className="w-full border border-slate-300 rounded px-2 py-1 text-xs" />
+                  <EditorRow group label={tr("Title position")}>
                     <span className="inline-flex border border-slate-300 rounded overflow-hidden">
                       {[["left", "Left"], ["center", "Centred"]].map(([v, l], i) => <button key={v} onClick={() => set({ titleAlign: v })} className={`${seg(s.titleAlign === v)} ${i ? "border-l border-slate-300" : ""}`}>{l}</button>)}
                     </span>
                   </EditorRow>
-                  <EditorRow label="Title size">
-                    <input type="range" min={1} max={2} step={0.1} value={s.titleScale} onChange={(e) => set({ titleScale: Number(e.target.value) })} className="w-24" aria-label="Title size" />
+                  <EditorRow label={tr("Title size")}>
+                    <input type="range" min={1} max={2} step={0.1} value={s.titleScale} onChange={(e) => set({ titleScale: Number(e.target.value) })} className="w-24" aria-label={tr("Title size")} />
                     <span className="w-9 text-right font-mono">×{Number(s.titleScale).toFixed(1)}</span>
                   </EditorRow>
                 </>
               ) : (
-                <p className="text-[14px] text-neutral-600 leading-snug">Journals put the title in the caption, so it is left out.</p>
+                <p className="text-[14px] text-neutral-600 leading-snug">{tr("Journals put the title in the caption, so it is left out.")}</p>
               )}
             </EditorStep>
 
-            <EditorStep n={4} title="File">
+            <EditorStep n={4} title={tr("File")}>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="inline-flex border border-slate-300 rounded overflow-hidden" role="group" aria-label="Format">
+                <span className="inline-flex border border-slate-300 rounded overflow-hidden" role="group" aria-label={tr("Format")}>
                   {[["png", "PNG"], ["pdf", "PDF"], ["svg", "SVG"]].map(([f, l], i) => <button key={f} onClick={() => set({ format: f })} className={`${seg(s.format === f)} ${i ? "border-l border-slate-300" : ""}`}>{l}</button>)}
                 </span>
                 {s.format !== "svg" && (
-                  <span className="inline-flex border border-slate-300 rounded overflow-hidden" role="group" aria-label="Resolution">
+                  <span className="inline-flex border border-slate-300 rounded overflow-hidden" role="group" aria-label={tr("Resolution")}>
                     {[300, 600, 1200].map((d, i) => <button key={d} onClick={() => set({ dpi: d })} className={`${seg(s.dpi === d)} ${i ? "border-l border-slate-300" : ""}`}>{d} dpi</button>)}
                   </span>
                 )}
               </div>
               <p className="text-[14px] text-neutral-600 leading-snug">
-                {s.format === "svg" ? "Vector: sharp at any size; opens in Illustrator, Inkscape or PowerPoint." : s.format === "pdf" ? "A one-page PDF at the printed size, with the figure at the resolution chosen." : "Its print size is stored in the file, so Word and LaTeX place it at the right width."}
+                {s.format === "svg" ? tr("Vector: sharp at any size; opens in Illustrator, Inkscape or PowerPoint.") : s.format === "pdf" ? tr("A one-page PDF at the printed size, with the figure at the resolution chosen.") : tr("Its print size is stored in the file, so Word and LaTeX place it at the right width.")}
               </p>
             </EditorStep>
 
             <details className="border-t border-slate-100 pt-3 group">
               <summary className="cursor-pointer text-[14.5px] font-semibold text-neutral-800 flex items-center gap-1.5">
                 <ChevronRight size={14} className="group-open:rotate-90 transition-transform" />Fine-tune
-                <span className="font-normal text-neutral-500">font, colours, labels, lines, cropping</span>
+                <span className="font-normal text-neutral-500">{tr("font, colours, labels, lines, cropping")}</span>
               </summary>
               <div className="space-y-3 mt-3">
-                <EditorSection title="Text">
+                <EditorSection title={tr("Text")}>
                   <EditorRow label="Font">
                     <select value={s.fontId} onChange={(e) => set({ fontId: e.target.value })} className="border border-slate-300 rounded px-1.5 py-0.5 text-xs">
                       {FIGURE_FONTS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
                     </select>
                   </EditorRow>
-                  <EditorRow label="Text size (pt)">
-                    <input type="range" min={5} max={14} step={0.5} value={s.textPt} onChange={(e) => set({ textPt: Number(e.target.value) })} className="w-24" aria-label="Text size" />
+                  <EditorRow label={tr("Text size (pt)")}>
+                    <input type="range" min={5} max={14} step={0.5} value={s.textPt} onChange={(e) => set({ textPt: Number(e.target.value) })} className="w-24" aria-label={tr("Text size")} />
                     <span className="w-9 text-right font-mono">{s.textPt}</span>
                   </EditorRow>
                 </EditorSection>
-                <EditorSection title="Colours and lines">
+                <EditorSection title={tr("Colours and lines")}>
                   <EditorRow label="Colours">
                     <select value={s.palette} onChange={(e) => set({ palette: e.target.value })} className="border border-slate-300 rounded px-1.5 py-0.5 text-xs max-w-[190px]">
                       {EDITOR_PALETTES.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
                     </select>
                   </EditorRow>
-                  <EditorRow label="Line thickness">
-                    <input type="range" min={0.5} max={2} step={0.1} value={s.lineScale} onChange={(e) => set({ lineScale: Number(e.target.value) })} className="w-24" aria-label="Line thickness" />
+                  <EditorRow label={tr("Line thickness")}>
+                    <input type="range" min={0.5} max={2} step={0.1} value={s.lineScale} onChange={(e) => set({ lineScale: Number(e.target.value) })} className="w-24" aria-label={tr("Line thickness")} />
                     <span className="w-9 text-right font-mono">×{s.lineScale.toFixed(1)}</span>
                   </EditorRow>
-                  <label className="flex items-center gap-2 text-xs text-neutral-900"><input type="checkbox" checked={!!s.clean} onChange={(e) => set({ clean: e.target.checked })} />Clean for print: no panel boxes or screen notes, black text, lines at least 0.25 pt</label>
-                  <label className="flex items-center gap-2 text-xs text-neutral-900"><input type="checkbox" checked={!!s.grid} onChange={(e) => set({ grid: e.target.checked })} />Gridlines</label>
+                  <label className="flex items-center gap-2 text-xs text-neutral-900"><input type="checkbox" checked={!!s.clean} onChange={(e) => set({ clean: e.target.checked })} />{tr("Clean for print: no panel boxes or screen notes, black text, lines at least 0.25 pt")}</label>
+                  <label className="flex items-center gap-2 text-xs text-neutral-900"><input type="checkbox" checked={!!s.grid} onChange={(e) => set({ grid: e.target.checked })} />{tr("Gridlines")}</label>
                   <EditorRow group label="Background">
                     <span className="inline-flex border border-slate-300 rounded overflow-hidden">
                       {[["white", "White"], ["transparent", "None"]].map(([v, l], i) => <button key={v} onClick={() => set({ background: v })} className={`${seg(s.background === v)} ${i ? "border-l border-slate-300" : ""}`}>{l}</button>)}
@@ -2539,8 +2539,8 @@ function FigureEditor({ req }) {
                   </EditorRow>
                 </EditorSection>
                 {built?.colours?.length > 0 && (
-                  <EditorSection title="Colours in this figure">
-                    <p className="text-[14px] text-neutral-600 leading-snug">Click a colour to replace it everywhere in this figure.</p>
+                  <EditorSection title={tr("Colours in this figure")}>
+                    <p className="text-[14px] text-neutral-600 leading-snug">{tr("Click a colour to replace it everywhere in this figure.")}</p>
                     <div className="flex flex-wrap gap-1.5">
                       {built.colours.map((orig) => {
                         const now = s.colorMap[orig] || orig;
@@ -2552,36 +2552,36 @@ function FigureEditor({ req }) {
                         );
                       })}
                     </div>
-                    {Object.keys(s.colorMap).length > 0 && <button onClick={() => setS((p) => ({ ...p, colorMap: {} }))} className="text-xs text-neutral-700 underline hover:text-neutral-900">Undo colour changes</button>}
+                    {Object.keys(s.colorMap).length > 0 && <button onClick={() => setS((p) => ({ ...p, colorMap: {} }))} className="text-xs text-neutral-700 underline hover:text-neutral-900">{tr("Undo colour changes")}</button>}
                   </EditorSection>
                 )}
                 {built?.labels?.length > 0 && (
-                  <EditorSection title="Labels">
-                    <p className="text-[14px] text-neutral-600 leading-snug">Rename a label in the exported figure only. Your model keeps its names.</p>
+                  <EditorSection title={tr("Labels")}>
+                    <p className="text-[14px] text-neutral-600 leading-snug">{tr("Rename a label in the exported figure only. Your model keeps its names.")}</p>
                     <FigureLabelList labels={built.labels} map={s.labelMap} onChange={(orig, v) => setS((p) => { const m = { ...p.labelMap }; if (v === orig || v === "") delete m[orig]; else m[orig] = v; return { ...p, labelMap: m }; })} />
                   </EditorSection>
                 )}
-                <EditorSection title="Size and cropping">
-                  <EditorRow label="Width (mm)">{mmInput("widthMm", 30, 400)}</EditorRow>
-                  {req.isChart && <EditorRow label="Height (mm)">{mmInput("heightMm", 30, 400)}</EditorRow>}
-                  <label className="flex items-center gap-2 text-xs text-neutral-900"><input type="checkbox" checked={s.autoCrop} onChange={(e) => set({ autoCrop: e.target.checked })} />Crop to what is drawn</label>
-                  <EditorRow label="Margin (mm)">{mmInput("marginMm", 0, 20, 0.5)}</EditorRow>
+                <EditorSection title={tr("Size and cropping")}>
+                  <EditorRow label={tr("Width (mm)")}>{mmInput("widthMm", 30, 400)}</EditorRow>
+                  {req.isChart && <EditorRow label={tr("Height (mm)")}>{mmInput("heightMm", 30, 400)}</EditorRow>}
+                  <label className="flex items-center gap-2 text-xs text-neutral-900"><input type="checkbox" checked={s.autoCrop} onChange={(e) => set({ autoCrop: e.target.checked })} />{tr("Crop to what is drawn")}</label>
+                  <EditorRow label={tr("Margin (mm)")}>{mmInput("marginMm", 0, 20, 0.5)}</EditorRow>
                   <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
-                    <EditorRow label="Trim top">{mmInput("trimTop", 0, 200, 0.5)}</EditorRow>
-                    <EditorRow label="Trim bottom">{mmInput("trimBottom", 0, 200, 0.5)}</EditorRow>
-                    <EditorRow label="Trim left">{mmInput("trimLeft", 0, 200, 0.5)}</EditorRow>
-                    <EditorRow label="Trim right">{mmInput("trimRight", 0, 200, 0.5)}</EditorRow>
+                    <EditorRow label={tr("Trim top")}>{mmInput("trimTop", 0, 200, 0.5)}</EditorRow>
+                    <EditorRow label={tr("Trim bottom")}>{mmInput("trimBottom", 0, 200, 0.5)}</EditorRow>
+                    <EditorRow label={tr("Trim left")}>{mmInput("trimLeft", 0, 200, 0.5)}</EditorRow>
+                    <EditorRow label={tr("Trim right")}>{mmInput("trimRight", 0, 200, 0.5)}</EditorRow>
                   </div>
-                  <label className="flex items-center gap-2 text-xs text-neutral-900"><input type="checkbox" checked={s.frame} onChange={(e) => set({ frame: e.target.checked })} />Thin frame around the figure</label>
+                  <label className="flex items-center gap-2 text-xs text-neutral-900"><input type="checkbox" checked={s.frame} onChange={(e) => set({ frame: e.target.checked })} />{tr("Thin frame around the figure")}</label>
                 </EditorSection>
               </div>
             </details>
           </div>
         </div>
         <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-slate-200">
-          <button onClick={() => { setS({ ...EDITOR_DEFAULTS, widthMm: s.widthMm, heightMm: s.heightMm }); saveEditorPrefs({ ...EDITOR_DEFAULTS, widthMm: s.widthMm }); setTitle(req.title || ""); setSubtitle(req.subtitle || ""); }} className="text-xs text-neutral-700 underline hover:text-neutral-900">Reset to the journal style</button>
+          <button onClick={() => { setS({ ...EDITOR_DEFAULTS, widthMm: s.widthMm, heightMm: s.heightMm }); saveEditorPrefs({ ...EDITOR_DEFAULTS, widthMm: s.widthMm }); setTitle(req.title || ""); setSubtitle(req.subtitle || ""); }} className="text-xs text-neutral-700 underline hover:text-neutral-900">{tr("Reset to the journal style")}</button>
           <div className="flex items-center gap-2">
-            <Btn variant="outline" onClick={close}>Cancel</Btn>
+            <Btn variant="outline" onClick={close}>{tr("Cancel")}</Btn>
             <Btn variant="accent" onClick={download} disabled={!built || capturing || saving}><Download size={13} />{saving ? "Saving…" : `Download ${s.format.toUpperCase()}`}</Btn>
           </div>
         </div>
@@ -2605,7 +2605,7 @@ function ViewToggle({ value, onChange, options, label }) {
     </div>
   );
 }
-const FIGURE_LAYOUTS = [{ value: "modules", label: "By module" }, { value: "all", label: "All concepts" }];
+const FIGURE_LAYOUTS = [{ value: "modules", label: tr("By module") }, { value: "all", label: tr("All concepts") }];
 const readLayout = (k) => { try { return localStorage.getItem(k) === "all" ? "all" : "modules"; } catch { return "modules"; } };
 const saveLayout = (k, v) => { try { localStorage.setItem(k, v); } catch { /* storage off */ } };
 
@@ -2654,7 +2654,7 @@ function FigurePanel({
     <div className="border border-slate-200 rounded-lg bg-slate-50 p-3 mt-2 space-y-3 text-xs">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div>
-          <div className="text-[14px] text-neutral-700 mb-0.5">Figure size</div>
+          <div className="text-[14px] text-neutral-700 mb-0.5">{tr("Figure size")}</div>
           <select value={settings.preset} onChange={(e) => setPreset(e.target.value)} className="w-full border border-slate-200 rounded px-2 py-1 bg-white">
             {FIGURE_SIZE_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}{p.widthMm ? ` (${p.widthMm}×${p.heightMm} mm)` : ""}</option>)}
           </select>
@@ -2663,20 +2663,20 @@ function FigurePanel({
           <div className="text-[14px] text-neutral-700 mb-0.5">Width × height (mm)</div>
           <div className="flex items-center gap-1">
             <input type="number" min={20} value={settings.widthMm} onChange={(e) => setWidth(e.target.value)} className="w-14 border border-slate-200 rounded px-1.5 py-1 font-mono" />
-            <button onClick={() => patch({ lockAspect: !settings.lockAspect })} title={settings.lockAspect ? "Aspect ratio locked: click to unlock" : "Aspect ratio unlocked: click to lock"} className={`px-1 ${settings.lockAspect ? "text-lagoon-700" : "text-neutral-500"}`}>
+            <button onClick={() => patch({ lockAspect: !settings.lockAspect })} title={settings.lockAspect ? tr("Aspect ratio locked: click to unlock") : tr("Aspect ratio unlocked: click to lock")} className={`px-1 ${settings.lockAspect ? "text-lagoon-700" : "text-neutral-500"}`}>
               {settings.lockAspect ? <Lock size={12} /> : <Unlock size={12} />}
             </button>
             <input type="number" min={20} value={settings.heightMm} onChange={(e) => setHeight(e.target.value)} className="w-14 border border-slate-200 rounded px-1.5 py-1 font-mono" />
           </div>
         </div>
         <div>
-          <div className="text-[14px] text-neutral-700 mb-0.5">Resolution</div>
+          <div className="text-[14px] text-neutral-700 mb-0.5">{tr("Resolution")}</div>
           <select value={settings.dpi} onChange={(e) => patch({ dpi: Number(e.target.value) })} className="w-full border border-slate-200 rounded px-2 py-1 bg-white" disabled={settings.format === "svg"}>
             {FIGURE_DPI_OPTIONS.map((d) => <option key={d} value={d}>{d} dpi</option>)}
           </select>
         </div>
         <div>
-          <div className="text-[14px] text-neutral-700 mb-0.5">Export as</div>
+          <div className="text-[14px] text-neutral-700 mb-0.5">{tr("Export as")}</div>
           <select value={settings.format} onChange={(e) => patch({ format: e.target.value })} className="w-full border border-slate-200 rounded px-2 py-1 bg-white">
             <option value="png">PNG (raster, high-resolution)</option>
             <option value="svg">SVG (vector)</option>
@@ -2688,51 +2688,51 @@ function FigurePanel({
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <div>
-          <div className="text-[14px] text-neutral-700 mb-0.5">Plot title</div>
-          <input type="text" value={settings.title} onChange={(e) => patch({ title: e.target.value })} placeholder="(none)" className="w-full border border-slate-200 rounded px-2 py-1" />
+          <div className="text-[14px] text-neutral-700 mb-0.5">{tr("Plot title")}</div>
+          <input type="text" value={settings.title} onChange={(e) => patch({ title: e.target.value })} placeholder={tr("(none)")} className="w-full border border-slate-200 rounded px-2 py-1" />
         </div>
         <div>
-          <div className="text-[14px] text-neutral-700 mb-0.5">X-axis title</div>
-          <input type="text" value={settings.xLabel} onChange={(e) => patch({ xLabel: e.target.value })} placeholder="(default)" className="w-full border border-slate-200 rounded px-2 py-1" />
+          <div className="text-[14px] text-neutral-700 mb-0.5">{tr("X-axis title")}</div>
+          <input type="text" value={settings.xLabel} onChange={(e) => patch({ xLabel: e.target.value })} placeholder={tr("(default)")} className="w-full border border-slate-200 rounded px-2 py-1" />
         </div>
         <div>
-          <div className="text-[14px] text-neutral-700 mb-0.5">Y-axis title</div>
-          <input type="text" value={settings.yLabel} onChange={(e) => patch({ yLabel: e.target.value })} placeholder="(default)" className="w-full border border-slate-200 rounded px-2 py-1" />
+          <div className="text-[14px] text-neutral-700 mb-0.5">{tr("Y-axis title")}</div>
+          <input type="text" value={settings.yLabel} onChange={(e) => patch({ yLabel: e.target.value })} placeholder={tr("(default)")} className="w-full border border-slate-200 rounded px-2 py-1" />
         </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div>
-          <div className="text-[14px] text-neutral-700 mb-0.5">Title font size</div>
+          <div className="text-[14px] text-neutral-700 mb-0.5">{tr("Title font size")}</div>
           <input type="number" min={8} max={28} value={settings.titleFontSize} onChange={(e) => patch({ titleFontSize: Number(e.target.value) || settings.titleFontSize })} className="w-full border border-slate-200 rounded px-2 py-1 font-mono" />
         </div>
         <div>
-          <div className="text-[14px] text-neutral-700 mb-0.5">Axis title font size</div>
+          <div className="text-[14px] text-neutral-700 mb-0.5">{tr("Axis title font size")}</div>
           <input type="number" min={6} max={24} value={settings.axisFontSize} onChange={(e) => patch({ axisFontSize: Number(e.target.value) || settings.axisFontSize })} className="w-full border border-slate-200 rounded px-2 py-1 font-mono" />
         </div>
         <div>
-          <div className="text-[14px] text-neutral-700 mb-0.5">Tick label font size</div>
+          <div className="text-[14px] text-neutral-700 mb-0.5">{tr("Tick label font size")}</div>
           <input type="number" min={6} max={20} value={settings.tickFontSize} onChange={(e) => patch({ tickFontSize: Number(e.target.value) || settings.tickFontSize })} className="w-full border border-slate-200 rounded px-2 py-1 font-mono" />
         </div>
         <div>
-          <div className="text-[14px] text-neutral-700 mb-0.5">Legend font size</div>
+          <div className="text-[14px] text-neutral-700 mb-0.5">{tr("Legend font size")}</div>
           <input type="number" min={6} max={20} value={settings.legendFontSize} onChange={(e) => patch({ legendFontSize: Number(e.target.value) || settings.legendFontSize })} className="w-full border border-slate-200 rounded px-2 py-1 font-mono" />
         </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div>
-          <div className="text-[14px] text-neutral-700 mb-0.5">Legend position</div>
+          <div className="text-[14px] text-neutral-700 mb-0.5">{tr("Legend position")}</div>
           <select value={settings.legendPosition} onChange={(e) => patch({ legendPosition: e.target.value })} className="w-full border border-slate-200 rounded px-2 py-1 bg-white">
-            <option value="top">Top</option>
-            <option value="bottom">Bottom</option>
-            <option value="left">Left</option>
-            <option value="right">Right</option>
-            <option value="hidden">Hidden</option>
+            <option value="top">{tr("Top")}</option>
+            <option value="bottom">{tr("Bottom")}</option>
+            <option value="left">{tr("Left")}</option>
+            <option value="right">{tr("Right")}</option>
+            <option value="hidden">{tr("Hidden")}</option>
           </select>
         </div>
         <div>
-          <div className="text-[14px] text-neutral-700 mb-0.5">Color palette</div>
+          <div className="text-[14px] text-neutral-700 mb-0.5">{tr("Color palette")}</div>
           <select value={settings.palette} onChange={(e) => patch({ palette: e.target.value })} className="w-full border border-slate-200 rounded px-2 py-1 bg-white">
             {Object.entries(FIGURE_PALETTES).map(([key, p]) => <option key={key} value={key}>{p.label}</option>)}
           </select>
@@ -2741,7 +2741,7 @@ function FigurePanel({
           </div>
         </div>
         <div>
-          <div className="text-[14px] text-neutral-700 mb-0.5">Decimal places</div>
+          <div className="text-[14px] text-neutral-700 mb-0.5">{tr("Decimal places")}</div>
           <input type="number" min={0} max={4} value={settings.decimals} onChange={(e) => patch({ decimals: Math.max(0, Math.min(4, Number(e.target.value))) || 0 })} className="w-full border border-slate-200 rounded px-2 py-1 font-mono" />
         </div>
         <div className="flex items-end pb-1">
@@ -2771,7 +2771,7 @@ function FigurePanel({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 border-t border-slate-200">
           {seriesOptions && (
             <div>
-              <div className="text-[14px] text-neutral-700 mb-1">Series shown</div>
+              <div className="text-[14px] text-neutral-700 mb-1">{tr("Series shown")}</div>
               <div className="flex flex-wrap gap-x-3 gap-y-1">
                 {seriesOptions.map((o) => (
                   <label key={o.key} className="flex items-center gap-1 text-neutral-900">
@@ -2784,7 +2784,7 @@ function FigurePanel({
           )}
           {sortOptions && (
             <div>
-              <div className="text-[14px] text-neutral-700 mb-0.5">Order</div>
+              <div className="text-[14px] text-neutral-700 mb-0.5">{tr("Order")}</div>
               <select value={sortValue} onChange={(e) => onSortChange(e.target.value)} className="w-full border border-slate-200 rounded px-2 py-1 bg-white">
                 {sortOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
@@ -2792,7 +2792,7 @@ function FigurePanel({
           )}
           {maxPoints !== undefined && (
             <div>
-              <div className="text-[14px] text-neutral-700 mb-0.5">{maxPointsLabel || "Show only the top N"}</div>
+              <div className="text-[14px] text-neutral-700 mb-0.5">{maxPointsLabel || tr("Show only the top N")}</div>
               <div className="flex items-center gap-1.5">
                 <input type="number" min={1} max={maxPointsCap} value={maxPoints} onChange={(e) => onMaxPointsChange(Math.max(1, Math.min(maxPointsCap, Number(e.target.value) || maxPointsCap)))} className="w-20 border border-slate-200 rounded px-2 py-1 font-mono" />
                 <span className="text-neutral-600">of {maxPointsCap}</span>
@@ -2803,8 +2803,8 @@ function FigurePanel({
       )}
 
       <div className="flex items-center justify-between pt-2 border-t border-slate-200">
-        <button onClick={resetAppearance} className="text-neutral-600 hover:text-neutral-900 underline">Reset appearance</button>
-        <Btn variant="accent" onClick={onExport} disabled={exporting}>{exporting ? "Exporting…" : <><Download size={13} />Export figure</>}</Btn>
+        <button onClick={resetAppearance} className="text-neutral-600 hover:text-neutral-900 underline">{tr("Reset appearance")}</button>
+        <Btn variant="accent" onClick={onExport} disabled={exporting}>{exporting ? "Exporting…" : <><Download size={13} />{tr("Export figure")}</>}</Btn>
       </div>
     </div>
   );
@@ -6816,7 +6816,7 @@ function InfluenceMetricsTab({ concepts, edges, settings, onHighlight, multiScal
   const cell = (m, key) => {
     if (key === "name") return m.name;
     if (key === "moduleLabel") return m.moduleLabel;
-    if (key === "role") return <span className={`px-1.5 py-0.5 rounded text-[14px] ${ROLE_STYLE[m.role] || "bg-slate-100 text-neutral-900"}`}>{m.role}</span>;
+    if (key === "role") return <span className={`px-1.5 py-0.5 rounded text-[14px] ${ROLE_STYLE[m.role] || "bg-slate-100 text-neutral-900"}`}>{tr(m.role)}</span>;
     if ((key === "influence" || key === "sensitivity") && !allColumns) {
       const v = m[key] ?? 0;
       return (
@@ -13703,20 +13703,20 @@ function TransitionPathwaysTab({ concepts, edges, settings, config, setConfig, r
 function gettingStartedSteps({ concepts, edges, tab, edgeInspected, hasResults }) {
   const named = concepts.some((c) => c.name?.trim() && !/^New concept \d+$/.test(c.name.trim()));
   return [
-    { id: "open", title: "Open the Network tab", done: tab === "network" || concepts.length > 0,
-      hint: "The Network tab is the drawing board: concepts are cards, relationships are arrows.", action: { label: "Go to the Network tab", tab: "network" } },
-    { id: "add", title: "Add your first concept", done: concepts.length > 0,
-      hint: "Double-click an empty spot on the map, or click Add concept. A concept is anything that can go up or down, such as Groundwater level or Farm income.", action: { label: "Go to the Network tab", tab: "network" } },
-    { id: "name", title: "Give it a name", done: named,
-      hint: "Type the name in the Inspector on the right and press Enter. Name it as something that can increase or decrease." },
-    { id: "connect", title: "Add a second concept and connect them", done: edges.length > 0,
-      hint: "Hover a concept to see its small dots, then drag from a dot onto the other concept. The arrow means: a change in the first changes the second." },
-    { id: "weigh", title: "Say how they are related", done: edgeInspected || edges.some((e) => Math.abs(e.weight - 0.5) > 1e-9),
-      hint: "Click the arrow. In the Inspector, choose Increases or Decreases, and how strong the effect is." },
-    { id: "module", title: "Sort concepts into modules (optional)", done: concepts.some((c) => c.category?.trim()),
-      hint: "Select a concept and give it a module, such as Water or Farming. Modules colour the map and let you analyse each part separately." },
-    { id: "run", title: "See what your map does", done: hasResults,
-      hint: "Baseline Equilibrium runs the map and shows where the system settles. Try it once you have a few connected concepts.", action: { label: "Open Baseline Equilibrium", tab: "equilibrium" } },
+    { id: "open", title: tr("Open the Network tab"), done: tab === "network" || concepts.length > 0,
+      hint: tr("The Network tab is the drawing board: concepts are cards, relationships are arrows."), action: { label: tr("Go to the Network tab"), tab: "network" } },
+    { id: "add", title: tr("Add your first concept"), done: concepts.length > 0,
+      hint: tr("Double-click an empty spot on the map, or click Add concept. A concept is anything that can go up or down, such as Groundwater level or Farm income."), action: { label: tr("Go to the Network tab"), tab: "network" } },
+    { id: "name", title: tr("Give it a name"), done: named,
+      hint: tr("Type the name in the Inspector on the right and press Enter. Name it as something that can increase or decrease.") },
+    { id: "connect", title: tr("Add a second concept and connect them"), done: edges.length > 0,
+      hint: tr("Hover a concept to see its small dots, then drag from a dot onto the other concept. The arrow means: a change in the first changes the second.") },
+    { id: "weigh", title: tr("Say how they are related"), done: edgeInspected || edges.some((e) => Math.abs(e.weight - 0.5) > 1e-9),
+      hint: tr("Click the arrow. In the Inspector, choose Increases or Decreases, and how strong the effect is.") },
+    { id: "module", title: tr("Sort concepts into modules (optional)"), done: concepts.some((c) => c.category?.trim()),
+      hint: tr("Select a concept and give it a module, such as Water or Farming. Modules colour the map and let you analyse each part separately.") },
+    { id: "run", title: tr("See what your map does"), done: hasResults,
+      hint: tr("Baseline Equilibrium runs the map and shows where the system settles. Try it once you have a few connected concepts."), action: { label: tr("Open Baseline Equilibrium"), tab: "equilibrium" } },
   ];
 }
 
@@ -13738,13 +13738,13 @@ function GettingStartedGuide({ steps, tab, collapsed, setCollapsed, onClose, onG
   // progress), so nothing floats over maps, tables and figures.
   if (collapsed) return null;
   return (
-    <div className="fixed bottom-14 left-4 z-40 w-80 max-w-[calc(100vw-2rem)] bg-white rounded-lg shadow-xl border border-slate-200" role="region" aria-label="Getting started">
+    <div className="fixed bottom-14 left-4 z-40 w-80 max-w-[calc(100vw-2rem)] bg-white rounded-lg shadow-xl border border-slate-200" role="region" aria-label={tr("Getting started")}>
       <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-slate-100">
         <Compass size={15} className="text-coral-600 shrink-0" />
-        <span className="text-sm font-semibold text-neutral-900 flex-1">Getting started</span>
+        <span className="text-sm font-semibold text-neutral-900 flex-1">{tr("Getting started")}</span>
         <span className="text-[14px] text-neutral-600">{doneCount} of {steps.length}</span>
-        <button onClick={() => setCollapsed(true)} className="text-neutral-600 hover:text-neutral-900" title="Make smaller"><ChevronDown size={15} /></button>
-        <button onClick={onClose} className="text-neutral-600 hover:text-neutral-900" title="Close the guide (reopen it from Help at the top right)"><X size={14} /></button>
+        <button onClick={() => setCollapsed(true)} className="text-neutral-600 hover:text-neutral-900" title={tr("Make smaller")}><ChevronDown size={15} /></button>
+        <button onClick={onClose} className="text-neutral-600 hover:text-neutral-900" title={tr("Close the guide (reopen it from Help at the top right)")}><X size={14} /></button>
       </div>
       <div className="h-1 bg-slate-100"><div className="h-1 bg-coral-400 transition-all" style={{ width: `${(100 * doneCount) / steps.length}%` }} /></div>
       <ol className="px-3.5 py-2.5 space-y-1.5 max-h-[50vh] overflow-auto">
@@ -13768,9 +13768,9 @@ function GettingStartedGuide({ steps, tab, collapsed, setCollapsed, onClose, onG
       </ol>
       {!current && (
         <div className="px-3.5 pb-3 text-xs text-neutral-900 space-y-1.5">
-          <p className="font-medium">Your first map is ready.</p>
+          <p className="font-medium">{tr("Your first map is ready.")}</p>
           <p className="text-neutral-700">Next, try Scenarios &amp; Simulation to compare what-if changes. The user manual (About &amp; documentation) explains every tab.</p>
-          <button onClick={onClose} className="px-2.5 py-1 rounded bg-lagoon-700 text-white text-xs">Close the guide</button>
+          <button onClick={onClose} className="px-2.5 py-1 rounded bg-lagoon-700 text-white text-xs">{tr("Close the guide")}</button>
         </div>
       )}
     </div>
@@ -13791,16 +13791,16 @@ function ModelLibraryDialog({ library, activeId, onOpen, onNew, onRename, onDupl
         onKeyDown={(e) => { if (e.key === "Escape" && !editing) onClose(); }}>
         <div className="flex items-center justify-between gap-3 px-5 pt-4 pb-3 border-b border-slate-200">
           <div>
-            <h2 id="se-library-title" className="text-base font-semibold text-neutral-900 flex items-center gap-2"><FolderOpen size={17} className="text-lagoon-700" />Your models</h2>
-            <p className="text-xs text-neutral-600 mt-0.5">Saved automatically in this browser. Use Export JSON to keep a copy or move a model to another computer.</p>
+            <h2 id="se-library-title" className="text-base font-semibold text-neutral-900 flex items-center gap-2"><FolderOpen size={17} className="text-lagoon-700" />{tr("Your models")}</h2>
+            <p className="text-xs text-neutral-600 mt-0.5">{tr("Saved automatically in this browser. Use Export JSON to keep a copy or move a model to another computer.")}</p>
           </div>
-          <button onClick={onClose} className="text-neutral-600 hover:text-neutral-900" aria-label="Close"><X size={16} /></button>
+          <button onClick={onClose} className="text-neutral-600 hover:text-neutral-900" aria-label={tr("Close")}><X size={16} /></button>
         </div>
         <div className="flex flex-wrap gap-2 px-5 py-3 border-b border-slate-100">
-          <Btn onClick={onNew}><FilePlus size={14} />New model</Btn>
-          <Btn variant="outline" onClick={onImport} title="Open a .json file saved with Export JSON, as a new model"><Upload size={14} />Import a file</Btn>
-          <Btn variant="outline" onClick={onExport} title="Download the open model as a .json file"><Download size={14} />Export the open model</Btn>
-          <Btn variant="outline" onClick={onCombine} disabled={(library?.models.length || 0) < 2} title="Aggregate two or more of these models into one group map"><Merge size={14} />Combine maps</Btn>
+          <Btn onClick={onNew}><FilePlus size={14} />{tr("New model")}</Btn>
+          <Btn variant="outline" onClick={onImport} title={tr("Open a .json file saved with Export JSON, as a new model")}><Upload size={14} />{tr("Import a file")}</Btn>
+          <Btn variant="outline" onClick={onExport} title={tr("Download the open model as a .json file")}><Download size={14} />{tr("Export the open model")}</Btn>
+          <Btn variant="outline" onClick={onCombine} disabled={(library?.models.length || 0) < 2} title={tr("Aggregate two or more of these models into one group map")}><Merge size={14} />{tr("Combine maps")}</Btn>
         </div>
         <ul className="overflow-auto divide-y divide-slate-100">
           {models.map((m) => {
@@ -13817,17 +13817,17 @@ function ModelLibraryDialog({ library, activeId, onOpen, onNew, onRename, onDupl
                       className="w-full text-sm font-medium border border-lagoon-500 rounded px-1.5 py-0.5 focus:outline-none"
                     />
                   ) : (
-                    <button onClick={() => onOpen(m.id)} className="text-left w-full" title={open ? "This model is open" : "Open this model"}>
-                      <span className="block text-sm font-medium text-neutral-900 truncate">{m.name}{open && <span className="ml-2 text-[14px] font-semibold uppercase tracking-wide text-lagoon-700">open</span>}</span>
+                    <button onClick={() => onOpen(m.id)} className="text-left w-full" title={open ? tr("This model is open") : tr("Open this model")}>
+                      <span className="block text-sm font-medium text-neutral-900 truncate">{m.name}{open && <span className="ml-2 text-[14px] font-semibold uppercase tracking-wide text-lagoon-700">{tr("open")}</span>}</span>
                       <span className="block text-[14px] text-neutral-600">{m.concepts} concept{m.concepts === 1 ? "" : "s"}, {m.relationships} relationship{m.relationships === 1 ? "" : "s"} &middot; saved {when(m.updatedAt)}</span>
                     </button>
                   )}
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  {!open && <button onClick={() => onOpen(m.id)} className="px-2 py-1 rounded text-xs font-medium text-lagoon-700 hover:bg-lagoon-50">Open</button>}
-                  <button onClick={() => setEditing({ id: m.id, name: m.name })} className="p-1.5 rounded text-neutral-700 hover:bg-slate-100" title="Rename"><Pencil size={14} /></button>
-                  <button onClick={() => onDuplicate(m.id)} className="p-1.5 rounded text-neutral-700 hover:bg-slate-100" title="Make a copy"><CopyPlus size={14} /></button>
-                  <button onClick={() => onDelete(m.id)} className="p-1.5 rounded text-red-600 hover:bg-red-50" title="Delete"><Trash2 size={14} /></button>
+                  {!open && <button onClick={() => onOpen(m.id)} className="px-2 py-1 rounded text-xs font-medium text-lagoon-700 hover:bg-lagoon-50">{tr("Open")}</button>}
+                  <button onClick={() => setEditing({ id: m.id, name: m.name })} className="p-1.5 rounded text-neutral-700 hover:bg-slate-100" title={tr("Rename")}><Pencil size={14} /></button>
+                  <button onClick={() => onDuplicate(m.id)} className="p-1.5 rounded text-neutral-700 hover:bg-slate-100" title={tr("Make a copy")}><CopyPlus size={14} /></button>
+                  <button onClick={() => onDelete(m.id)} className="p-1.5 rounded text-red-600 hover:bg-red-50" title={tr("Delete")}><Trash2 size={14} /></button>
                 </div>
               </li>
             );

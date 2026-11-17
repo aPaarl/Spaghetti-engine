@@ -10,6 +10,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Table2, X, ChevronUp, ChevronDown, Download, Copy, RotateCcw, FileSpreadsheet, Image as ImageIcon } from "lucide-react";
 import { toBlob as domNodeToPngBlob } from "html-to-image";
+import { t as tr } from "./i18n.js";
 
 const loadExcelJS = async () => (await import("exceljs")).default;
 
@@ -79,22 +80,22 @@ function formatNum(text, decimals, decimalCol) {
 // ---- styles --------------------------------------------------------------------------
 
 const TABLE_FONTS = [
-  { id: "inter", label: "Inter (as on screen)", stack: "Inter, Arial, Helvetica, sans-serif" },
-  { id: "arial", label: "Arial / Helvetica", stack: "Arial, Helvetica, 'Liberation Sans', sans-serif" },
-  { id: "calibri", label: "Calibri (as in Word)", stack: "Calibri, Carlito, 'Segoe UI', Arial, sans-serif" },
-  { id: "times", label: "Times New Roman", stack: "'Times New Roman', Times, 'Liberation Serif', serif" },
-  { id: "georgia", label: "Georgia", stack: "Georgia, 'Times New Roman', serif" },
+  { id: "inter", label: tr("Inter (as on screen)"), stack: tr("Inter, Arial, Helvetica, sans-serif") },
+  { id: "arial", label: tr("Arial / Helvetica"), stack: tr("Arial, Helvetica, 'Liberation Sans', sans-serif") },
+  { id: "calibri", label: tr("Calibri (as in Word)"), stack: tr("Calibri, Carlito, 'Segoe UI', Arial, sans-serif") },
+  { id: "times", label: tr("Times New Roman"), stack: "'Times New Roman', Times, 'Liberation Serif', serif" },
+  { id: "georgia", label: "Georgia", stack: tr("Georgia, 'Times New Roman', serif") },
 ];
 const TABLE_STYLES = [
-  { id: "academic", label: "Academic (lines only)" },
+  { id: "academic", label: tr("Academic (lines only)") },
   { id: "grid", label: "Grid" },
-  { id: "striped", label: "Striped rows" },
+  { id: "striped", label: tr("Striped rows") },
 ];
 
 // Inline styles, so the same markup looks right in the preview, in the PNG
 // and when pasted into Word.
 function cellStyle(style, { head = false, rowIndex = 0, last = false, numeric = false, font, size }) {
-  const s = { fontFamily: font, fontSize: `${size}px`, padding: "5px 10px", textAlign: numeric ? "right" : "left", verticalAlign: "top", color: "#111" };
+  const s = { fontFamily: font, fontSize: `${size}px`, padding: tr("5px 10px"), textAlign: numeric ? "right" : "left", verticalAlign: "top", color: "#111" };
   if (head) s.fontWeight = 600;
   if (style === "academic") {
     if (head) { s.borderTop = "1.5px solid #111"; s.borderBottom = "1px solid #111"; }
@@ -281,12 +282,12 @@ export function TableEditor({ data, onClose }) {
     const text = matrix().map((r) => r.join("\t")).join("\n");
     try {
       await navigator.clipboard.write([new ClipboardItem({ "text/html": new Blob([html], { type: "text/html" }), "text/plain": new Blob([text], { type: "text/plain" }) })]);
-      flash("Copied. Paste it into Word or PowerPoint.");
+      flash(tr("Copied. Paste it into Word or PowerPoint."));
     } catch {
       const sel = window.getSelection(); const range = document.createRange();
       range.selectNode(node); sel.removeAllRanges(); sel.addRange(range);
       const ok = document.execCommand("copy"); sel.removeAllRanges();
-      flash(ok ? "Copied. Paste it into Word or PowerPoint." : "Copying is blocked here; use Excel or PNG instead.");
+      flash(ok ? tr("Copied. Paste it into Word or PowerPoint.") : tr("Copying is blocked here; use Excel or PNG instead."));
     }
   };
 
@@ -295,47 +296,47 @@ export function TableEditor({ data, onClose }) {
   const sortable = s.cols;
 
   return (
-    <div className="fixed inset-0 z-[90] bg-ink/50 flex items-center justify-center p-3" role="dialog" aria-label="Edit and export table" data-table-editor onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="fixed inset-0 z-[90] bg-ink/50 flex items-center justify-center p-3" role="dialog" aria-label={tr("Edit and export table")} data-table-editor onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-6xl max-h-[94vh] flex flex-col overflow-hidden">
         <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-200">
           <Table2 size={18} className="text-lagoon-700" />
-          <h2 className="se-display font-semibold text-[16px] flex-1">Edit &amp; export table</h2>
-          <button onClick={onClose} className="p-1.5 rounded-md text-neutral-600 hover:bg-slate-100" title="Close (Esc)"><X size={18} /></button>
+          <h2 className="se-display font-semibold text-[16px] flex-1">{tr("Edit & export table")}</h2>
+          <button onClick={onClose} className="p-1.5 rounded-md text-neutral-600 hover:bg-slate-100" title={tr("Close (Esc)")}><X size={18} /></button>
         </div>
         <div className="flex-1 min-h-0 flex flex-col md:flex-row">
           {/* settings */}
           <div className="md:w-[340px] shrink-0 overflow-y-auto border-b md:border-b-0 md:border-r border-slate-200 p-4 space-y-4">
             <div>
-              <span className={label}>1. Title and note</span>
-              <input className={input} value={s.title} onChange={(e) => set({ title: e.target.value })} placeholder="Title" />
-              <textarea className={`${input} mt-1.5`} rows={2} value={s.note} onChange={(e) => set({ note: e.target.value })} placeholder="Note below the table (optional)" />
+              <span className={label}>{tr("1. Title and note")}</span>
+              <input className={input} value={s.title} onChange={(e) => set({ title: e.target.value })} placeholder={tr("Title")} />
+              <textarea className={`${input} mt-1.5`} rows={2} value={s.note} onChange={(e) => set({ note: e.target.value })} placeholder={tr("Note below the table (optional)")} />
             </div>
             <div>
-              <span className={label}>2. Columns: tick, rename, reorder</span>
+              <span className={label}>{tr("2. Columns: tick, rename, reorder")}</span>
               <ul className="space-y-1">
                 {s.cols.map((c, k) => (
                   <li key={c.i} className="flex items-center gap-1.5">
                     <input type="checkbox" checked={c.on} onChange={(e) => setCol(k, { on: e.target.checked })} className="accent-lagoon-700" aria-label={`Show ${c.name}`} />
                     <input className={`${input} py-0.5 ${c.on ? "" : "text-neutral-400"}`} value={c.name} onChange={(e) => setCol(k, { name: e.target.value })} />
-                    <button onClick={() => moveCol(k, -1)} disabled={k === 0} className="p-0.5 rounded text-neutral-600 hover:bg-slate-100 disabled:opacity-30" title="Move up"><ChevronUp size={15} /></button>
-                    <button onClick={() => moveCol(k, 1)} disabled={k === s.cols.length - 1} className="p-0.5 rounded text-neutral-600 hover:bg-slate-100 disabled:opacity-30" title="Move down"><ChevronDown size={15} /></button>
+                    <button onClick={() => moveCol(k, -1)} disabled={k === 0} className="p-0.5 rounded text-neutral-600 hover:bg-slate-100 disabled:opacity-30" title={tr("Move up")}><ChevronUp size={15} /></button>
+                    <button onClick={() => moveCol(k, 1)} disabled={k === s.cols.length - 1} className="p-0.5 rounded text-neutral-600 hover:bg-slate-100 disabled:opacity-30" title={tr("Move down")}><ChevronDown size={15} /></button>
                   </li>
                 ))}
               </ul>
             </div>
             <div>
-              <span className={label}>3. Rows and numbers</span>
+              <span className={label}>{tr("3. Rows and numbers")}</span>
               <div className="grid grid-cols-2 gap-2">
                 <label className="text-[13.5px] text-neutral-700">Sort by
                   <select className={input} value={s.sortCol} onChange={(e) => set({ sortCol: e.target.value })}>
-                    <option value="">As on screen</option>
+                    <option value="">{tr("As on screen")}</option>
                     {sortable.map((c) => <option key={c.i} value={c.i}>{c.name}</option>)}
                   </select>
                 </label>
                 <label className="text-[13.5px] text-neutral-700">Order
                   <select className={input} value={s.sortDir} onChange={(e) => set({ sortDir: e.target.value })} disabled={s.sortCol === ""}>
-                    <option value="desc">Highest first</option>
-                    <option value="asc">Lowest first</option>
+                    <option value="desc">{tr("Highest first")}</option>
+                    <option value="asc">{tr("Lowest first")}</option>
                   </select>
                 </label>
                 <label className="text-[13.5px] text-neutral-700">Rows
@@ -346,15 +347,15 @@ export function TableEditor({ data, onClose }) {
                 </label>
                 <label className="text-[13.5px] text-neutral-700">Decimals
                   <select className={input} value={s.decimals} onChange={(e) => set({ decimals: e.target.value })}>
-                    <option value="asShown">As on screen</option>
+                    <option value="asShown">{tr("As on screen")}</option>
                     {[0, 1, 2, 3].map((n) => <option key={n} value={n}>{n}</option>)}
                   </select>
                 </label>
               </div>
-              {data.folded && <p className="mt-2 text-[13.5px] text-amber-800 bg-amber-50 rounded-md px-2 py-1.5">Some rows are folded away on screen. Close this, click "Show all" under the table, and open the editor again to include them.</p>}
+              {data.folded && <p className="mt-2 text-[13.5px] text-amber-800 bg-amber-50 rounded-md px-2 py-1.5">{tr("Some rows are folded away on screen. Close this, click \"Show all\" under the table, and open the editor again to include them.")}</p>}
             </div>
             <div>
-              <span className={label}>4. Style</span>
+              <span className={label}>{tr("4. Style")}</span>
               <div className="grid grid-cols-2 gap-2">
                 <label className="text-[13.5px] text-neutral-700 col-span-2">Look
                   <select className={input} value={s.style} onChange={(e) => set({ style: e.target.value })}>
@@ -373,12 +374,12 @@ export function TableEditor({ data, onClose }) {
                 </label>
               </div>
             </div>
-            <button onClick={() => setS(fresh())} className="inline-flex items-center gap-1.5 text-[13.5px] text-neutral-700 hover:text-neutral-900"><RotateCcw size={13} />Start again from the table on screen</button>
+            <button onClick={() => setS(fresh())} className="inline-flex items-center gap-1.5 text-[13.5px] text-neutral-700 hover:text-neutral-900"><RotateCcw size={13} />{tr("Start again from the table on screen")}</button>
           </div>
 
           {/* preview */}
           <div className="flex-1 min-w-0 overflow-auto bg-slate-50 p-4">
-            <p className="text-[13.5px] text-neutral-600 mb-2">Preview. Click any cell to change its text.</p>
+            <p className="text-[13.5px] text-neutral-600 mb-2">{tr("Preview. Click any cell to change its text.")}</p>
             <div className="bg-white rounded-lg border border-slate-200 p-5 inline-block min-w-full">
               <div ref={previewRef} style={{ background: "#fff", padding: 8, display: "inline-block" }}>
                 {s.title && <div style={{ fontFamily: font, fontSize: `${s.size + 2}px`, fontWeight: 600, marginBottom: 8, color: "#111" }}>{s.title}</div>}
@@ -407,13 +408,13 @@ export function TableEditor({ data, onClose }) {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-t border-slate-200">
-          <span className="text-[13.5px] text-neutral-700 mr-1">Export</span>
-          <button onClick={exportXlsx} className="inline-flex items-center gap-1.5 rounded-lg bg-lagoon-700 text-white px-3 py-1.5 text-[14px] font-medium hover:bg-lagoon-800"><FileSpreadsheet size={14} />Excel</button>
-          <button onClick={exportCsv} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-[14px] font-medium hover:bg-slate-50"><Download size={14} />CSV</button>
-          <button onClick={exportPng} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-[14px] font-medium hover:bg-slate-50"><ImageIcon size={14} />PNG image</button>
-          <button onClick={copyForWord} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-[14px] font-medium hover:bg-slate-50"><Copy size={14} />Copy for Word</button>
+          <span className="text-[13.5px] text-neutral-700 mr-1">{tr("Export")}</span>
+          <button onClick={exportXlsx} className="inline-flex items-center gap-1.5 rounded-lg bg-lagoon-700 text-white px-3 py-1.5 text-[14px] font-medium hover:bg-lagoon-800"><FileSpreadsheet size={14} />{tr("Excel")}</button>
+          <button onClick={exportCsv} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-[14px] font-medium hover:bg-slate-50"><Download size={14} />{tr("CSV")}</button>
+          <button onClick={exportPng} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-[14px] font-medium hover:bg-slate-50"><ImageIcon size={14} />{tr("PNG image")}</button>
+          <button onClick={copyForWord} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-[14px] font-medium hover:bg-slate-50"><Copy size={14} />{tr("Copy for Word")}</button>
           {msg && <span className="text-[13.5px] text-emerald-800">{msg}</span>}
-          <button onClick={onClose} className="ml-auto rounded-lg px-3 py-1.5 text-[14px] text-neutral-700 hover:bg-slate-100">Close</button>
+          <button onClick={onClose} className="ml-auto rounded-lg px-3 py-1.5 text-[14px] text-neutral-700 hover:bg-slate-100">{tr("Close")}</button>
         </div>
       </div>
     </div>
