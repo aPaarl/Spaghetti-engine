@@ -13,9 +13,10 @@ const a = idx(/^\/\/ Utilities/) - 1, aEnd = idx(/^function Btn\(/);
 const s = idx(/^\/\/ The marginal-benefit transition point of a response/), sEnd = idx(/^function TransitionPointAnalysisTab\(/);
 const code = [lines.slice(a, aEnd), lines.slice(s, sEnd)].map((x) => x.join(String.fromCharCode(10))).join(String.fromCharCode(10));
 const stub = () => { throw new Error("stub"); };
+const TR_STUB = "const tr = (x, v) => (v ? x.replace(/\\{(\\w+)\\}/g, (m, q) => (v[q] !== undefined ? String(v[q]) : m)) : x); const getLang = () => \"en\"; const pick = (en) => en;\n"; // the engine code is evaluated without its imports
 const ls = { getItem: () => null, setItem() {}, removeItem() {} };
 const api = new Function("localStorage", "performance", "ExcelJS", "document", "window", "ELK", "forceSimulation", "forceManyBody", "forceLink", "forceCenter", "forceCollide", "domNodeToPngBlob",
-  "function layoutByModule(c){ return c; }\n" + fs.readFileSync(path.join(__dirname, "fixtures", "example-models.js"), "utf8") + "\n" + code + "\nreturn { makeTemplate, marginalBenefitTP, transitionSimSettings, runTransitionSweep, classifyResponseType, DEFAULT_SETTINGS, BASELINE_SCENARIO, simulate, makePathwayEngine, pathwaySimSettings, runPathwayAnalysis, DEFAULT_PATHWAY_CONFIG, TP_PRECISION_THRESHOLD, TP_MIN_ITERATIONS };")(ls, { now: () => Date.now() }, {}, {}, {}, class {}, stub, stub, stub, stub, stub, stub);
+  TR_STUB + "function layoutByModule(c){ return c; }\n" + fs.readFileSync(path.join(__dirname, "fixtures", "example-models.js"), "utf8") + "\n" + code + "\nreturn { makeTemplate, marginalBenefitTP, transitionSimSettings, runTransitionSweep, classifyResponseType, DEFAULT_SETTINGS, BASELINE_SCENARIO, simulate, makePathwayEngine, pathwaySimSettings, runPathwayAnalysis, DEFAULT_PATHWAY_CONFIG, TP_PRECISION_THRESHOLD, TP_MIN_ITERATIONS };")(ls, { now: () => Date.now() }, {}, {}, {}, class {}, stub, stub, stub, stub, stub, stub);
 
 let pass = 0, fail = 0;
 const ok = (c, msg) => { if (c) { pass++; console.log("PASS " + msg); } else { fail++; console.log("FAIL " + msg); } };

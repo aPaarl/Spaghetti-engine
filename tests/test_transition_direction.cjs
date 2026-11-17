@@ -13,9 +13,10 @@ const s = idx(/^\/\/ The marginal-benefit transition point of a response/), sEnd
 const code = [lines.slice(a, aEnd), lines.slice(s, sEnd)].map((x) => x.join(String.fromCharCode(10))).join(String.fromCharCode(10));
 const stub = () => { throw new Error("stub"); };
 const store = {};
+const TR_STUB = "const tr = (x, v) => (v ? x.replace(/\\{(\\w+)\\}/g, (m, q) => (v[q] !== undefined ? String(v[q]) : m)) : x); const getLang = () => \"en\"; const pick = (en) => en;\n"; // the engine code is evaluated without its imports
 const ls = { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); }, removeItem: (k) => { delete store[k]; } };
 const api = new Function("localStorage", "performance", "ExcelJS", "document", "window", "ELK", "forceSimulation", "forceManyBody", "forceLink", "forceCenter", "forceCollide", "domNodeToPngBlob",
-  "function layoutByModule(c){ return c; }\n" + fs.readFileSync(path.join(__dirname, "fixtures", "example-models.js"), "utf8") + "\n" + code + "\nreturn { makeTemplate, runTransitionSweep, transitionSimSettings, transitionRangeLabel, classifyResponseType, DEFAULT_SETTINGS, BASELINE_SCENARIO, simulate, makePathwayEngine, pathwaySimSettings, pathwayLeverValue, runPathwayAnalysis, DEFAULT_PATHWAY_CONFIG };")(ls, { now: () => Date.now() }, {}, {}, {}, class {}, stub, stub, stub, stub, stub, stub);
+  TR_STUB + "function layoutByModule(c){ return c; }\n" + fs.readFileSync(path.join(__dirname, "fixtures", "example-models.js"), "utf8") + "\n" + code + "\nreturn { makeTemplate, runTransitionSweep, transitionSimSettings, transitionRangeLabel, classifyResponseType, DEFAULT_SETTINGS, BASELINE_SCENARIO, simulate, makePathwayEngine, pathwaySimSettings, pathwayLeverValue, runPathwayAnalysis, DEFAULT_PATHWAY_CONFIG };")(ls, { now: () => Date.now() }, {}, {}, {}, class {}, stub, stub, stub, stub, stub, stub);
 
 let pass = 0, fail = 0;
 const ok = (c, msg) => { if (c) { pass++; console.log("PASS " + msg); } else { fail++; console.log("FAIL " + msg); } };
