@@ -1845,5 +1845,12 @@ const NL = {
   "New element": "Nieuw element",
   "Phase out": "Afbouwen",
   "Change a link": "Verband veranderen",
+  "Transitions from today": "Transities vanaf nu",
+  "Forward": "Vooruit",
+  "Start from today and look forward: tipping points and the best order of measures. Mainly for the analyst.": "Begin bij nu en kijk vooruit: kantelpunten en de beste volgorde van maatregelen. Vooral voor de analist.",
+  "Back from a vision": "Terug vanaf een toekomstbeeld",
+  "Vision": "Toekomstbeeld",
+  "Describe the future you want, then work back to the steps that lead there.": "Beschrijf de toekomst die u wilt, en werk terug naar de stappen die daarheen leiden.",
+  "Vision and backcasting": "Toekomstbeeld en backcasting",
 };
 export default NL;

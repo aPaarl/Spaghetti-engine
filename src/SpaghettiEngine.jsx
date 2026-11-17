@@ -13915,6 +13915,7 @@ const GROUP_TONES = {
   emerald: { text: "text-emerald-700", chip: "bg-emerald-50 text-emerald-700", chipOn: "bg-emerald-700 text-white", ring: "border-emerald-400" },
   sky: { text: "text-sky-700", chip: "bg-sky-50 text-sky-700", chipOn: "bg-sky-700 text-white", ring: "border-sky-400" },
   violet: { text: "text-violet-700", chip: "bg-violet-50 text-violet-700", chipOn: "bg-violet-600 text-white", ring: "border-violet-300" },
+  rose: { text: "text-rose-700", chip: "bg-rose-50 text-rose-700", chipOn: "bg-rose-600 text-white", ring: "border-rose-300" },
   amber: { text: "text-amber-700", chip: "bg-amber-50 text-amber-700", chipOn: "bg-amber-500 text-white", ring: "border-amber-300" },
   about: { text: "text-coral-700", chip: "bg-coral-50 text-coral-700", chipOn: "bg-coral-500 text-white", ring: "border-coral-400" },
 };
@@ -13944,12 +13945,18 @@ const TAB_GROUPS = [
     ],
   },
   {
-    id: "transition", label: tr("Transition analyses"), short: tr("Change"), icon: TrendingUp, tone: "violet",
-    hint: tr("Find tipping points and effective routes to change. Mainly for the analyst."),
+    id: "transition", label: tr("Transitions from today"), short: tr("Forward"), icon: TrendingUp, tone: "violet",
+    hint: tr("Start from today and look forward: tipping points and the best order of measures. Mainly for the analyst."),
     tabs: [
       { id: "transition", label: tr("Transition Point Analysis"), icon: TrendingUp },
       { id: "pathways", label: tr("Transition Pathways"), icon: Waypoints },
-      { id: "backcasting", label: tr("Backcasting"), icon: Flag },
+    ],
+  },
+  {
+    id: "vision", label: tr("Back from a vision"), short: tr("Vision"), icon: Flag, tone: "rose",
+    hint: tr("Describe the future you want, then work back to the steps that lead there."),
+    tabs: [
+      { id: "backcasting", label: tr("Vision and backcasting"), icon: Flag },
     ],
   },
   {
