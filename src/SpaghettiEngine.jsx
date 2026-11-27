@@ -16162,6 +16162,7 @@ function SpaghettiEngineApp() {
             readModel={readModelForBackcast} simulate={simulate}
             onCreateVision={createVision} onOpenModel={openModel}
             onLoadExample={loadBackcastExample} visionHint={backcastVisionHint}
+            renderFigureExport={(ref, o) => <FigureExportButton targetRef={ref} baseName={o.baseName} title={o.title} subtitle={activeModelName} />}
           />
         )}
 

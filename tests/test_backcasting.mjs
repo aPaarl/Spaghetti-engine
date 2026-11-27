@@ -1,7 +1,8 @@
 // Tests for src/backcasting.js: comparing the two maps, building the steps,
 // applying them, and the search closing the gap to the vision.
 // Run: node tests/test_backcasting.mjs
-import { compareSystems, buildMoves, applyMoves, gapOf, backcast } from "../src/backcasting.js";
+import { compareSystems, buildMoves, applyMoves, gapOf, backcast, backcastMetroCandidates } from "../src/backcasting.js";
+import { metroRows } from "../src/pathwayMetroLayout.js";
 
 let passed = 0, failed = 0;
 const ok = (c, m) => { if (c) passed += 1; else { failed += 1; console.error("FAIL:", m); } };
@@ -96,6 +97,27 @@ ok(lev.gapEnd > res.gapEnd, "without structural change less of the gap is closed
   ok(applyMoves(cur, vis, d, mv).edges[0].lag === 0, "applying it removes the delay");
   const rw = compareSystems({ concepts: cur.concepts, edges: [e("a", "b", 0.5)] }, { concepts: vis.concepts, edges: [{ ...e("a", "b", 0.8), lag: 2 }] });
   ok(applyMoves(cur, vis, rw, buildMoves(cur, vis, rw, {})).edges[0].lag === 2, "a re-weighted link takes the delay it has in the vision");
+}
+
+// ---- alternative paths and the metro map --------------------------------------------------------------------
+{
+  const alt = res.alternatives;
+  ok(alt.length > res.steps.length, `the search keeps alternative paths (${alt.length})`);
+  ok(alt.filter((a) => a.best).length === 1 && alt.find((a) => a.best).id === res.bestId, "exactly one path is the closest");
+  ok(new Set(alt.map((a) => a.id)).size === alt.length, "every path is listed once");
+  const ids = new Set(alt.map((a) => a.id));
+  ok(alt.every((a) => a.steps.length === 1 || ids.has(a.id.split(" > ").slice(0, -1).join(" > "))), "every longer path grows out of a listed shorter one");
+  ok(alt.every((a) => a.steps.every((st, i) => i === 0 || st.closed > a.steps[i - 1].closed)), "along every path each step closes more of the distance");
+  ok(alt.every((a) => a.closed <= res.closed + 1e-9), "no path comes closer than the closest");
+  const cands = backcastMetroCandidates(res);
+  ok(cands.length === alt.length && cands.every((k) => k.stages.length && k.cii === k.stages.length && k.stages.every((st, i) => st.ciiAfter === i + 1)), "each path becomes a metro route of one stage per step");
+  const rows = metroRows(cands, { top: 8, sort: "network" });
+  ok(rows.some((r) => r.c.id === res.bestId), "the closest path is on the map");
+  ok(rows.every((r) => r.parentId === null || rows.some((q) => q.c.id === r.parentId)), "the map is a connected network");
+  ok(rows.every((r) => r.end === r.c.stages.length && (r.parentId === null ? r.start === 0 : r.start === 1)), "a route ends at its number of steps and continues its parent after the first step");
+  ok(cands.find((k) => k.id === res.bestId).tog === res.closed, "the closest route is scored by the share of the distance it closes");
+  const one = backcast(current, vision, simulate, {}, { maxSteps: 5, beam: 1 });
+  ok(one.alternatives.length === one.steps.length && one.alternatives.every((a, i) => a.steps.length === i + 1), "with a search width of 1 the map is the single path and its stages");
 }
 
 console.log(`${passed} passed, ${failed} failed`);

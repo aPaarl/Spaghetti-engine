@@ -56,15 +56,36 @@ export function routeLabel(c, nameOf) {
   }).join(" + ");
 }
 
-export default function PathwayMetroMap({ rows, outcomes, levers, nameOf, selectedId, bestId, onSelect, fontSize = 13 }) {
+// The texts of the Transition Pathways map. Another analysis (backcasting)
+// passes its own through `text`, and its own axis through `axis`.
+const DEFAULT_TEXT = {
+  aria: "Metro map of the transition pathways: each route along cumulative intervention intensity, coloured by intervention, with its transition points and scorecard",
+  axis: "Cumulative intervention intensity (CII)",
+  score: "Total outcome gain", scoreNote: "TOG",
+  solid: "One intervention",
+  dashed: "Combined pathway (each stage in its lever's colour)",
+  transfer: "Transition point: next lever added",
+  end: "End of pathway",
+  tipping: "Tipping point: an outcome ends worse than Business-as-Usual",
+  foot: "TOG: total outcome gain against Business-as-Usual. Outcomes: end state of the pathway, on the -1 to +1 scale.",
+};
+
+export default function PathwayMetroMap({ rows, outcomes, levers, nameOf, selectedId, bestId, onSelect, fontSize = 13,
+  text = {}, labelOf = null, leverName = null, outcomeNote = null, scoreOf = null, rowTitle = null, axis = {} }) {
   const fs = fontSize;
+  const T = { ...DEFAULT_TEXT, ...text };
+  const leverLabel = leverName || nameOf;
+  // axis: { whole (ticks at whole numbers), format (tick labels), endLabel (the text after a route's end),
+  // mark: { at, label } (a dashed vertical line) }
+  const fmtX = axis.format || ((v) => (v === 0 ? "0" : v.toFixed(2)));
+  const fmtScore = scoreOf || ((c) => c.tog.toFixed(2));
   // An exported copy is laid out narrower, so that at a journal's column
   // width its text stays at a readable size.
   const compact = useFigureExporting();
   const colorOf = (leverId) => METRO_LEVER_COLORS[Math.max(0, levers.findIndex((l) => l.id === leverId)) % METRO_LEVER_COLORS.length];
 
   // Route names up to 430 px wide sit on one line; longer ones wrap at a " + ".
-  const labels = rows.map((r) => routeLabel(r.c, nameOf));
+  const labels = rows.map((r, i) => (labelOf ? labelOf(r, i) : routeLabel(r.c, nameOf)));
   const maxLabel = compact ? 250 : 430;
   const wrapped = labels.map((l) => (textW(l, fs, true) <= maxLabel ? [l] : wrap(l, fs, maxLabel, " + ", true)));
   const rowHs = wrapped.map((w) => Math.round(fs * (2.3 + 1.2 * (w.length - 1))));
@@ -73,7 +94,7 @@ export default function PathwayMetroMap({ rows, outcomes, levers, nameOf, select
   // Scorecard columns, headed by the outcome names in full (wrapped by word),
   // with "lower is better" under the outcomes where that is the improvement.
   const headPx = fs * 0.92;
-  const heads = [{ lines: ["Total outcome gain"], note: "TOG" }, ...outcomes.map((o) => ({ lines: wrap(nameOf(o.id), headPx, 112, " ", true), note: o.d < 0 ? "lower is better" : "" }))];
+  const heads = [{ lines: wrap(T.score, headPx, 112, " ", true), note: T.scoreNote }, ...outcomes.map((o) => ({ lines: wrap(nameOf(o.id), headPx, 112, " ", true), note: outcomeNote ? outcomeNote(o) : o.d < 0 ? "lower is better" : "" }))];
   heads.forEach((h) => { h.lines = h.lines.flatMap((l) => (textW(l, headPx, true) > 112 ? wrap(l, headPx, 112, "-", true) : [l])); });
   const colWs = heads.map((h) => Math.max(fs * 4.2, ...h.lines.map((l) => textW(l, headPx, true)), h.note ? textW(h.note, headPx * 0.88) : 0) + 14);
   const headLines = Math.max(...heads.map((h) => h.lines.length + (h.note ? 1 : 0)));
@@ -93,12 +114,12 @@ export default function PathwayMetroMap({ rows, outcomes, levers, nameOf, select
   const lw = Math.max(5, fs * 0.6), dotR = fs * 0.5;
   const legendPx = fs * 0.92;
   const items = [
-    ...shownLevers.map((l) => ({ kind: "lever", color: colorOf(l.id), text: nameOf(l.id) })),
-    { kind: "solid", text: "One intervention" },
-    { kind: "dashed", text: "Combined pathway (each stage in its lever's colour)" },
-    { kind: "transfer", text: "Transition point: next lever added" },
-    { kind: "end", text: "End of pathway" },
-    { kind: "tipping", text: "Tipping point: an outcome ends worse than Business-as-Usual" },
+    ...shownLevers.map((l) => ({ kind: "lever", color: colorOf(l.id), text: leverLabel(l.id) })),
+    { kind: "solid", text: T.solid },
+    { kind: "dashed", text: T.dashed },
+    { kind: "transfer", text: T.transfer },
+    { kind: "end", text: T.end },
+    ...(rows.some((r) => r.endKind === "tipping") || !axis.whole ? [{ kind: "tipping", text: T.tipping }] : []),
   ];
   const legendTop = axisY + fs * 3.4;
   const legendLineH = legendPx * 1.9;
@@ -114,23 +135,32 @@ export default function PathwayMetroMap({ rows, outcomes, levers, nameOf, select
   const H = footY + fs * 0.9;
 
   const maxX = Math.max(0.05, ...rows.map((r) => r.end));
-  const { ticks, end } = metroTicks(maxX);
+  const { ticks, end } = axis.whole
+    ? { ticks: Array.from({ length: Math.max(1, Math.ceil(maxX - 1e-9)) + 1 }, (_, i) => i), end: Math.max(1, Math.ceil(maxX - 1e-9)) }
+    : metroTicks(maxX);
+  const mark = axis.mark && axis.mark.at <= end + 1e-9 ? axis.mark : null;
   const x = (v) => plotX + (v / end) * (plotW - 40);
   const yOf = new Map();
   rows.reduce((acc, r, i) => { yOf.set(r.c.id, acc + rowHs[i] / 2); return acc + rowHs[i]; }, top);
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ maxWidth: W, height: "auto", display: "block" }} fontFamily="Inter, system-ui, sans-serif" role="img"
-      aria-label="Metro map of the transition pathways: each route along cumulative intervention intensity, coloured by intervention, with its transition points and scorecard">
+      aria-label={T.aria}>
       <rect x="0" y="0" width={W} height={H} fill="#ffffff" />
       {/* grid */}
       {ticks.map((t) => (
         <g key={t}>
           <line x1={x(t)} x2={x(t)} y1={top - 4} y2={top + plotH} stroke="#e5e7eb" strokeWidth={t === 0 ? 1.5 : 1} />
-          <text x={x(t)} y={axisY + fs} fontSize={fs * 0.9} textAnchor="middle" fill={MUTED}>{t === 0 ? "0" : t.toFixed(2)}</text>
+          <text x={x(t)} y={axisY + fs} fontSize={fs * 0.9} textAnchor="middle" fill={MUTED}>{fmtX(t)}</text>
         </g>
       ))}
-      <text x={(plotX + plotEnd - 40) / 2} y={axisY + fs * 2.4} fontSize={fs} textAnchor="middle" fill={MUTED}>Cumulative intervention intensity (CII)</text>
+      {mark && (
+        <g>
+          <line x1={x(mark.at)} x2={x(mark.at)} y1={top - 4} y2={top + plotH} stroke="#7c3aed" strokeWidth={2} strokeDasharray="4 3" />
+          <text x={x(mark.at)} y={top - 10} fontSize={fs * 0.9} fontWeight={700} textAnchor="middle" fill="#6d28d9">{mark.label}</text>
+        </g>
+      )}
+      <text x={(plotX + plotEnd - 40) / 2} y={axisY + fs * 2.4} fontSize={fs} textAnchor="middle" fill={MUTED}>{T.axis}</text>
 
       {/* scorecard header: names in full */}
       {heads.map((h, i) => {
@@ -159,7 +189,7 @@ export default function PathwayMetroMap({ rows, outcomes, levers, nameOf, select
         const dashed = r.depth > 1;
         return (
           <g key={r.c.id} onClick={() => onSelect?.(r.c.id)} style={{ cursor: onSelect ? "pointer" : undefined }}>
-            <title>{`${labels[i]}\nTOG ${r.c.tog.toFixed(2)}, CII ${r.c.cii.toFixed(2)}${r.endKind === "tipping" ? "\nTipping point: at least one outcome ends worse than Business-as-Usual" : ""}`}</title>
+            <title>{rowTitle ? rowTitle(r, labels[i]) : `${labels[i]}\nTOG ${r.c.tog.toFixed(2)}, CII ${r.c.cii.toFixed(2)}${r.endKind === "tipping" ? "\nTipping point: at least one outcome ends worse than Business-as-Usual" : ""}`}</title>
             {r.c.id === selectedId && <rect x={left - 4} y={y - rowHs[i] / 2 + 2} width={W - left} height={rowHs[i] - 4} rx={4} fill="#eef2ff" />}
             <text x={left} y={y + fs * 0.35 - ((wrapped[i].length - 1) * fs * 1.2) / 2} fontSize={fs} fontWeight={bold ? 700 : 400} fill={INK}>
               {wrapped[i].map((l, k) => <tspan key={k} x={left} dy={k === 0 ? 0 : fs * 1.2}>{l}</tspan>)}
@@ -171,8 +201,8 @@ export default function PathwayMetroMap({ rows, outcomes, levers, nameOf, select
               ? <rect x={x(r.end) - 2.5} y={y - fs * 0.75} width={5} height={fs * 1.5} fill={endColor} />
               : <circle cx={x(r.end)} cy={y} r={dotR} fill={endColor} />}
             {r.transfers.filter((t) => t >= r.start - 1e-9).map((t, k) => <circle key={k} cx={x(t)} cy={y} r={dotR} fill="#ffffff" stroke={INK} strokeWidth={2} />)}
-            <text x={x(r.end) + dotR + 6} y={y + fs * 0.32} fontSize={fs * 0.88} fill={MUTED}>{r.end.toFixed(2)}</text>
-            <text x={colX[0] + colWs[0] / 2} y={y + fs * 0.35} fontSize={fs} fontWeight={bold ? 700 : 400} textAnchor="middle" fill={INK}>{r.c.tog.toFixed(2)}</text>
+            <text x={x(r.end) + dotR + 6} y={y + fs * 0.32} fontSize={fs * 0.88} fill={MUTED}>{axis.endLabel ? axis.endLabel(r) : r.end.toFixed(2)}</text>
+            <text x={colX[0] + colWs[0] / 2} y={y + fs * 0.35} fontSize={fs} fontWeight={bold ? 700 : 400} textAnchor="middle" fill={INK}>{fmtScore(r.c)}</text>
             {outcomes.map((o, k) => {
               const v = last.outcomes.find((q) => q.id === o.id)?.value ?? 0;
               return <text key={o.id} x={colX[k + 1] + colWs[k + 1] / 2} y={y + fs * 0.35} fontSize={fs} fontWeight={bold ? 700 : 400} textAnchor="middle" fill={INK}>{signed(v)}</text>;
@@ -198,7 +228,7 @@ export default function PathwayMetroMap({ rows, outcomes, levers, nameOf, select
           );
         })}
       </g>
-      <text x={left} y={footY} fontSize={fs * 0.85} fill={MUTED}>TOG: total outcome gain against Business-as-Usual. Outcomes: end state of the pathway, on the -1 to +1 scale.</text>
+      <text x={left} y={footY} fontSize={fs * 0.85} fill={MUTED}>{T.foot}</text>
     </svg>
   );
 }

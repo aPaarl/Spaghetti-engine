@@ -7,9 +7,11 @@
 // runs the search in backcasting.js. The path is shown from the vision back
 // to today, the way backcasting is read, with the state of the outcomes at
 // every milestone.
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Flag, Play, ArrowDown, ArrowUp, Sparkles, AlertTriangle, Check, BookOpen } from "lucide-react";
-import { compareSystems, buildMoves, backcast, driversOf } from "./backcasting.js";
+import { compareSystems, buildMoves, backcast, driversOf, backcastMetroCandidates } from "./backcasting.js";
+import { metroRows } from "./pathwayMetroLayout.js";
+import PathwayMetroMap from "./PathwayMetroMap.jsx";
 import { t as tr } from "./i18n.js";
 
 const pct = (v) => `${Math.round((v || 0) * 100)}%`;
@@ -32,7 +34,7 @@ function moveLabel(m, nameOf) {
   return tr(verb, { a: nameOf(ch.source), b: nameOf(ch.target) });
 }
 
-export default function BackcastingTab({ concepts, edges, settings, library, activeModelId, activeModelName, readModel, simulate, onCreateVision, onOpenModel, onLoadExample, visionHint }) {
+export default function BackcastingTab({ concepts, edges, settings, library, activeModelId, activeModelName, readModel, simulate, onCreateVision, onOpenModel, onLoadExample, visionHint, renderFigureExport }) {
   const others = (library?.models || []).filter((m) => m.id !== activeModelId);
   const guess = others.find((m) => m.name === `${activeModelName} (vision)`) || others.find((m) => /vision|visie|toekomst|future/i.test(m.name));
   const [visionId, setVisionId] = useState(guess?.id || "");
@@ -44,6 +46,9 @@ export default function BackcastingTab({ concepts, edges, settings, library, act
   const [result, setResult] = useState(null);
   const [running, setRunning] = useState(false);
   const [forward, setForward] = useState(false);
+  const [pathId, setPathId] = useState(null); // the path opened from the metro map (null: the closest)
+  const [metroFont, setMetroFont] = useState(13);
+  const metroRef = useRef(null);
 
   // a vision chosen from outside (the worked example), once its model is listed
   useEffect(() => {
@@ -81,6 +86,7 @@ export default function BackcastingTab({ concepts, edges, settings, library, act
     setTimeout(() => {
       try {
         setResult(backcast(current, vision, simulate, settings, { outcomes: chosenOutcomes, levers: chosenLevers, structural, maxSteps, beam }));
+        setPathId(null);
       } finally { setRunning(false); }
     }, 20);
   };
@@ -93,7 +99,23 @@ export default function BackcastingTab({ concepts, edges, settings, library, act
     </div>
   );
 
-  const steps = result ? (forward ? result.steps : [...result.steps].reverse()) : [];
+  // The path shown below the map: the closest one, or one opened on the map.
+  const path = result ? (result.alternatives?.find((a) => a.id === pathId) || { id: result.bestId, best: true, steps: result.steps, gapEnd: result.gapEnd, closed: result.closed, reached: result.reached }) : null;
+  const steps = path ? (forward ? path.steps : [...path.steps].reverse()) : [];
+  const unused = result && path ? result.moves.filter((m) => !path.steps.some((s) => s.move.id === m.id)) : [];
+
+  // The metro map: every path the search kept, along the share of the distance closed.
+  const metro = useMemo(() => {
+    if (!result?.alternatives?.length) return null;
+    const candidates = backcastMetroCandidates(result);
+    const rows = metroRows(candidates, { top: 8, extraIds: pathId ? [pathId] : [], sort: "network" });
+    const byId = new Map(result.moves.map((m) => [m.id, m]));
+    // colours: the steps of the closest path first, then the others as they appear
+    const order = [...result.steps.map((s) => s.move.id)];
+    rows.forEach((r) => r.c.stages.forEach((st) => { if (!order.includes(st.leverId)) order.push(st.leverId); }));
+    return { rows, byId, levers: order.map((id) => ({ id })) };
+  }, [result, pathId]);
+
   return (
     <div className="space-y-5">
       <div className={box}>
@@ -167,13 +189,55 @@ export default function BackcastingTab({ concepts, edges, settings, library, act
         </section>
       )}
 
+      {result && metro && (
+        <section className={box}>
+          <div className="flex flex-wrap items-start justify-between gap-3 mb-2">
+            <h3 className="font-semibold text-[15px] text-neutral-900">{tr("Metro map of the paths to the vision")}</h3>
+            <div className="flex flex-wrap items-center gap-3 text-sm text-neutral-800">
+              <label className="inline-flex items-center gap-1">{tr("Text")}
+                <select value={metroFont} onChange={(e) => setMetroFont(Number(e.target.value))} className="border border-slate-300 rounded px-1 py-0.5" aria-label={tr("Text size of the metro map")}>
+                  {[11, 13, 15, 17].map((n) => <option key={n} value={n}>{n} px</option>)}
+                </select>
+              </label>
+              {renderFigureExport && renderFigureExport(metroRef, { baseName: "backcasting-metro-map", title: tr("Backcasting: metro map of the paths to the vision") })}
+            </div>
+          </div>
+          <p className="text-sm text-neutral-700 mb-2">{tr("Every path that the search kept, drawn as a metro line from today (left), one step at a time. Each step has its own colour. An open circle is a point where the next step is added, and the vertical lines join a path to the longer paths that continue it. A filled circle ends a path; a bar ends a path on which at least one outcome ends further from the vision than it is today. The scorecard gives the share of the distance to the vision that each path closes, and each outcome at the end of the path. The closest path is in bold. Click a path to show its steps below.")}</p>
+          <div ref={metroRef} className="overflow-x-auto">
+            <PathwayMetroMap
+              rows={metro.rows} levers={metro.levers} nameOf={nameOf} fontSize={metroFont}
+              outcomes={result.outcomes.map((id) => ({ id }))}
+              selectedId={pathId && pathId !== result.bestId ? pathId : null} bestId={result.bestId} onSelect={(id) => setPathId(id === result.bestId ? null : id)}
+              leverName={(id) => moveLabel(metro.byId.get(id), nameOf)}
+              labelOf={(r) => r.c.stages.map((st) => moveLabel(metro.byId.get(st.leverId), nameOf)).join(" + ")}
+              outcomeNote={(o) => tr("vision {v}", { v: f2(result.targets[o.id]) })}
+              scoreOf={(c) => pct(c.tog)}
+              rowTitle={(r, label) => `${label}\n${tr("{p} of the distance closed", { p: pct(r.c.tog) })}${r.c.unsettled ? `\n${tr("did not settle")}` : ""}`}
+              axis={{ whole: true, format: (v) => (v === 0 ? tr("Today") : tr("Step {n}", { n: v })), endLabel: (r) => pct(r.c.tog) }}
+              text={{
+                aria: tr("Metro map of the backcasting paths: each path step by step from today, coloured by step, with the share of the distance to the vision that it closes"),
+                axis: tr("Steps from today towards the vision (phases, not periods of time)"),
+                score: tr("Distance closed"), scoreNote: "",
+                solid: tr("A path of one step"),
+                dashed: tr("A path of several steps (each step in its own colour)"),
+                transfer: tr("Next step added"),
+                end: tr("End of the path"),
+                tipping: tr("End of a path on which an outcome moves away from the vision"),
+                foot: tr("The percentage after each path is the share of the distance to the vision that it closes. Outcomes: the settled state at the end of the path, on the -1 to +1 scale; under each name its value in the vision."),
+              }}
+            />
+          </div>
+        </section>
+      )}
+
       {result && (
         <section className={box}>
           <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
             <div>
-              <h3 className="font-semibold text-[15px] text-neutral-900">{tr("The path from today to the vision")}</h3>
+              <h3 className="font-semibold text-[15px] text-neutral-900">{path.best ? tr("The path from today to the vision") : tr("Another path from today to the vision")}</h3>
+              {!path.best && <p className="text-sm text-violet-900 mt-0.5">{tr("Opened from the metro map. This is not the path that comes closest to the vision.")} <button onClick={() => setPathId(null)} className="underline hover:text-violet-700">{tr("Show the closest path")}</button></p>}
               <p className="text-sm text-neutral-800 mt-0.5">
-                {tr("{n} steps close {p} of the distance to the vision (from {a} to {b}).", { n: result.steps.length, p: pct(result.closed), a: f2(result.gapStart), b: f2(result.gapEnd) })}{" "}
+                {tr("{n} steps close {p} of the distance to the vision (from {a} to {b}).", { n: path.steps.length, p: pct(path.closed), a: f2(result.gapStart), b: f2(path.gapEnd) })}{" "}
                 {tr("With every possible step together the distance would be {c}.", { c: f2(result.gapAllSteps) })}
               </p>
             </div>
@@ -204,15 +268,15 @@ export default function BackcastingTab({ concepts, edges, settings, library, act
                     <span>{tr("closes {p} of the distance", { p: pct(s.added) })}</span>
                     <span className="text-neutral-500">·</span>
                     <span>{tr("after this step: {p} closed", { p: pct(s.closed) })}</span>
-                    <span className="text-neutral-500">·</span>
-                    <span title={tr("How much further from the vision the end state would be without this step")}>{tr("needed: {v}", { v: f2(s.importance) })}</span>
+                    {s.importance !== undefined && <span className="text-neutral-500">·</span>}
+                    {s.importance !== undefined && <span title={tr("How much further from the vision the end state would be without this step")}>{tr("needed: {v}", { v: f2(s.importance) })}</span>}
                   </div>
                   <div className="mt-2 h-1.5 rounded-full bg-slate-100 overflow-hidden"><div className="h-full bg-violet-500" style={{ width: pct(s.closed) }} /></div>
                   <div className="mt-1.5 text-[12px] text-neutral-600">{tr("Milestones")}: {result.outcomes.slice(0, 5).map((id) => `${nameOf(id)} ${f2(s.milestones[id])}`).join(" · ")}</div>
                 </div>
               </li>
             ))}
-            {!result.steps.length && <li className="ml-5 text-sm text-neutral-800">{tr("No step brings today's system closer to the vision. Check that the vision differs in drivers or structure, and that the outcomes are the ones that differ.")}</li>}
+            {!path.steps.length && <li className="ml-5 text-sm text-neutral-800">{tr("No step brings today's system closer to the vision. Check that the vision differs in drivers or structure, and that the outcomes are the ones that differ.")}</li>}
             <li className="ml-5">
               <span className="absolute -left-[9px] w-4 h-4 rounded-full bg-slate-500" />
               <div className="rounded-lg bg-slate-50 border border-slate-200 p-3">
@@ -233,14 +297,14 @@ export default function BackcastingTab({ concepts, edges, settings, library, act
             <thead><tr className="text-left text-[13px] text-neutral-600 border-b border-slate-200"><th className="py-1 font-medium">{tr("Concept")}</th><th className="py-1 font-medium text-right">{tr("Today")}</th><th className="py-1 font-medium text-right">{tr("End of the path")}</th><th className="py-1 font-medium text-right">{tr("Vision")}</th><th className="py-1 font-medium text-right">{tr("Still to go")}</th></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {result.outcomes.map((id) => {
-                const left = (result.targets[id] ?? 0) - (result.reached[id] ?? 0);
-                return <tr key={id}><td className="py-1">{nameOf(id)}</td><td className="text-right tabular-nums">{f2(result.today[id])}</td><td className="text-right tabular-nums font-medium">{f2(result.reached[id])}</td><td className="text-right tabular-nums">{f2(result.targets[id])}</td><td className={`text-right tabular-nums ${Math.abs(left) > 0.1 ? "text-orange-700 font-medium" : "text-neutral-600"}`}>{Math.abs(left) < 0.005 ? <Check size={14} className="inline text-lagoon-700" /> : f2(left)}</td></tr>;
+                const left = (result.targets[id] ?? 0) - (path.reached[id] ?? 0);
+                return <tr key={id}><td className="py-1">{nameOf(id)}</td><td className="text-right tabular-nums">{f2(result.today[id])}</td><td className="text-right tabular-nums font-medium">{f2(path.reached[id])}</td><td className="text-right tabular-nums">{f2(result.targets[id])}</td><td className={`text-right tabular-nums ${Math.abs(left) > 0.1 ? "text-orange-700 font-medium" : "text-neutral-600"}`}>{Math.abs(left) < 0.005 ? <Check size={14} className="inline text-lagoon-700" /> : f2(left)}</td></tr>;
               })}
             </tbody>
           </table>
 
-          {result.unused.length > 0 && (
-            <p className="mt-4 text-[13px] text-neutral-700"><strong>{tr("Not needed on this path")}:</strong> {result.unused.map((m) => moveLabel(m, nameOf)).join("; ")}.</p>
+          {unused.length > 0 && (
+            <p className="mt-4 text-[13px] text-neutral-700"><strong>{tr("Not needed on this path")}:</strong> {unused.map((m) => moveLabel(m, nameOf)).join("; ")}.</p>
           )}
           <p className="mt-3 text-[13px] text-neutral-600">{tr("Method: every difference between the maps is a possible step; a beam search adds one step at a time and keeps the paths that bring the settled state closest to the vision, measured as the mean absolute distance over the chosen outcomes. Drivers are held at their values in both maps. Steps are phases, not periods of time. Runs: {r}; runs that did not settle: {u}.", { r: result.runs, u: result.unsettled })}</p>
         </section>
