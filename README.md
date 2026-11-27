@@ -17,6 +17,7 @@ npm run build      # production build into dist/
 npm run preview    # serve the production build locally
 npm test           # run every test file in tests/ (about 20 s)
 npm test -- lags   # run only the test files whose name contains "lags"
+npm run i18n:check # list texts that have no Dutch translation (--strict fails when any is missing)
 ```
 
 A GitHub check (`.github/workflows/tests.yml`) runs `npm test` and the production build on every pull request and on every change to `main`.

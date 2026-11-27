@@ -104,7 +104,7 @@ export default function BackcastingTab({ concepts, edges, settings, library, act
       <section className={box}>
         <H n={1} title={tr("The envisioned system")}>{tr("Today's system is the open model. Choose the model that describes the vision, or create one from a copy of this map.")}</H>
         <div className="flex flex-wrap items-center gap-3">
-          <select value={visionId} onChange={(e) => { setVisionId(e.target.value); setResult(null); setOutcomes(null); setLevers(null); }} className="text-sm border border-slate-300 rounded-md px-2 py-1.5 min-w-[240px]">
+          <select value={visionId} onChange={(e) => { setVisionId(e.target.value); setResult(null); setOutcomes(null); setLevers(null); }} aria-label={tr("The envisioned model")} className="text-sm border border-slate-300 rounded-md px-2 py-1.5 min-w-[240px]">
             <option value="">{tr("Choose the envisioned model…")}</option>
             {others.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
           </select>

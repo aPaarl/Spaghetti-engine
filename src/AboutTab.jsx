@@ -261,7 +261,7 @@ export default function AboutTab({ onOpenTab, onOpenGuide, onOpenGame, onOpenCom
             <span className="block se-display text-lg font-bold">{tr("Prepare a workshop")}</span>
             <span className="block text-sm text-slate-200 leading-relaxed">{tr("Plan an agenda from ready-made steps, check that your model is ready, print a script and a handout, and run the session step by step with a timer.")}</span>
           </span>
-          <span className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-coral-500 text-sm font-semibold group-hover:bg-coral-600">{tr("Open the planner")} <ArrowRight size={15} /></span>
+          <span className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-coral-700 text-sm font-semibold group-hover:bg-coral-800">{tr("Open the planner")} <ArrowRight size={15} /></span>
         </button>
         <div className="grid sm:grid-cols-2 gap-4">
           <button onClick={onOpenGuide} className="group text-left rounded-2xl border border-lagoon-200 bg-lagoon-50 p-5 flex items-start gap-4 hover:border-lagoon-400">
@@ -348,7 +348,7 @@ export default function AboutTab({ onOpenTab, onOpenGuide, onOpenGame, onOpenCom
           </p>
         </div>
         <div className="flex flex-col gap-2 shrink-0">
-          <a href={mailto} className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-coral-500 text-white text-sm font-semibold hover:bg-coral-600">
+          <a href={mailto} className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-coral-700 text-white text-sm font-semibold hover:bg-coral-800">
             <Mail size={16} /> {tr("Send an email")}
           </a>
           <button onClick={copyEmail} className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/20 text-[14px] text-slate-200 hover:bg-white/10">
@@ -357,7 +357,7 @@ export default function AboutTab({ onOpenTab, onOpenGuide, onOpenGame, onOpenCom
         </div>
       </section>
 
-      <p className="text-[14px] text-slate-500 text-center">
+      <p className="text-[14px] text-slate-600 text-center">
         {tr("The Spaghetti Engine, version {v} (prototype). Results are implications of the map as drawn, not forecasts.", { v: APP_VERSION })}
       </p>
     </div>
