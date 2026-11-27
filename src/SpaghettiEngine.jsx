@@ -43,6 +43,7 @@ import CombineMapsDialog from "./CombineMapsDialog.jsx";
 import { t as tr, getLang, setLang } from "./i18n.js";
 import EmpiricalDataDialog from "./EmpiricalDataDialog.jsx";
 import BackcastingTab from "./BackcastingTab.jsx";
+import { PEAT_TODAY, PEAT_VISION, PEAT_NAMES } from "./workedExamples.js";
 import { WorkshopPlanner, WorkshopRunBar, loadWorkshop, saveWorkshop, newWorkshopPlan, WORKSHOP_BLOCK_TARGETS } from "./WorkshopMode.jsx";
 import { TableToolsHost } from "./TableEditor.jsx";
 
@@ -14926,6 +14927,20 @@ function SpaghettiEngineApp() {
     setTab("network");
     notify(tr("This copy is the envisioned system. Change it into the system you want: values, relationships, new or removed concepts. Then open today's model again and go to Backcasting."), { kind: "note", title: tr("Envisioned version created") });
   };
+  // The worked example of the Methodological Annex: two new models (today and
+  // the vision) in the library, today's opened, the vision chosen on the tab.
+  const [backcastVisionHint, setBackcastVisionHint] = useState(null);
+  const loadBackcastExample = () => {
+    saveNow();
+    const payload = (m) => ({ concepts: m.concepts.map((c) => ({ ...c, position: { ...c.position } })), edges: m.edges.map((e) => ({ ...e })), scenarios: [], settings: { ...DEFAULT_SETTINGS } });
+    const v = createModel(tr(PEAT_NAMES.vision), payload(PEAT_VISION));
+    const r = createModel(tr(PEAT_NAMES.today), payload(PEAT_TODAY));
+    setLibrary(r.index);
+    switchToModel(r.id, cleanStored(r.payload));
+    setBackcastVisionHint({ id: v.id, at: Date.now() });
+    setTab("backcasting");
+    notify(tr("Two models were added to Your models: the peat meadow as it is today (now open) and its vision. Click Find the path to run the example; the Methodological Annex explains the result."), { kind: "note", title: tr("Worked example loaded") });
+  };
   const deleteFromLibrary = async (id) => {
     const m = library?.models.find((x) => x.id === id);
     if (!m) return;
@@ -15940,6 +15955,7 @@ function SpaghettiEngineApp() {
             library={library} activeModelId={activeModelId} activeModelName={activeModelName}
             readModel={readModelForBackcast} simulate={simulate}
             onCreateVision={createVision} onOpenModel={openModel}
+            onLoadExample={loadBackcastExample} visionHint={backcastVisionHint}
           />
         )}
 

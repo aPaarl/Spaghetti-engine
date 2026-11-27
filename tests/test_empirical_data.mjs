@@ -62,5 +62,44 @@ const cmp = compareWithModel({ g: [0.2, 0.4], y: [0.5, 0.7] }, concepts, (start)
 near(cmp.mae, (0.1 + 0.3) / 2, "mean absolute difference");
 ok(cmp.rows.find((r) => r.id === "g").direction === true && cmp.rows.find((r) => r.id === "y").direction === false, "direction of change compared");
 
+// ---- edge cases (added with the worked example) ------------------------------------------------------------
+{
+  const wave = (k) => 0.4 * Math.sin(0.9 * k) + 0.2 * Math.cos(2.1 * k);
+  const N = 16;
+  const A2 = Array.from({ length: N }, (_, k) => wave(k));
+  const B2 = Array.from({ length: N }, (_, k) => 0.3 * Math.cos(1.3 * k + 0.5));
+  const cs2 = [{ id: "a", name: "A" }, { id: "b", name: "B" }, { id: "c", name: "C" }];
+  // the engine's sigmoid is bipolar: 2 / (1 + e^(-λx)) - 1
+  const sig = (x) => 2 / (1 + Math.exp(-x)) - 1;
+  const Cs = [0.1];
+  for (let k = 0; k + 1 < N; k++) Cs.push(sig(Cs[k] + 0.7 * A2[k] - 0.5 * B2[k]));
+  const s1 = suggestWeights({ a: A2, b: B2, c: Cs }, cs2, [{ id: "ac", source: "a", target: "c", weight: 0.5 }, { id: "bc", source: "b", target: "c", weight: -0.5 }], { squashFunction: "sigmoid", lambda: 1, updateRule: "relative" });
+  near(s1.results.find((r) => r.edgeId === "ac").data, 0.7, "sigmoid: weight recovered with the bipolar inverse", 0.01);
+  near(s1.results.find((r) => r.edgeId === "bc").data, -0.5, "sigmoid: second weight recovered", 0.01);
+  // a delayed relationship is fitted against the source value it acts on
+  const Cl = [0, 0, 0.05];
+  for (let k = 2; k + 1 < N; k++) Cl.push(Math.tanh(Cl[k] + 0.6 * A2[k - 2]));
+  const lagged = suggestWeights({ a: A2, c: Cl }, cs2, [{ id: "ac", source: "a", target: "c", weight: 0.5, lag: 2 }], settings).results[0];
+  near(lagged.data, 0.6, "a lag-2 relationship is recovered with its delay", 0.01);
+  ok(lagged.n === N - 3, "a lag-2 relationship loses two steps at the start");
+  const unlagged = suggestWeights({ a: A2, c: Cl }, cs2, [{ id: "ac", source: "a", target: "c", weight: 0.5 }], settings).results[0];
+  ok(Math.abs(unlagged.data - 0.6) > 0.1, `without the delay the same data give a wrong weight (${unlagged.data})`);
+  // a relationship of a concept with itself is fitted with the others, absolute rule
+  const Ca = [0.2];
+  for (let k = 0; k + 1 < N; k++) Ca.push(Math.tanh(-0.4 * Ca[k] + 0.8 * A2[k]));
+  const self = suggestWeights({ a: A2, c: Ca }, cs2, [{ id: "ac", source: "a", target: "c", weight: 0.5 }, { id: "cc", source: "c", target: "c", weight: -0.2 }], { ...settings, updateRule: "absolute" });
+  near(self.results.find((r) => r.edgeId === "cc").data, -0.4, "a self-relationship is fitted", 0.01);
+  near(self.results.find((r) => r.edgeId === "ac").data, 0.8, "and the other weight with it", 0.01);
+  // two causes that move together cannot be told apart
+  const col = suggestWeights({ a: A2, b: A2.map((v) => 2 * v), c: Cs }, cs2, [{ id: "ac", source: "a", target: "c", weight: 0.5 }, { id: "bc", source: "b", target: "c", weight: 0.5 }], settings);
+  ok(col.results.length === 0 && /move together/.test(col.skipped[0]?.reason || ""), "collinear causes are skipped with a reason");
+  // the trivalent function cannot be inverted
+  const tri = suggestWeights({ a: A2, c: Cs }, cs2, [{ id: "ac", source: "a", target: "c", weight: 0.5 }], { squashFunction: "trivalent" });
+  ok(tri.results.length === 0 && /trivalent/.test(tri.unsupported || ""), "trivalent: not fitted, with the reason");
+  // linguistic centres typed out of order give the same result as in order
+  near(fuzzifyValue(5, { method: "linguistic", centers: [20, 0, 10] }).value, 0.25, "linguistic centres are sorted first");
+  ok(Number.isNaN(fuzzifyValue(5, { method: "linguistic", centers: [3] }).value), "one centre is not enough for terms");
+}
+
 console.log(`${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);

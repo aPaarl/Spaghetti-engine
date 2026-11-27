@@ -110,8 +110,10 @@ export function fuzzifyValue(x, spec, all) {
   if (!Number.isFinite(x)) return { value: NaN, term: "" };
   let v, term = "";
   if (spec.method === "linguistic") {
-    const c = spec.centers;
+    // the centres in increasing order, whatever order they were typed in
+    const c = [...spec.centers].filter(Number.isFinite).sort((a, b) => a - b);
     const k = c.length;
+    if (k < 2) return { value: NaN, term: "" };
     const names = TERM_SETS[k] || c.map((_, j) => `term ${j + 1}`);
     if (x <= c[0]) { v = 0; term = names[0]; }
     else if (x >= c[k - 1]) { v = 1; term = names[k - 1]; }
@@ -176,25 +178,37 @@ export function compareWithModel(fuzzy, concepts, simulate, from, to) {
 }
 
 // --- suggesting weights from a time series ------------------------------------------
-function inverseSquash(y, settings) {
-  const lambda = settings?.lambda || 1;
+// The inverse of the engine's transfer functions (makeSquash in
+// SpaghettiEngine.jsx): tanh(λx), the bipolar sigmoid 2 / (1 + e^(-λx)) - 1
+// (whose inverse is 2·atanh(y) / λ), and no squashing. Values at the bounds
+// are pulled in slightly, since ±1 has no finite inverse. The trivalent
+// function is a step and cannot be inverted.
+export function inverseSquash(y, settings) {
+  const lambda = settings?.lambda > 0 ? settings.lambda : 1;
   const f = settings?.squashFunction || "tanh";
+  if (!Number.isFinite(y)) return NaN;
   if (f === "linear") return y;
-  if (f === "sigmoid") { const c = Math.min(0.999, Math.max(0.001, y)); return Math.log(c / (1 - c)) / lambda; }
-  if (f === "tanh") { const c = Math.min(0.999, Math.max(-0.999, y)); return Math.atanh(c) / lambda; }
-  return NaN; // trivalent cannot be inverted
+  const c = Math.min(0.999, Math.max(-0.999, y));
+  if (f === "sigmoid") return (2 * Math.atanh(c)) / lambda;
+  if (f === "tanh") return Math.atanh(c) / lambda;
+  return NaN;
 }
 
-// Solves (X'X + ridge I) b = X'y by Gaussian elimination.
-function leastSquares(X, y, ridge = 1e-3) {
+// Solves (X'X + ridge I) b = X'y by Gaussian elimination. The ridge is tiny and
+// scaled to the data, so it only steadies the arithmetic; a pivot that stays
+// that small means two causes moved together too closely to be told apart
+// (collinear), and null is returned.
+function leastSquares(X, y) {
   const p = X[0].length;
-  const A = Array.from({ length: p }, (_, i) => Array.from({ length: p }, (_, j) => X.reduce((s, r) => s + r[i] * r[j], 0) + (i === j ? ridge : 0)));
+  const A = Array.from({ length: p }, (_, i) => Array.from({ length: p }, (_, j) => X.reduce((s, r) => s + r[i] * r[j], 0)));
+  const scale = Math.max(1e-12, ...A.map((r, i) => r[i]));
+  A.forEach((r, i) => { r[i] += 1e-9 * scale; });
   const b = Array.from({ length: p }, (_, i) => X.reduce((s, r, k) => s + r[i] * y[k], 0));
   for (let c = 0; c < p; c++) {
     let piv = c;
     for (let r = c + 1; r < p; r++) if (Math.abs(A[r][c]) > Math.abs(A[piv][c])) piv = r;
     [A[c], A[piv]] = [A[piv], A[c]]; [b[c], b[piv]] = [b[piv], b[c]];
-    if (Math.abs(A[c][c]) < 1e-12) return null;
+    if (Math.abs(A[c][c]) < 1e-6 * scale) return null;
     for (let r = 0; r < p; r++) {
       if (r === c) continue;
       const f = A[r][c] / A[c][c];
@@ -208,26 +222,35 @@ function leastSquares(X, y, ridge = 1e-3) {
 /**
  * For each concept with incoming relationships and data for itself and all
  * its sources, fits the update rule to consecutive rows:
- *   relative rule:  f^-1(A_i(t+1)) - A_i(t) = Σ_j w_ji A_j(t)
- *   absolute rule:  f^-1(A_i(t+1))          = Σ_j w_ji A_j(t)
- * Only the relationships the experts drew are fitted (their structure is kept),
- * the weights are clipped to -1..+1, and R² says how much of the target's
- * movement the fit explains. Needs at least (number of sources + 2) steps.
+ *   relative rule:  f^-1(A_i(t+1)) - A_i(t) = Σ_j w_ji A_j(t - L_ji)
+ *   absolute rule:  f^-1(A_i(t+1))          = Σ_j w_ji A_j(t - L_ji)
+ * where L_ji is the delay of the relationship (0 for most), so that a
+ * delayed effect is fitted with the source value it acts on. A relationship
+ * of a concept with itself is fitted like any other. Only the relationships
+ * the experts drew are fitted (their structure is kept), the weights are
+ * clipped to -1..+1, and R² says how much of the target's movement the fit
+ * explains. Needs at least (number of relationships + 2) usable steps.
+ * Returns { results, skipped, unsupported }; unsupported is a reason when the
+ * settings cannot be fitted at all (the trivalent transfer function).
  */
 export function suggestWeights(fuzzy, concepts, edges, settings) {
   const isRelative = settings?.updateRule !== "absolute";
   const results = [];
   const skipped = [];
+  if ((settings?.squashFunction || "tanh") === "trivalent") {
+    return { results, skipped, unsupported: "The trivalent transfer function is a step (-1, 0 or +1), so the values before it cannot be recovered from data. Choose tanh, sigmoid or none to suggest weights." };
+  }
+  const lagOf = (e) => { const n = Math.round(Number(e?.lag)); return Number.isFinite(n) && n > 0 ? n : 0; };
   concepts.forEach((c) => {
-    const inc = edges.filter((e) => e.target === c.id && e.source !== c.id);
+    const inc = edges.filter((e) => e.target === c.id);
     if (!inc.length) return;
     const series = fuzzy[c.id];
     if (!series) return; // no data for the concept itself: nothing to fit, not worth listing
-    const missing = inc.filter((e) => !fuzzy[e.source]).map((e) => concepts.find((x) => x.id === e.source)?.name || e.source);
+    const missing = [...new Set(inc.filter((e) => !fuzzy[e.source]).map((e) => concepts.find((x) => x.id === e.source)?.name || e.source))];
     if (missing.length) { skipped.push({ name: c.name, reason: `no data for ${missing.join(", ")}` }); return; }
     const X = [], y = [];
     for (let t = 0; t + 1 < series.length; t++) {
-      const xs = inc.map((e) => fuzzy[e.source][t]);
+      const xs = inc.map((e) => (t - lagOf(e) >= 0 ? fuzzy[e.source][t - lagOf(e)] : NaN));
       const target = inverseSquash(series[t + 1], settings) - (isRelative ? series[t] : 0);
       if (xs.every(Number.isFinite) && Number.isFinite(target)) { X.push(xs); y.push(target); }
     }
@@ -240,10 +263,10 @@ export function suggestWeights(fuzzy, concepts, edges, settings) {
     const r2 = ssTot > 1e-12 ? Math.max(0, 1 - ssRes / ssTot) : null;
     inc.forEach((e, j) => {
       const data = round4(Math.max(-1, Math.min(1, w[j])));
-      results.push({ edgeId: e.id, source: e.source, target: e.target, expert: e.weight, data, signAgrees: Math.sign(data) === Math.sign(e.weight) || Math.abs(data) < 0.05, r2: r2 === null ? null : round4(r2), n: X.length });
+      results.push({ edgeId: e.id, source: e.source, target: e.target, expert: e.weight, data, clipped: Math.abs(w[j]) > 1, signAgrees: Math.sign(data) === Math.sign(e.weight) || Math.abs(data) < 0.05, r2: r2 === null ? null : round4(r2), n: X.length });
     });
   });
-  return { results, skipped };
+  return { results, skipped, unsupported: null };
 }
 
 /** Blend of expert and data weight: (1 - share) * expert + share * data. */
