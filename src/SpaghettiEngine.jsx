@@ -6,7 +6,7 @@ import {
   Undo2, Redo2, Copy, Maximize2, HelpCircle, SlidersHorizontal,
   BarChart3, LayoutGrid, GitBranch, Shuffle, Activity, FlaskConical, TrendingUp,
   Eye, EyeOff, Route, Layers, Waypoints, PanelLeftClose, Search, Dices, Sparkles, FolderOpen, Pencil, CopyPlus, FilePlus, Compass, CheckCircle2, Circle, Presentation, Hourglass, Minus,
-  Merge, ArrowRight, Users, Database, Flag,
+  Merge, ArrowRight, Users, Database, Flag, FileText, Printer,
 } from "lucide-react";
 import {
   LineChart, Line, BarChart, Bar, Cell, LabelList, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
@@ -45,6 +45,7 @@ import EmpiricalDataDialog from "./EmpiricalDataDialog.jsx";
 import BackcastingTab from "./BackcastingTab.jsx";
 import { PEAT_TODAY, PEAT_VISION, PEAT_NAMES } from "./workedExamples.js";
 import { saveResults, loadResults, deleteResults } from "./resultStore.js";
+import { buildReport, reportToHtml, reportToDocx } from "./analysisReport.js";
 import { WorkshopPlanner, WorkshopRunBar, loadWorkshop, saveWorkshop, newWorkshopPlan, WORKSHOP_BLOCK_TARGETS } from "./WorkshopMode.jsx";
 import { TableToolsHost } from "./TableEditor.jsx";
 
@@ -8727,14 +8728,14 @@ function MonteCarloTab({ concepts, edges, scenarios, activeScenarioId, settings,
         <h3 className="font-semibold text-sm mb-3">{tr("Run a simulation")}</h3>
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
           <div>
-            <label className="text-xs text-neutral-700 font-medium">{tr("Scenario to test")}</label>
-            <select value={scenarioId} onChange={(e) => setScenarioId(e.target.value)} className="w-full mt-1 text-xs border border-slate-200 rounded px-2 py-1.5">
+            <label htmlFor="mc-scenario" className="text-xs text-neutral-700 font-medium">{tr("Scenario to test")}</label>
+            <select id="mc-scenario" value={scenarioId} onChange={(e) => setScenarioId(e.target.value)} className="w-full mt-1 text-xs border border-slate-200 rounded px-2 py-1.5">
               {scenarios.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
           <div>
-            <label className="text-xs text-neutral-700 font-medium">{tr("Number of runs")}</label>
-            <select value={runs} onChange={(e) => setRuns(parseInt(e.target.value))} className="w-full mt-1 text-xs border border-slate-200 rounded px-2 py-1.5">
+            <label htmlFor="mc-runs" className="text-xs text-neutral-700 font-medium">{tr("Number of runs")}</label>
+            <select id="mc-runs" value={runs} onChange={(e) => setRuns(parseInt(e.target.value))} className="w-full mt-1 text-xs border border-slate-200 rounded px-2 py-1.5">
               <option value={100}>100</option>
               <option value={250}>250</option>
               <option value={500}>500</option>
@@ -8743,18 +8744,18 @@ function MonteCarloTab({ concepts, edges, scenarios, activeScenarioId, settings,
             </select>
           </div>
           <div>
-            <label className="text-xs text-neutral-700 font-medium" title={tr("Each unlocked relationship weight is nudged by a random amount, uniformly drawn from -this to +this, on the same -1..1 scale as the weight itself.")}>Weight uncertainty (±)</label>
-            <input type="number" min={0} max={1} step={0.01} value={weightSpread} onChange={(e) => setWeightSpread(clamp(parseFloat(e.target.value) || 0, 0, 1))} className="w-full mt-1 text-xs border border-slate-200 rounded px-2 py-1.5" />
+            <label htmlFor="mc-weight-spread" className="text-xs text-neutral-700 font-medium" title={tr("Each unlocked relationship weight is nudged by a random amount, uniformly drawn from -this to +this, on the same -1..1 scale as the weight itself.")}>{tr("Weight uncertainty (±)")}</label>
+            <input id="mc-weight-spread" type="number" min={0} max={1} step={0.01} value={weightSpread} onChange={(e) => setWeightSpread(clamp(parseFloat(e.target.value) || 0, 0, 1))} className="w-full mt-1 text-xs border border-slate-200 rounded px-2 py-1.5" />
           </div>
           <div>
-            <label className="text-xs text-neutral-700 font-medium" title={tr("Optional: also nudge each concept's starting value by a random amount within this range. Leave at 0 to vary only the weights.")}>Starting-value uncertainty (±)</label>
-            <input type="number" min={0} max={1} step={0.01} value={initialSpread} onChange={(e) => setInitialSpread(clamp(parseFloat(e.target.value) || 0, 0, 1))} className="w-full mt-1 text-xs border border-slate-200 rounded px-2 py-1.5" />
+            <label htmlFor="mc-initial-spread" className="text-xs text-neutral-700 font-medium" title={tr("Optional: also nudge each concept's starting value by a random amount within this range. Leave at 0 to vary only the weights.")}>{tr("Starting-value uncertainty (±)")}</label>
+            <input id="mc-initial-spread" type="number" min={0} max={1} step={0.01} value={initialSpread} onChange={(e) => setInitialSpread(clamp(parseFloat(e.target.value) || 0, 0, 1))} className="w-full mt-1 text-xs border border-slate-200 rounded px-2 py-1.5" />
           </div>
           <div>
-            <label className="text-xs text-neutral-700 font-medium" title={tr("Runs with the same seed reproduce the exact same sequence of random weights, so a result can be exactly repeated.")}>{tr("Random seed")}</label>
+            <label htmlFor="mc-seed" className="text-xs text-neutral-700 font-medium" title={tr("Runs with the same seed reproduce the exact same sequence of random weights, so a result can be exactly repeated.")}>{tr("Random seed")}</label>
             <div className="flex items-center gap-1 mt-1">
-              <input type="number" value={seed} onChange={(e) => setSeed(parseInt(e.target.value) || 0)} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5" />
-              <button onClick={() => setSeed(Math.floor(Math.random() * 1e6))} title={tr("Draw a new random seed")} className="shrink-0 p-1.5 border border-slate-200 rounded text-neutral-700 hover:bg-slate-50"><Dices size={13} /></button>
+              <input id="mc-seed" type="number" value={seed} onChange={(e) => setSeed(parseInt(e.target.value) || 0)} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5" />
+              <button onClick={() => setSeed(Math.floor(Math.random() * 1e6))} title={tr("Draw a new random seed")} aria-label={tr("Draw a new random seed")} className="shrink-0 p-1.5 border border-slate-200 rounded text-neutral-700 hover:bg-slate-50"><Dices size={13} /></button>
             </div>
           </div>
         </div>
@@ -14009,7 +14010,7 @@ const GROUP_TONES = {
   violet: { text: "text-violet-700", chip: "bg-violet-50 text-violet-700", chipOn: "bg-violet-600 text-white", ring: "border-violet-300" },
   rose: { text: "text-rose-700", chip: "bg-rose-50 text-rose-700", chipOn: "bg-rose-600 text-white", ring: "border-rose-300" },
   amber: { text: "text-amber-700", chip: "bg-amber-50 text-amber-700", chipOn: "bg-amber-500 text-white", ring: "border-amber-300" },
-  about: { text: "text-coral-700", chip: "bg-coral-50 text-coral-700", chipOn: "bg-coral-500 text-white", ring: "border-coral-400" },
+  about: { text: "text-coral-700", chip: "bg-coral-50 text-coral-700", chipOn: "bg-coral-700 text-white", ring: "border-coral-400" },
 };
 const TAB_GROUPS = [
   {
@@ -14918,6 +14919,72 @@ function SpaghettiEngineApp() {
     }
   };
 
+  // ==== analysis report (Word, or a print view for PDF) =========================
+  // The readable companion of the workbook: the model, the settings and every
+  // analysis that has been run, with its key table and figure (analysisReport.js).
+  const [exportingReport, setExportingReport] = useState(false);
+  const reportInput = (figures) => {
+    const labels = new Map(listModules(concepts).map((m) => [m.key, m.key === UNCATEGORIZED_MODULE ? "" : m.label]));
+    const nm = new Map(concepts.map((c) => [c.id, c.name]));
+    return {
+      modelName: activeModelName, version: APP_VERSION, date: new Date(), scopeLabel: viewInfo.isFiltered ? viewInfo.label : "",
+      concepts, edges, settings, scenarios, moduleOf: (c) => labels.get(moduleKey(c?.category)) ?? "",
+      analysisConcepts: aConcepts, results, resultsStale, compareIds: comparedIds, scenarioChanges,
+      baselineResult, sensitivityResult, monteCarloResult, transitionResult, pathwayResult,
+      isStale: (r) => !!r && r.__modelVersion !== modelVersion,
+      pathwayText: (stages) => stages.map((st) => `${nm.get(st.leverId) || st.leverId} (${st.scaleUp ? tr("raised to") + " " : ""}${round2(st.u)})`).join(" → "),
+      archetypeLabel: (k) => PATHWAY_ARCHETYPES.find((a) => a.key === k)?.label || "",
+      figures,
+    };
+  };
+  const reportImages = async () => {
+    const charts = await captureAnalysisCharts(chartCache);
+    return Object.fromEntries(Object.entries(charts).filter(([, c]) => c?.blob));
+  };
+  const blobToDataUrl = (blob) => new Promise((resolve) => { const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.onerror = () => resolve(""); r.readAsDataURL(blob); });
+  const exportReportDocx = async () => {
+    setExportingReport(true);
+    try {
+      const [docx, charts] = await Promise.all([import("docx"), reportImages()]);
+      const images = {};
+      for (const [k, c] of Object.entries(charts)) images[k] = { data: new Uint8Array(await c.blob.arrayBuffer()), width: c.width, height: c.height };
+      const blocks = buildReport(reportInput(Object.fromEntries(Object.keys(images).map((k) => [k, true]))));
+      const blob = await docx.Packer.toBlob(reportToDocx(blocks, images, docx));
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = scopedFilename("spaghetti-engine-report.docx");
+      a.click();
+    } catch (err) {
+      notify(tr("The report could not be built: {msg}. Nothing was downloaded; your model and results are unchanged.", { msg: err?.message || err }), { title: tr("Export failed") });
+    } finally {
+      setExportingReport(false);
+    }
+  };
+  const openReportPrintView = async () => {
+    // the window is opened before anything is awaited, so that the browser does not block it as a pop-up
+    const w = window.open("", "_blank");
+    setExportingReport(true);
+    try {
+      const charts = await reportImages();
+      const images = {};
+      for (const [k, c] of Object.entries(charts)) images[k] = { dataUrl: await blobToDataUrl(c.blob), width: c.width, height: c.height };
+      const blocks = buildReport(reportInput(Object.fromEntries(Object.keys(images).map((k) => [k, true]))));
+      const html = reportToHtml(blocks, images, { lang: getLang(), autoPrint: true });
+      if (w) { w.document.open(); w.document.write(html); w.document.close(); }
+      else {
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(new Blob([html], { type: "text/html" }));
+        a.download = scopedFilename("spaghetti-engine-report.html");
+        a.click();
+      }
+    } catch (err) {
+      if (w) w.close();
+      notify(tr("The report could not be built: {msg}. Nothing was downloaded; your model and results are unchanged.", { msg: err?.message || err }), { title: tr("Export failed") });
+    } finally {
+      setExportingReport(false);
+    }
+  };
+
   // ==== model tables (Model editor) ============================================
   // The model itself as tables: concepts with their definitions, the list of
   // relationships, and the adjacency matrix. Always the complete model,
@@ -15243,7 +15310,7 @@ function SpaghettiEngineApp() {
       {/* Top bar: the tool on the left, the open model beside it (one menu
           for switching, importing and exporting models), and on the right
           the Advanced switch and one Help menu (guide, game, documentation). */}
-      <div className={`se-topbar relative z-40 ${gameMode ? "hidden" : "flex"} flex-wrap items-center gap-x-3 gap-y-2 px-3 sm:px-5 py-2 bg-white/95 backdrop-blur text-ink border-b border-slate-200`}>
+      <header className={`se-topbar relative z-40 ${gameMode ? "hidden" : "flex"} flex-wrap items-center gap-x-3 gap-y-2 px-3 sm:px-5 py-2 bg-white/95 backdrop-blur text-ink border-b border-slate-200`}>
         <button onClick={() => setTab("about")} className="flex items-center gap-2.5 text-left rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-lagoon-400" title={`About the Spaghetti Engine, and the documentation (version ${APP_VERSION})`}>
           <BrandMark size={30} />
           <span className="se-display hidden sm:block text-[17px] font-bold tracking-tight whitespace-nowrap text-ink">The Spaghetti Engine</span>
@@ -15266,6 +15333,8 @@ function SpaghettiEngineApp() {
             { icon: Database, label: tr("Empirical data"), hint: tr("Fuzzify measured data for start values, a check of the model, or suggested weights"), onClick: () => setDataOpen(true) },
             { icon: Download, label: tr("Export JSON"), hint: tr("Keep a copy, or move the model to another computer"), onClick: exportModel },
             { icon: Table2, label: exportingWorkbook ? tr("Building workbook…") : tr("Export Analysis Workbook (.xlsx)"), hint: tr("Model structure, metrics, baseline and every analysis that has been run"), onClick: exportAnalysisWorkbook, disabled: exportingWorkbook },
+            { icon: FileText, label: exportingReport ? tr("Building report…") : tr("Export report (.docx)"), hint: tr("A readable report in Word: the model, the settings and every analysis that has been run, with tables and figures"), onClick: exportReportDocx, disabled: exportingReport },
+            { icon: Printer, label: tr("Print report or save as PDF"), hint: tr("The same report in a new tab, ready to print or to save as PDF"), onClick: openReportPrintView, disabled: exportingReport },
           ]}
         />
         {saveFailed ? (
@@ -15298,7 +15367,7 @@ function SpaghettiEngineApp() {
             </button>
           </label>
           <TopBarMenu
-            buttonClass={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm ${gameOpen ? "bg-coral-500 text-white border-coral-500 font-semibold" : "border-slate-200 text-ink hover:bg-slate-50"}`}
+            buttonClass={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm ${gameOpen ? "bg-coral-700 text-white border-coral-700 font-semibold" : "border-slate-200 text-ink hover:bg-slate-50"}`}
             title={tr("Help: the Getting started guide, the Meinweg game, and the documentation")}
             width="w-96"
             button={<>
@@ -15314,7 +15383,7 @@ function SpaghettiEngineApp() {
           />
         </div>
         <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={importModel} />
-      </div>
+      </header>
 
       {workshopStep !== null && workshopPlan && !gameMode && (
         <WorkshopRunBar
@@ -15550,7 +15619,8 @@ function SpaghettiEngineApp() {
           ><Info size={16} className="text-coral-700" />{tr("About & documentation")}</button>
         </div>
       </nav>
-      <div className="se-content flex-1 min-w-0 overflow-auto p-3 sm:p-5 bg-[#f5f7f7]" data-tone={activeGroup.tone || "about"}>
+      <main className="se-content flex-1 min-w-0 overflow-auto p-3 sm:p-5 bg-[#f5f7f7]" data-tone={activeGroup.tone || "about"}>
+        <h1 className="sr-only">{(activeGroup.tabs.find((t) => t.id === tab) || activeGroup.tabs[0]).label}</h1>
         {/* A display error in one tab stays in that tab: the rest of the app,
             the tab bar, and the model are unaffected, and switching tabs
             (the key) starts that tab fresh. */}
@@ -15669,13 +15739,15 @@ function SpaghettiEngineApp() {
               </div>
 
               {/* the scenarios as tabs: click one to edit it, tick it to compare it */}
-              <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label={tr("Scenarios")}>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="contents" role="tablist" aria-label={tr("Scenarios")}>
                 {scenarios.map((s) => {
                   const on = s.id === "baseline" || compareIds.includes(s.id);
                   const n = scenarioChanges(s).length;
                   return (
-                    <div key={s.id} role="tab" aria-selected={activeScenarioId === s.id} onClick={() => setActiveScenarioId(s.id)}
-                      className={`flex items-center gap-1.5 rounded-full border pl-2 pr-3 py-1 cursor-pointer text-xs ${activeScenarioId === s.id ? "border-lagoon-600 bg-lagoon-50 text-lagoon-900" : "border-slate-300 bg-white text-neutral-900 hover:border-slate-400"}`}>
+                    <div key={s.id} role="tab" aria-selected={activeScenarioId === s.id} tabIndex={0} onClick={() => setActiveScenarioId(s.id)}
+                      onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && e.target === e.currentTarget) { e.preventDefault(); setActiveScenarioId(s.id); } }}
+                      className={`flex items-center gap-1.5 rounded-full border pl-2 pr-3 py-1 cursor-pointer text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-lagoon-400 ${activeScenarioId === s.id ? "border-lagoon-600 bg-lagoon-50 text-lagoon-900" : "border-slate-300 bg-white text-neutral-900 hover:border-slate-400"}`}>
                       <input type="checkbox" checked={on} disabled={s.id === "baseline"} onClick={(e) => e.stopPropagation()} onChange={() => toggleCompare(s.id)}
                         title={s.id === "baseline" ? tr("The baseline is always compared") : tr("Include in the comparison")} aria-label={`Compare ${s.name}`} />
                       <span className="font-medium">{s.id === "baseline" ? tr("Baseline") : (s.name || tr("Unnamed scenario"))}</span>
@@ -15683,6 +15755,7 @@ function SpaghettiEngineApp() {
                     </div>
                   );
                 })}
+                </div>
                 <Btn variant="outline" onClick={() => addScenario("intervention")}><Plus size={13} />{tr("New scenario")}</Btn>
                 {activeScenarioId !== "baseline" && <Btn variant="ghost" onClick={() => duplicateScenario(activeScenarioId)}><Copy size={13} />{tr("Duplicate")}</Btn>}
               </div>
@@ -16173,7 +16246,7 @@ function SpaghettiEngineApp() {
           />
         )}
         </ErrorBoundary>
-      </div>
+      </main>
       <SeriousGame
         open={gameOpen} onClose={() => setGameOpen(false)}
         concepts={concepts} edges={edges} scenarios={scenarios} results={results} baselineResult={baselineResult}
@@ -16184,11 +16257,11 @@ function SpaghettiEngineApp() {
       />
       </div>
 
-      <div className={`px-3 sm:px-5 py-1.5 border-t border-slate-200 bg-[#f5f7f7] text-[14.5px] text-slate-600 items-center gap-1.5 ${gameMode ? "hidden" : "flex"}`}>
-        <Info size={12} className="shrink-0" />
-        <span className="flex-1 truncate" title={tr("Prototype scope: runs entirely in your browser. Your model is saved automatically in this browser only; use Export JSON in the model menu to keep a copy or move it to another computer. Analysis results are not saved and are re-run on demand. Figures export as PNG, SVG or PDF; full reports in Word or PowerPoint are not yet available.")}>{tr("Prototype: runs in your browser, and your model is saved in this browser only. To keep a copy, use Export JSON in the model menu at the top left.")}</span>
+      <footer className={`px-3 sm:px-5 py-1.5 border-t border-slate-200 bg-[#f5f7f7] text-[14.5px] text-slate-600 items-center gap-1.5 ${gameMode ? "hidden" : "flex"}`}>
+        <Info size={12} className="shrink-0" aria-hidden="true" />
+        <span className="flex-1 truncate" title={tr("Prototype scope: runs entirely in your browser. Your model and the last results of each analysis are saved automatically in this browser only; use Export JSON in the model menu to keep a copy or move it to another computer. Figures export as PNG, SVG or PDF, and the model menu exports a full report in Word or as a PDF.")}>{tr("Prototype: runs in your browser, and your model is saved in this browser only. To keep a copy, use Export JSON in the model menu at the top left.")}</span>
         <a href={`mailto:${CONTACT.email}?subject=${encodeURIComponent(`The Spaghetti Engine v${APP_VERSION}`)}`} className="shrink-0 text-lagoon-700 hover:underline" title={`${tr("Contact")} ${CONTACT.name}`}>{tr("Contact")}: {CONTACT.name}</a>
-      </div>
+      </footer>
     </div>
   );
 }

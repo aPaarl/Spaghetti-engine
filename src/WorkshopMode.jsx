@@ -762,7 +762,7 @@ export function WorkshopPlanner({ plan, setPlan, modelName, ctx, onStart, onClos
         <div className="flex items-center gap-3 px-6 py-3.5 bg-white rounded-b-2xl border-t border-slate-200">
           <button onClick={onClose} className="px-4 py-2 rounded-lg text-[15px] text-neutral-800 hover:bg-slate-100">{tr("Close")}</button>
           <span className="ml-auto text-sm text-neutral-600 hidden sm:inline">{tr("{n} steps, {total}", { n: plan.steps.length, total: fmtMin(total) })}</span>
-          <button onClick={onStart} disabled={!plan.steps.length} className="px-5 py-2 rounded-lg bg-coral-500 text-white text-[15px] font-semibold hover:bg-coral-600 disabled:opacity-40 inline-flex items-center gap-2"><Play size={16} />{tr("Start the workshop")}</button>
+          <button onClick={onStart} disabled={!plan.steps.length} className="px-5 py-2 rounded-lg bg-coral-700 text-white text-[15px] font-semibold hover:bg-coral-800 disabled:opacity-40 inline-flex items-center gap-2"><Play size={16} />{tr("Start the workshop")}</button>
         </div>
       </div>
     </div>
@@ -803,15 +803,15 @@ export function WorkshopRunBar({ plan, index, setIndex, onGo, onEdit, onEnd }) {
           <div className="text-[15px] text-slate-100 leading-snug line-clamp-2">{step.prompt}</div>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
-          <span className={`inline-flex items-center gap-1 font-mono text-[15px] tabular-nums px-2 py-0.5 rounded ${over ? "bg-coral-500 text-white" : "bg-white/10"}`} title={tr("Time left for this step")}><Timer size={14} />{mmss}</span>
+          <span className={`inline-flex items-center gap-1 font-mono text-[15px] tabular-nums px-2 py-0.5 rounded ${over ? "bg-coral-700 text-white" : "bg-white/10"}`} title={tr("Time left for this step")}><Timer size={14} />{mmss}</span>
           <button onClick={() => setRunning((r) => !r)} className="p-1.5 rounded hover:bg-white/10" aria-label={running ? "Pause the timer" : "Start the timer"} title={running ? "Pause" : "Start the timer"}>{running ? <Pause size={15} /> : <Play size={15} />}</button>
           <button onClick={() => { setLeft((Number(step.minutes) || 0) * 60); setRunning(false); }} className="p-1.5 rounded hover:bg-white/10" aria-label={tr("Reset the timer")} title={tr("Reset the timer")}><RotateCcw size={14} /></button>
           <span className="w-px h-5 bg-white/20 mx-1" aria-hidden="true" />
           <button onClick={() => setSlide(true)} className="p-1.5 rounded hover:bg-white/10" aria-label={tr("Show the question and prompt full screen")} title={tr("Show full screen for the group")}><Maximize2 size={15} /></button>
           <button onClick={() => go(index - 1)} disabled={index === 0} className="px-2 py-1 rounded hover:bg-white/10 disabled:opacity-30 inline-flex items-center gap-1 text-sm"><SkipBack size={14} />{tr("Back")}</button>
           {index < plan.steps.length - 1
-            ? <button onClick={() => go(index + 1)} className="px-3 py-1 rounded bg-coral-500 hover:bg-coral-600 inline-flex items-center gap-1 text-sm font-semibold">{tr("Next")}<SkipForward size={14} /></button>
-            : <button onClick={onEnd} className="px-3 py-1 rounded bg-coral-500 hover:bg-coral-600 inline-flex items-center gap-1 text-sm font-semibold"><Check size={14} />{tr("Finish")}</button>}
+            ? <button onClick={() => go(index + 1)} className="px-3 py-1 rounded bg-coral-700 hover:bg-coral-800 inline-flex items-center gap-1 text-sm font-semibold">{tr("Next")}<SkipForward size={14} /></button>
+            : <button onClick={onEnd} className="px-3 py-1 rounded bg-coral-700 hover:bg-coral-800 inline-flex items-center gap-1 text-sm font-semibold"><Check size={14} />{tr("Finish")}</button>}
           <button onClick={onEdit} className="px-2 py-1 rounded hover:bg-white/10 text-sm text-slate-200">{tr("Agenda")}</button>
           <button onClick={onEnd} className="p-1.5 rounded hover:bg-white/10" aria-label={tr("End the workshop")} title={tr("End the workshop")}><X size={15} /></button>
         </div>

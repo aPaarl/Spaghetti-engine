@@ -125,6 +125,13 @@ function fitText(s, px, maxW, bold = false) {
   while (n > 1 && textW(`${t.slice(0, n)}…`, px, bold) > maxW) n--;
   return `${t.slice(0, n)}…`;
 }
+// A label wrapped over at most maxLines lines; only a name too long even for
+// that is shortened, on its last line, with an ellipsis.
+function labelLines(text, px, maxW, maxLines = 3) {
+  const lines = wrapWords(text, px, maxW).map((l) => (textW(l, px) > maxW ? fitText(l, px, maxW) : l));
+  if (lines.length <= maxLines) return lines;
+  return [...lines.slice(0, maxLines - 1), fitText(lines.slice(maxLines - 1).join(" "), px, maxW)];
+}
 function wrapWords(text, px, maxW) {
   const lines = [];
   String(text).split(" ").forEach((w) => {
@@ -292,6 +299,7 @@ export function SteadyStateBars({ concepts, final, initial = {}, fontSize = 12, 
   const colors = moduleColorMap(concepts);
   const one = layout === "all";
   const rowOf = (c) => ({ c, v: final[c.id] ?? 0, s: initial[c.id] ?? 0, col: colors.get(moduleOf(c)) });
+  // Long names wrap onto up to three lines; the row grows with them.
   const groups = one
     ? [{ m: "All concepts, from highest to lowest", rows: concepts.map(rowOf).sort((a, b) => b.v - a.v) }]
     : [...colors.keys()].map((m) => ({ m, rows: concepts.filter((c) => moduleOf(c) === m).map(rowOf) }));
@@ -303,6 +311,12 @@ export function SteadyStateBars({ concepts, final, initial = {}, fontSize = 12, 
   const colW = (W - (cols - 1) * gap) / cols;
   const rowH = fs * 2.1, headH = fs * 2.6, axisH = fs * 3.6, legendH = fs * 2.2;
   const labelW = Math.min(colW * 0.42, Math.max(120, ...concepts.map((c) => textW(c.name, fs) + 26)));
+  const lineH = fs * 1.2;
+  groups.forEach((g) => {
+    let acc = 0;
+    g.rows.forEach((r) => { r.lines = labelLines(r.c.name, fs, labelW - 10); r.h = Math.max(rowH, r.lines.length * lineH + fs * 0.8); r.y = acc; acc += r.h; });
+    g.height = acc;
+  });
   const valW = textW("+0.00", fs * 0.9, true) + 10;
   const maxAbs = Math.max(1, ...groups.flatMap((g) => g.rows.flatMap((r) => [Math.abs(r.v), Math.abs(r.s)])));
   const x0 = labelW + valW, x1 = colW - valW;
@@ -311,7 +325,7 @@ export function SteadyStateBars({ concepts, final, initial = {}, fontSize = 12, 
   const ticks = maxAbs === 1 ? [-1, -0.5, 0, 0.5, 1] : [-maxAbs, -maxAbs / 2, 0, maxAbs / 2, maxAbs];
   const tickLabel = (t) => (Math.abs(t) < 1e-9 ? "0" : `${t > 0 ? "+" : "-"}${Math.abs(t) % 1 === 0 ? Math.abs(t) : Math.abs(t).toFixed(1)}`);
   const colH = [0, 0];
-  const placed = groups.map((g, gi) => { const c = colOf[gi]; const y = colH[c]; colH[c] += headH + g.rows.length * rowH + fs * 0.6; return { ...g, col: c, y }; });
+  const placed = groups.map((g, gi) => { const c = colOf[gi]; const y = colH[c]; colH[c] += headH + g.height + fs * 0.6; return { ...g, col: c, y }; });
   const plotBottom = Math.max(...colH.slice(0, cols));
   const key = one ? legendLayout(colors, fs * 0.85, W - 8) : { items: [], rows: 0 };
   const keyLineH = fs * 1.35;
@@ -346,12 +360,13 @@ export function SteadyStateBars({ concepts, final, initial = {}, fontSize = 12, 
               {col && <rect x={ox} y={g.y + fs * 0.7} width={11} height={11} rx={2} fill={col} />}
               <text x={ox + (col ? 17 : 0)} y={g.y + fs * 0.7 + 10} fontSize={fs * 1.02} fontWeight={700} fill={INK}>{g.m}</text>
               {g.rows.map((r, i) => {
-                const y = g.y + headH + i * rowH, cy = y + rowH / 2;
+                const y = g.y + headH + r.y, cy = y + r.h / 2;
                 const bx = Math.min(sx(0), sx(r.v)), bw = Math.max(1.5, Math.abs(sx(r.v) - sx(0)));
+                const ty = cy + fs * 0.35 - ((r.lines.length - 1) * lineH) / 2;
                 return (
                   <g key={r.c.id}>
-                    {i % 2 === 0 && <rect x={ox} y={y} width={colW} height={rowH} fill={FIG.band} opacity={0.7} />}
-                    <text x={ox + 6} y={cy + fs * 0.35} fontSize={fs} fill={INK}>{fitText(r.c.name, fs, labelW - 10)}<title>{r.c.name}</title></text>
+                    {i % 2 === 0 && <rect x={ox} y={y} width={colW} height={r.h} fill={FIG.band} opacity={0.7} />}
+                    <text x={ox + 6} y={ty} fontSize={fs} fill={INK}>{r.lines.map((l, k) => <tspan key={k} x={ox + 6} dy={k ? lineH : 0}>{l}</tspan>)}<title>{r.c.name}</title></text>
                     <rect x={ox + bx} y={cy - rowH * 0.29} width={bw} height={rowH * 0.58} fill={r.col} rx={2}>
                       <title>{`${r.c.name}: starts at ${signed(r.s)}, settles at ${signed(r.v)}`}</title>
                     </rect>
@@ -491,8 +506,10 @@ export function ScenarioGroupedBars({ concepts, series, fontSize = 12, linear = 
   const rows = [...colors.keys()].flatMap((m) => concepts.filter((c) => moduleOf(c) === m).map((c) => ({ c, m })));
   const ns = Math.max(1, series.length);
   const barH = Math.max(6, fs * 0.95);
-  const rowH = ns * (barH + 3) + fs * 1.1;
   const labelW = Math.min(W * 0.34, Math.max(130, ...rows.map((r) => textW(r.c.name, fs) + 30)));
+  rows.forEach((r) => { r.lines = labelLines(r.c.name, fs, labelW - 26); });
+  // the rows are tall enough for the longest wrapped name
+  const rowH = Math.max(ns * (barH + 3) + fs * 1.1, Math.max(1, ...rows.map((r) => r.lines.length)) * fs * 1.2 + fs * 0.8);
   const valW = textW("+0.00", fs * 0.8, true) + 10;
   const legendItems = series.map((s) => ({ m: s.name, col: s.color }));
   { let lx = 4, ly = 0; legendItems.forEach((it) => { const w = 22 + textW(it.m, fs * 0.9) + 20; if (lx + w > W - 6 && lx > 4) { lx = 4; ly += fs * 1.7; } it.x = lx; it.y = ly; lx += w; }); }
@@ -526,7 +543,7 @@ export function ScenarioGroupedBars({ concepts, series, fontSize = 12, linear = 
               {i % 2 === 0 && <rect x={0} y={y} width={W} height={rowH} fill={FIG.band} />}
               {newModule && <line x1={0} x2={W} y1={y} y2={y} stroke={FIG.border} />}
               <rect x={6} y={y + rowH / 2 - 4} width={8} height={8} rx={1.5} fill={colors.get(r.m)} />
-              <text x={20} y={y + rowH / 2 + fs * 0.35} fontSize={fs} fill={INK}>{fitText(r.c.name, fs, labelW - 26)}<title>{r.c.name}</title></text>
+              <text x={20} y={y + rowH / 2 + fs * 0.35 - ((r.lines.length - 1) * fs * 1.2) / 2} fontSize={fs} fill={INK}>{r.lines.map((l, k) => <tspan key={k} x={20} dy={k ? fs * 1.2 : 0}>{l}</tspan>)}<title>{r.c.name}</title></text>
             </g>
           );
         })}
@@ -812,8 +829,9 @@ export function PrioritizationMatrix({ points, xSplit = 0.5, ySplit, fontSize = 
 export function RankedBars({ rows, axisLabel = "", fontSize = 12 }) {
   const [ref, W] = useBoxWidth();
   const fs = fontSize;
-  const rowH = fs * 2.1;
   const labelW = Math.min(W * 0.36, Math.max(120, ...rows.map((r) => textW(r.name, fs) + 26)));
+  const linesOf = rows.map((r) => labelLines(r.name, fs, labelW - 12));
+  const rowH = Math.max(fs * 2.1, Math.max(1, ...linesOf.map((l) => l.length)) * fs * 1.2 + fs * 0.8);
   const valW = textW("+0.00", fs * 0.9, true) + 12;
   const top = 6, plotH = rows.length * rowH, H = top + plotH + fs * 3.8;
   const lim = Math.max(0.1, ...rows.map((r) => Math.abs(r.value)));
@@ -843,7 +861,7 @@ export function RankedBars({ rows, axisLabel = "", fontSize = 12 }) {
           const col = r.value >= 0 ? "#15803d" : "#c2410c";
           return (
             <g key={r.name}>
-              <text x={6} y={cy + fs * 0.35} fontSize={fs} fill={INK}>{fitText(r.name, fs, labelW - 12)}<title>{r.name}</title></text>
+              <text x={6} y={cy + fs * 0.35 - ((linesOf[i].length - 1) * fs * 1.2) / 2} fontSize={fs} fill={INK}>{linesOf[i].map((l, k) => <tspan key={k} x={6} dy={k ? fs * 1.2 : 0}>{l}</tspan>)}<title>{r.name}</title></text>
               <rect x={bx} y={cy - rowH * 0.29} width={bw} height={rowH * 0.58} rx={2} fill={col}><title>{`${r.name}: ${signed(r.value)}`}</title></rect>
               <text x={r.value >= 0 ? bx + bw + 5 : bx - 5} y={cy + fs * 0.33} fontSize={fs * 0.9} fontWeight={700} textAnchor={r.value >= 0 ? "start" : "end"} fill={INK}>{signed(r.value)}</text>
             </g>
