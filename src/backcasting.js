@@ -198,6 +198,7 @@ export function backcast(current, vision, simulate, settings, options = {}) {
   if (options.minGain === undefined) minGain = Math.max(0.002, 0.01 * start.gap); // at least 1% of the distance
   let frontier = [start];
   let best = start;
+  const explored = []; // every path the search kept, stage by stage (for the metro map)
   for (let step = 0; step < maxSteps; step++) {
     const seen = new Set();
     const next = [];
@@ -216,6 +217,7 @@ export function backcast(current, vision, simulate, settings, options = {}) {
     if (!next.length) break;
     next.sort((a, b) => a.gap - b.gap);
     frontier = next.slice(0, beam);
+    explored.push(...frontier);
     if (frontier[0].gap < best.gap) best = frontier[0];
   }
   const full = moves.length ? evaluate(moves) : start;
@@ -225,14 +227,30 @@ export function backcast(current, vision, simulate, settings, options = {}) {
     return { id: mv.id, loss: round(without.gap - best.gap) };
   });
   const gap0 = start.gap;
-  const steps = best.trail.map((t, i) => ({
+  const stepsOf = (trail) => trail.map((t, i) => ({
     index: i + 1, move: t.move, gapBefore: round(t.gapBefore), gapAfter: round(t.gapAfter),
     closed: gap0 > 0 ? round((gap0 - t.gapAfter) / gap0) : 1,
     added: gap0 > 0 ? round((t.gapBefore - t.gapAfter) / gap0) : 0,
     converged: t.converged,
     milestones: Object.fromEntries(outcomes.map((id) => [id, round(t.state[id] ?? 0)])),
-    importance: importance.find((x) => x.id === t.move.id)?.loss ?? 0,
   }));
+  const steps = stepsOf(best.trail).map((s) => ({ ...s, importance: importance.find((x) => x.id === s.move.id)?.loss ?? 0 }));
+  // The alternative paths: every path the beam kept at some stage, once each.
+  // A path of k steps grows out of a path of k - 1 steps that is also listed.
+  const pathId = (set) => set.map((m) => m.id).join(" > ");
+  const bestId = pathId(best.set);
+  const alternatives = [];
+  const listed = new Set();
+  explored.forEach((n) => {
+    const id = pathId(n.set);
+    if (listed.has(id)) return;
+    listed.add(id);
+    alternatives.push({
+      id, best: id === bestId, steps: id === bestId ? steps : stepsOf(n.trail),
+      gapEnd: round(n.gap), closed: gap0 > 0 ? round((gap0 - n.gap) / gap0) : 1,
+      reached: Object.fromEntries(outcomes.map((o) => [o, round(n.state[o] ?? 0)])),
+    });
+  });
   const used = new Set(best.set.map((m) => m.id));
   return {
     diff, moves, outcomes, targets,
@@ -240,7 +258,27 @@ export function backcast(current, vision, simulate, settings, options = {}) {
     reached: Object.fromEntries(outcomes.map((id) => [id, round(best.state[id] ?? 0)])),
     gapStart: round(gap0), gapEnd: round(best.gap), gapAllSteps: round(full.gap),
     closed: gap0 > 0 ? round((gap0 - best.gap) / gap0) : 1,
-    steps, unused: moves.filter((m) => !used.has(m.id)),
+    steps, unused: moves.filter((m) => !used.has(m.id)), bestId, alternatives,
     runs, unsettled, visionConverged: visRun.converged, currentConverged: curRun.converged,
   };
+}
+
+/**
+ * The alternative paths of a backcasting result as routes for the metro map
+ * (pathwayMetroLayout.js). Each step is a stage, and the horizontal axis
+ * counts the steps (phases), so a route of k steps runs from today (0) to k.
+ * `tog` is the share of the distance to the vision that the path closes (the
+ * value routes are chosen and scored by), and `to` counts the outcomes that
+ * end further from the vision than they are today (drawn as a bar).
+ */
+export function backcastMetroCandidates(result) {
+  if (!result?.alternatives) return [];
+  const { outcomes, targets, today } = result;
+  return result.alternatives.map((a) => ({
+    id: a.id, best: a.best, converged: true,
+    unsettled: a.steps.some((s) => !s.converged),
+    stages: a.steps.map((s) => ({ leverId: s.move.id, scaleUp: false, ciiAfter: s.index, outcomes: outcomes.map((id) => ({ id, value: s.milestones[id] })) })),
+    cii: a.steps.length, tog: a.closed,
+    to: outcomes.filter((id) => Math.abs((targets[id] ?? 0) - (a.reached[id] ?? 0)) > Math.abs((targets[id] ?? 0) - (today[id] ?? 0)) + 1e-6).length,
+  }));
 }
