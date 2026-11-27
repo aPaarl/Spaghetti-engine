@@ -66,5 +66,37 @@ ok(res.outcomes.includes("B") && res.outcomes.includes("W"), "water and birds ar
 const lev = backcast(current, vision, simulate, {}, { structural: false });
 ok(lev.gapEnd > res.gapEnd, "without structural change less of the gap is closed");
 
+// ---- edge cases (added with the worked example) ------------------------------------------------------------
+{
+  // matching by id comes before matching by name: today's "P" (id p1) is renamed "Q" in the
+  // vision, and a separate today concept named "Q" (id q1) must not take it by name
+  const cur = { concepts: [c("q1", "Q"), c("p1", "P")], edges: [] };
+  const vis = { concepts: [c("p1", "Q"), c("q9", "Q old")], edges: [] };
+  const d = compareSystems(cur, vis);
+  ok(d.pairs.length === 1 && d.pairs[0].cur.id === "p1" && d.pairs[0].vis.id === "p1" && d.removedConcepts[0]?.id === "q1", "ids are matched before names");
+}
+{
+  // a concept kept in the copy but renamed stays the same concept; a vision concept that only shares
+  // a name with an already paired concept is new, and the steps never produce two concepts with one id
+  const cur = { concepts: [c("a", "Alpha", 0.5), c("b", "Beta"), c("x", "Old thing")], edges: [e("a", "b", 0.5)] };
+  const vis = { concepts: [c("a", "Alpha", 0.5), c("b", "Beta"), c("x", "Brand new", 0.4), c("y", "Old thing")], edges: [e("a", "b", 0.5), { id: "xb", source: "x", target: "b", weight: 0.3 }] };
+  const d = compareSystems(cur, vis);
+  ok(d.pairs.find((p) => p.cur.id === "x")?.vis.name === "Brand new" && d.newConcepts.map((k) => k.id).join() === "y", "a renamed concept is matched by its id");
+  const applied = applyMoves(cur, vis, d, buildMoves(cur, vis, d, {}));
+  ok(new Set(applied.concepts.map((k) => k.id)).size === applied.concepts.length, "after all steps every id is unique");
+}
+{
+  // a change in delay only is a step of its own, and applying it sets the delay
+  const cur = { concepts: [c("a", "A", 0.6), c("b", "B")], edges: [{ ...e("a", "b", 0.5), lag: 3 }] };
+  const vis = { concepts: [c("a", "A", 0.6), c("b", "B")], edges: [e("a", "b", 0.5)] };
+  const d = compareSystems(cur, vis);
+  ok(d.edgeChanges.length === 1 && d.edgeChanges[0].kind === "delay" && d.edgeChanges[0].fromLag === 3 && d.edgeChanges[0].lag === 0, "a delay-only change is found");
+  const mv = buildMoves(cur, vis, d, {});
+  ok(mv.length === 1 && /Speed up/.test(mv[0].label), "and offered as speeding up the link");
+  ok(applyMoves(cur, vis, d, mv).edges[0].lag === 0, "applying it removes the delay");
+  const rw = compareSystems({ concepts: cur.concepts, edges: [e("a", "b", 0.5)] }, { concepts: vis.concepts, edges: [{ ...e("a", "b", 0.8), lag: 2 }] });
+  ok(applyMoves(cur, vis, rw, buildMoves(cur, vis, rw, {})).edges[0].lag === 2, "a re-weighted link takes the delay it has in the vision");
+}
+
 console.log(`${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);

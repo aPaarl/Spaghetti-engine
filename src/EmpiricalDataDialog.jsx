@@ -7,7 +7,9 @@
 // relationships the experts drew. Nothing changes in the model until one of
 // the Apply buttons is clicked, and both can be undone with Undo.
 import React, { useMemo, useRef, useState } from "react";
-import { Database, X, Upload, Download, Check, AlertTriangle } from "lucide-react";
+import { Database, X, Upload, Download, Check, AlertTriangle, BookOpen } from "lucide-react";
+import { PEAT_DATA_CSV, PEAT_TODAY, PEAT_UNITS } from "./workedExamples.js";
+import { normalizeConceptName } from "./mapAggregation.js";
 import { parseTable, matchColumns, defaultSpec, centersFor, fuzzify, fuzzifiedTable, compareWithModel, suggestWeights, blendWeight, TERM_SETS, quantile } from "./empiricalData.js";
 import { t as tr } from "./i18n.js";
 
@@ -54,6 +56,21 @@ export default function EmpiricalDataDialog({ concepts, edges, settings, simulat
       const last = t.labels.length - 1;
       setStartRow(last); setFromRow(0); setToRow(last); setComparison(null); setSuggested(null);
     } catch (e) { setError(e.message); }
+  };
+  // The worked example: the yearly peat meadow data, with each column between
+  // the fixed bounds that stand for -1 and +1 on the map (signed scale), so
+  // that suggested weights are on the same scale as the example's weights.
+  const loadExample = () => {
+    load(PEAT_DATA_CSV);
+    try {
+      const t = parseTable(PEAT_DATA_CSV);
+      const idOf = new Map(PEAT_TODAY.concepts.map((c) => [normalizeConceptName(c.name), c.id]));
+      setSpecs(Object.fromEntries(t.columns.map((c, i) => {
+        const u = PEAT_UNITS[idOf.get(normalizeConceptName(c.name))];
+        return [i, u ? { ...defaultSpec(c.values), method: "minmax", low: u.range[0], high: u.range[1] } : defaultSpec(c.values)];
+      })));
+      setScale("signed");
+    } catch { /* the example always parses */ }
   };
   const readFile = (e) => {
     const f = e.target.files?.[0]; e.target.value = "";
@@ -125,6 +142,7 @@ export default function EmpiricalDataDialog({ concepts, edges, settings, simulat
                 <button onClick={() => load(paste)} disabled={!paste.trim()} className="px-3 py-1.5 rounded-lg border border-slate-300 text-sm hover:bg-slate-50 disabled:opacity-40 self-start">{tr("Read")}</button>
               </div>
             </div>
+            <button onClick={loadExample} className="mt-2 text-sm text-neutral-700 hover:text-lagoon-700 hover:underline inline-flex items-center gap-1.5" title={tr("Yearly observations for the peat meadow worked example (Backcasting tab), with fixed bounds per column. Open that example first to match every column.")}><BookOpen size={14} />{tr("Use the worked example data")}</button>
             {error && <p className="mt-2 text-sm text-red-700">{error}</p>}
             {table && <p className="mt-3 text-sm text-neutral-800"><Check size={14} className="inline text-lagoon-700 mr-1" />{table.labels.length} rows ({table.labels[0]} to {table.labels[table.labels.length - 1]}), {table.columns.length} columns, {matched.length} matched to a concept.</p>}
           </section>
@@ -250,7 +268,7 @@ export default function EmpiricalDataDialog({ concepts, edges, settings, simulat
                   {settings?.squashFunction === "trivalent" && <p className="text-sm text-amber-800">{tr("The trivalent transfer function cannot be fitted; choose another one in the simulation settings.")}</p>}
                   {suggested && (
                     <>
-                      {!suggested.results.length && <p className="text-sm text-neutral-800">{tr("No relationship could be fitted.")}</p>}
+                      {!suggested.results.length && !suggested.unsupported && <p className="text-sm text-neutral-800">{tr("No relationship could be fitted.")}</p>}
                       {suggested.results.length > 0 && (
                         <>
                           <table className="w-full text-sm"><thead><tr className="text-left text-[13px] text-neutral-600 border-b border-slate-200"><th className="py-1 font-medium">{tr("Use")}</th><th className="py-1 font-medium">{tr("Relationship")}</th><th className="py-1 font-medium text-right">{tr("Expert")}</th><th className="py-1 font-medium text-right">{tr("Data")}</th><th className="py-1 font-medium text-right">{tr("New")}</th><th className="py-1 font-medium text-right">Fit (R²)</th><th className="py-1 font-medium text-right">{tr("Steps")}</th></tr></thead>
@@ -258,7 +276,7 @@ export default function EmpiricalDataDialog({ concepts, edges, settings, simulat
                               <tr key={r.edgeId} className={r.signAgrees ? "" : "bg-orange-50/60"}>
                                 <td className="py-1"><input type="checkbox" checked={!!include[r.edgeId]} onChange={(e) => setInclude((s) => ({ ...s, [r.edgeId]: e.target.checked }))} className="w-4 h-4 accent-lagoon-700" aria-label={tr("Use this suggestion")} /></td>
                                 <td className="py-1">{nameOf(r.source)} → {nameOf(r.target)}{!r.signAgrees && <span className="ml-2 text-[12px] text-orange-800 inline-flex items-center gap-1"><AlertTriangle size={12} />{tr("opposite sign")}</span>}</td>
-                                <td className="text-right tabular-nums">{fmt(r.expert)}</td><td className="text-right tabular-nums">{fmt(r.data)}</td>
+                                <td className="text-right tabular-nums">{fmt(r.expert)}</td><td className="text-right tabular-nums">{fmt(r.data)}{r.clipped && <span className="ml-1 text-[12px] text-orange-800" title={tr("The fit gave a value beyond -1..+1; it was set to the limit.")}>{tr("at the limit")}</span>}</td>
                                 <td className="text-right tabular-nums font-medium">{include[r.edgeId] ? fmt(blendWeight(r.expert, r.data, share)) : "-"}</td>
                                 <td className="text-right tabular-nums">{r2(r.r2)}</td><td className="text-right tabular-nums">{r.n}</td>
                               </tr>

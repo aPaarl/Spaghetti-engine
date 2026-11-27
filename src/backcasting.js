@@ -38,33 +38,49 @@ const held = (locks) => ({ id: "held", initialOverrides: { ...locks }, lockedCon
 /** Matches the concepts of the two maps (by id, then by name) and lists their differences. */
 export function compareSystems(current, vision) {
   const visById = new Map(vision.concepts.map((c) => [c.id, c]));
-  const visByName = new Map(vision.concepts.map((c) => [normalizeConceptName(c.name), c]));
+  const visByName = new Map();
+  vision.concepts.forEach((c) => { const k = normalizeConceptName(c.name); if (!visByName.has(k)) visByName.set(k, c); });
+  // Matching in two passes: first by id (a concept kept in the copy, even if
+  // it was renamed), then by name for the rest (a map drawn separately). Doing
+  // the ids first keeps a name match from claiming a concept whose own id
+  // match comes later in the list.
   const pairs = [];
   const usedVis = new Set();
+  const pairedCur = new Set();
   current.concepts.forEach((c) => {
-    const v = visById.get(c.id) || visByName.get(normalizeConceptName(c.name));
-    if (v && !usedVis.has(v.id)) { pairs.push({ cur: c, vis: v }); usedVis.add(v.id); }
+    const v = visById.get(c.id);
+    if (v) { pairs.push({ cur: c, vis: v }); usedVis.add(v.id); pairedCur.add(c.id); }
   });
+  current.concepts.forEach((c) => {
+    if (pairedCur.has(c.id)) return;
+    const v = visByName.get(normalizeConceptName(c.name));
+    if (v && !usedVis.has(v.id)) { pairs.push({ cur: c, vis: v }); usedVis.add(v.id); pairedCur.add(c.id); }
+  });
+  pairs.sort((a, b) => current.concepts.indexOf(a.cur) - current.concepts.indexOf(b.cur));
   const curOfVis = new Map(pairs.map((p) => [p.vis.id, p.cur.id]));
+  // Every vision id that today's map also uses was paired in the first pass,
+  // so a concept new in the vision can keep its own id without clashing.
   const newConcepts = vision.concepts.filter((v) => !usedVis.has(v.id));
-  const matchedCur = new Set(pairs.map((p) => p.cur.id));
-  const removedConcepts = current.concepts.filter((c) => !matchedCur.has(c.id));
+  const removedConcepts = current.concepts.filter((c) => !pairedCur.has(c.id));
   // relationships, in the ids of the current map (new concepts keep their vision id)
   const key = (a, b) => `${a}>${b}`;
   const toCur = (id) => curOfVis.get(id) || id;
   const curEdges = new Map(current.edges.map((e) => [key(e.source, e.target), e]));
   const visEdges = new Map(vision.edges.map((e) => [key(toCur(e.source), toCur(e.target)), e]));
+  const lagOf = (e) => { const n = Math.round(Number(e?.lag)); return Number.isFinite(n) && n > 0 ? n : 0; };
   const edgeChanges = [];
   visEdges.forEach((ve, k) => {
     const [a, b] = k.split(">");
     const ce = curEdges.get(k);
-    if (!ce) edgeChanges.push({ kind: "add", source: a, target: b, from: 0, to: ve.weight, lag: ve.lag || 0 });
-    else if (Math.abs(ce.weight - ve.weight) > 1e-9) edgeChanges.push({ kind: "reweight", source: a, target: b, from: ce.weight, to: ve.weight, edgeId: ce.id });
+    if (!ce) edgeChanges.push({ kind: "add", source: a, target: b, from: 0, to: ve.weight, lag: lagOf(ve) });
+    else if (Math.abs(ce.weight - ve.weight) > 1e-9) edgeChanges.push({ kind: "reweight", source: a, target: b, from: ce.weight, to: ve.weight, edgeId: ce.id, fromLag: lagOf(ce), lag: lagOf(ve) });
+    // the same weight, but the effect is faster or slower in the vision
+    else if (lagOf(ce) !== lagOf(ve)) edgeChanges.push({ kind: "delay", source: a, target: b, from: ce.weight, to: ve.weight, edgeId: ce.id, fromLag: lagOf(ce), lag: lagOf(ve) });
   });
   curEdges.forEach((ce, k) => {
     if (!visEdges.has(k)) {
       const [a, b] = k.split(">");
-      edgeChanges.push({ kind: "remove", source: a, target: b, from: ce.weight, to: 0, edgeId: ce.id });
+      edgeChanges.push({ kind: "remove", source: a, target: b, from: ce.weight, to: 0, edgeId: ce.id, fromLag: lagOf(ce), lag: 0 });
     }
   });
   const valueChanges = pairs.filter((p) => Math.abs((p.cur.initialValue || 0) - (p.vis.initialValue || 0)) > 1e-9)
@@ -96,7 +112,7 @@ export function buildMoves(current, vision, diff, { levers = null, structural = 
     diff.removedConcepts.forEach((c) => moves.push({ id: `phase:${c.id}`, type: "phaseOut", concept: c.id, label: `Phase out ${c.name}` }));
     diff.edgeChanges.forEach((ch) => {
       if (newIds.has(ch.source) || newIds.has(ch.target)) return; // comes with the introduction of the new concept
-      const verb = ch.kind === "add" ? "Create the link" : ch.kind === "remove" ? "Cut the link" : ch.to * ch.from < 0 ? "Reverse the link" : Math.abs(ch.to) > Math.abs(ch.from) ? "Strengthen the link" : "Weaken the link";
+      const verb = ch.kind === "add" ? "Create the link" : ch.kind === "remove" ? "Cut the link" : ch.kind === "delay" ? (ch.lag < ch.fromLag ? "Speed up the link" : "Slow down the link") : ch.to * ch.from < 0 ? "Reverse the link" : Math.abs(ch.to) > Math.abs(ch.from) ? "Strengthen the link" : "Weaken the link";
       moves.push({ id: `edge:${ch.source}>${ch.target}`, type: "edge", change: ch, label: `${verb} ${name.get(ch.source)} → ${name.get(ch.target)}` });
     });
   }
@@ -124,7 +140,7 @@ export function applyMoves(current, vision, diff, moves) {
       const ch = m.change;
       const at = edges.findIndex((e) => e.source === ch.source && e.target === ch.target);
       if (ch.kind === "remove") { if (at >= 0) edges.splice(at, 1); }
-      else if (at >= 0) edges[at] = { ...edges[at], weight: ch.to };
+      else if (at >= 0) edges[at] = { ...edges[at], weight: ch.to, lag: ch.lag || 0 };
       else edges.push({ id: `bc_${ch.source}_${ch.target}`, source: ch.source, target: ch.target, weight: ch.to, lag: ch.lag || 0 });
     }
   });

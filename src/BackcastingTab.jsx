@@ -7,8 +7,8 @@
 // runs the search in backcasting.js. The path is shown from the vision back
 // to today, the way backcasting is read, with the state of the outcomes at
 // every milestone.
-import React, { useMemo, useState } from "react";
-import { Flag, Play, ArrowDown, ArrowUp, Sparkles, AlertTriangle, Check } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { Flag, Play, ArrowDown, ArrowUp, Sparkles, AlertTriangle, Check, BookOpen } from "lucide-react";
 import { compareSystems, buildMoves, backcast, driversOf } from "./backcasting.js";
 import { t as tr } from "./i18n.js";
 
@@ -28,11 +28,11 @@ function moveLabel(m, nameOf) {
   if (m.type === "introduce") return tr("Introduce {name}", { name: m.concept.name });
   if (m.type === "phaseOut") return tr("Phase out {name}", { name: nameOf(m.concept) });
   const ch = m.change;
-  const verb = ch.kind === "add" ? "Create the link {a} → {b}" : ch.kind === "remove" ? "Cut the link {a} → {b}" : ch.to * ch.from < 0 ? "Reverse the link {a} → {b}" : Math.abs(ch.to) > Math.abs(ch.from) ? "Strengthen the link {a} → {b}" : "Weaken the link {a} → {b}";
+  const verb = ch.kind === "add" ? "Create the link {a} → {b}" : ch.kind === "remove" ? "Cut the link {a} → {b}" : ch.kind === "delay" ? (ch.lag < ch.fromLag ? "Speed up the link {a} → {b}" : "Slow down the link {a} → {b}") : ch.to * ch.from < 0 ? "Reverse the link {a} → {b}" : Math.abs(ch.to) > Math.abs(ch.from) ? "Strengthen the link {a} → {b}" : "Weaken the link {a} → {b}";
   return tr(verb, { a: nameOf(ch.source), b: nameOf(ch.target) });
 }
 
-export default function BackcastingTab({ concepts, edges, settings, library, activeModelId, activeModelName, readModel, simulate, onCreateVision, onOpenModel }) {
+export default function BackcastingTab({ concepts, edges, settings, library, activeModelId, activeModelName, readModel, simulate, onCreateVision, onOpenModel, onLoadExample, visionHint }) {
   const others = (library?.models || []).filter((m) => m.id !== activeModelId);
   const guess = others.find((m) => m.name === `${activeModelName} (vision)`) || others.find((m) => /vision|visie|toekomst|future/i.test(m.name));
   const [visionId, setVisionId] = useState(guess?.id || "");
@@ -45,6 +45,10 @@ export default function BackcastingTab({ concepts, edges, settings, library, act
   const [running, setRunning] = useState(false);
   const [forward, setForward] = useState(false);
 
+  // a vision chosen from outside (the worked example), once its model is listed
+  useEffect(() => {
+    if (visionHint?.id && others.some((m) => m.id === visionHint.id)) { setVisionId(visionHint.id); setResult(null); setOutcomes(null); setLevers(null); }
+  }, [visionHint, others.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const current = useMemo(() => ({ concepts, edges }), [concepts, edges]);
   const vision = useMemo(() => {
     if (!visionId) return null;
@@ -106,6 +110,7 @@ export default function BackcastingTab({ concepts, edges, settings, library, act
           </select>
           <button onClick={onCreateVision} className="px-3 py-1.5 rounded-md border border-violet-300 bg-violet-50 text-violet-900 text-sm hover:bg-violet-100 inline-flex items-center gap-1.5"><Sparkles size={14} />{tr("Create an envisioned version of this map")}</button>
           {visionId && <button onClick={() => onOpenModel(visionId)} className="text-sm text-lagoon-700 hover:underline">{tr("Open the vision to edit it")}</button>}
+          {onLoadExample && <button onClick={onLoadExample} className="ml-auto text-sm text-neutral-700 hover:text-lagoon-700 hover:underline inline-flex items-center gap-1.5" title={tr("Adds a small peat meadow system, today and in a vision, as two new models. The Methodological Annex works through the result.")}><BookOpen size={14} />{tr("Load the worked example")}</button>}
         </div>
         {diff && (
           <div className="mt-3 grid sm:grid-cols-4 gap-2 text-sm">

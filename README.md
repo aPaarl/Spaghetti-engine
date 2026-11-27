@@ -15,7 +15,11 @@ npm install
 npm run dev        # development server with hot reload
 npm run build      # production build into dist/
 npm run preview    # serve the production build locally
+npm test           # run every test file in tests/ (about 20 s)
+npm test -- lags   # run only the test files whose name contains "lags"
 ```
+
+A GitHub check (`.github/workflows/tests.yml`) runs `npm test` and the production build on every pull request and on every change to `main`.
 
 If `npm run build` fails because the folder path contains an ampersand (as on the OneDrive copy), call Vite directly:
 
@@ -38,7 +42,7 @@ Netlify builds and deploys the site from the `main` branch.
 | `public/favicon.svg`, `public/apple-touch-icon.png` | Site icons. |
 | `brand-assets/` | Logo files (SVG and PNG) for use in documents and slides. Not deployed. |
 | `tools/` | Scripts that produce the PDFs and the manifest, and a helper for editing the Word documents (see below). |
-| `tests/` | Checks that load the engine straight from `src/SpaghettiEngine.jsx`; run each with `node tests/<file>.cjs`. |
+| `tests/` | Checks that load the engine straight from `src/SpaghettiEngine.jsx`; run them all with `npm test`, or one with `node tests/<file>`. `tests/engine.cjs` gives a test the engine's own `simulate()`. |
 
 ## Releasing a new version
 
