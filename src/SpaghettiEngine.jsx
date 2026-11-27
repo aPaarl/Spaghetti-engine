@@ -44,6 +44,7 @@ import { t as tr, getLang, setLang } from "./i18n.js";
 import EmpiricalDataDialog from "./EmpiricalDataDialog.jsx";
 import BackcastingTab from "./BackcastingTab.jsx";
 import { PEAT_TODAY, PEAT_VISION, PEAT_NAMES } from "./workedExamples.js";
+import { saveResults, loadResults, deleteResults } from "./resultStore.js";
 import { WorkshopPlanner, WorkshopRunBar, loadWorkshop, saveWorkshop, newWorkshopPlan, WORKSHOP_BLOCK_TARGETS } from "./WorkshopMode.jsx";
 import { TableToolsHost } from "./TableEditor.jsx";
 
@@ -74,6 +75,7 @@ function pruneScenarioOverrides(scenarios, { removedConceptId, removedEdgeIds } 
       const lockedConcepts = { ...s.lockedConcepts };
       delete lockedConcepts[removedConceptId];
       next = { ...next, initialOverrides, lockedConcepts };
+      if (s.timing && removedConceptId in s.timing) { const timing = { ...s.timing }; delete timing[removedConceptId]; next = { ...next, timing }; }
     }
     if (removedEdgeIds && removedEdgeIds.length && Object.keys(s.weightOverrides || {}).some((id) => removedEdgeIds.includes(id))) {
       const weightOverrides = { ...s.weightOverrides };
@@ -272,13 +274,66 @@ function shuffled(arr, rand = Math.random) {
   return a;
 }
 
+// Staged interventions. A held concept (scenario.lockedConcepts) is held for
+// the whole run unless the scenario gives it a timing:
+//   scenario.timing[id] = { start, duration, ramp }   (whole iterations)
+//   start     the first iteration in which it is held (0 = from the start)
+//   duration  for how many iterations it is held (0 = until the end)
+//   ramp      over how many iterations it moves from its own value to the
+//             held value (0 or 1 = at once)
+// Before its start the concept follows the map like any other (from its own
+// starting value in the model); after its duration it is released and
+// follows the map again. A ramp starts from the concept's value in the
+// iteration before the start (its model starting value when start is 0).
+const MAX_TIMING = 500;
+function interventionTiming(t) {
+  if (!t || typeof t !== "object") return null;
+  const whole = (v) => { const n = Math.round(Number(v)); return Number.isFinite(n) && n > 0 ? Math.min(n, MAX_TIMING) : 0; };
+  const start = whole(t.start), duration = whole(t.duration), ramp = whole(t.ramp);
+  if (!start && !duration && ramp <= 1) return null; // held for the whole run, at once
+  return { start, duration, ramp: ramp > 1 ? ramp : 0 };
+}
+// The iteration after which no timed intervention changes any more (0 when
+// there are none): a run cannot count as settled before it.
+function lastTimingEvent(scenario) {
+  const locked = scenario?.lockedConcepts || {};
+  let last = 0;
+  Object.keys(locked).forEach((id) => {
+    const t = interventionTiming(scenario?.timing?.[id]);
+    if (!t) return;
+    last = Math.max(last, t.start + Math.max(t.ramp - 1, 0), t.duration ? t.start + t.duration : 0);
+  });
+  return last;
+}
+// A scenario's timings without the one of `id`: an analysis that sweeps a
+// concept's held value holds it for the whole run.
+function timingWithout(timing, id) {
+  if (!timing || !(id in timing)) return timing;
+  const next = { ...timing }; delete next[id]; return next;
+}
+// A short description of a timing, for chips and tables ("" when held throughout).
+function describeTiming(t) {
+  const x = interventionTiming(t);
+  if (!x) return "";
+  const parts = [];
+  if (x.start) parts.push(tr("from iteration {n}", { n: x.start }));
+  if (x.duration) parts.push(tr("for {n} iterations", { n: x.duration }));
+  if (x.ramp) parts.push(tr("phased in over {n}", { n: x.ramp }));
+  return parts.join(", ");
+}
+
 // `rand` only matters in asynchronous mode (random update order); Monte Carlo
 // passes a seeded generator so a run can be repeated exactly from its seed.
 function simulate(concepts, edges, scenario, settings, rand = Math.random) {
   const ids = concepts.map((c) => c.id);
   const initial = {};
+  const lockedAll = scenario?.lockedConcepts ?? {};
+  const timing = {};
+  Object.keys(lockedAll).forEach((id) => { const t = interventionTiming(scenario?.timing?.[id]); if (t) timing[id] = t; });
   ids.forEach((id) => {
     const c = concepts.find((c) => c.id === id);
+    // A timed intervention starts from the concept's own value in the model.
+    if (timing[id]) { initial[id] = c.initialValue; return; }
     // A(0) is the user-defined initial activation vector from the model
     // editor, for baseline exactly the same as for any other scenario.
     // (An earlier version forced baseline to always start at the
@@ -288,7 +343,10 @@ function simulate(concepts, edges, scenario, settings, rand = Math.random) {
     // initialOverrides (drivers, manual starting values) still win.
     initial[id] = scenario?.initialOverrides?.[id] ?? c.initialValue;
   });
-  const locked = scenario?.lockedConcepts ?? {};
+  // Concepts held for the whole run; timed ones are looked up per iteration.
+  const locked = Object.fromEntries(Object.entries(lockedAll).filter(([id]) => !timing[id]));
+  const timedIds = Object.keys(timing).filter((id) => initial[id] !== undefined);
+  const lastEvent = lastTimingEvent(scenario);
 
   const incoming = {};
   ids.forEach((id) => (incoming[id] = []));
@@ -311,6 +369,23 @@ function simulate(concepts, edges, scenario, settings, rand = Math.random) {
 
   let current = { ...initial };
   Object.keys(locked).forEach((id) => (current[id] = locked[id]));
+  // The held value of a timed concept in iteration t, or undefined when it is
+  // not held then. rampFrom keeps the value it ramps from.
+  const rampFrom = {};
+  const heldAt = (id, t, valueBefore) => {
+    const { start, duration, ramp } = timing[id];
+    if (t < start || (duration && t >= start + duration)) return undefined;
+    const target = lockedAll[id];
+    if (!ramp) return target;
+    if (rampFrom[id] === undefined) rampFrom[id] = valueBefore;
+    const k = Math.min(t - start + 1, ramp);
+    return rampFrom[id] + ((target - rampFrom[id]) * k) / ramp;
+  };
+  timedIds.forEach((id) => {
+    const c = concepts.find((c) => c.id === id);
+    const h = heldAt(id, 0, c.initialValue);
+    if (h !== undefined) current[id] = h;
+  });
   const series = [{ iteration: 0, values: { ...current } }];
 
   const maxIter = settings.maxIterations ?? 100;
@@ -344,18 +419,24 @@ function simulate(concepts, edges, scenario, settings, rand = Math.random) {
 
   for (t = 1; t <= maxIter; t++) {
     let next = { ...current };
+    // the timed interventions held in this iteration
+    const heldNow = {};
+    timedIds.forEach((id) => { const h = heldAt(id, t, current[id]); if (h !== undefined) heldNow[id] = h; });
+    Object.assign(next, heldNow);
     if (settings.mode === "asynchronous") {
       // A lagged relationship reads the recorded past; an unlagged one reads
       // the value as already updated earlier in this sweep, as before.
       const order = shuffled(ids, rand);
       order.forEach((id) => {
         if (locked[id] !== undefined) { next[id] = locked[id]; return; }
+        if (heldNow[id] !== undefined) { next[id] = heldNow[id]; return; }
         const sum = incoming[id].reduce((s, { source, weight, lag }) => s + (lag ? pastValue(source, lag) : next[source]) * weight, 0);
         next[id] = bound(squash((isRelative ? next[id] : 0) + sum));
       });
     } else {
       ids.forEach((id) => {
         if (locked[id] !== undefined) { next[id] = locked[id]; return; }
+        if (heldNow[id] !== undefined) { next[id] = heldNow[id]; return; }
         const sum = incoming[id].reduce((s, { source, weight, lag }) => s + (lag ? pastValue(source, lag) : current[source]) * weight, 0);
         next[id] = bound(squash((isRelative ? current[id] : 0) + sum));
       });
@@ -363,7 +444,8 @@ function simulate(concepts, edges, scenario, settings, rand = Math.random) {
     if (unbounded && ids.some((id) => !Number.isFinite(next[id]))) { diverged = true; t -= 1; break; }
     const maxDelta = Math.max(...ids.map((id) => Math.abs(next[id] - current[id])));
     lastDelta = maxDelta;
-    calm = maxDelta < threshold ? calm + 1 : 0;
+    // a run cannot settle while a timed intervention is still to change
+    calm = maxDelta < threshold && t > lastEvent ? calm + 1 : 0;
     current = next;
     series.push({ iteration: t, values: { ...current } });
     if (unbounded && ids.some((id) => Math.abs(current[id]) > LINEAR_DIVERGENCE_LIMIT)) { diverged = true; break; }
@@ -1069,7 +1151,13 @@ function sanitizeModel(data) {
   let scenarios = (Array.isArray(data.scenarios) ? data.scenarios : []).filter((s) => s && typeof s === "object" && s.id).map((s) => ({
     ...s, id: String(s.id), name: String(s.name ?? "").trim() || "Unnamed scenario", type: s.type || "intervention", description: String(s.description ?? ""),
     initialOverrides: keepKeys(s.initialOverrides, conceptIds), lockedConcepts: keepKeys(s.lockedConcepts, conceptIds), weightOverrides: keepKeys(s.weightOverrides, finalEdgeIds),
-  }));
+  })).map((s) => {
+    // timing of held concepts (staged interventions): whole numbers, only for concepts still held
+    const { timing: rawTiming, ...rest } = s;
+    const timing = Object.fromEntries(Object.entries(rawTiming && typeof rawTiming === "object" ? rawTiming : {})
+      .filter(([k]) => k in rest.lockedConcepts).map(([k, t]) => [k, interventionTiming(t)]).filter(([, t]) => t));
+    return Object.keys(timing).length ? { ...rest, timing } : rest;
+  });
   if (!scenarios.some((s) => s.id === "baseline")) scenarios = [{ ...BASELINE_SCENARIO }, ...scenarios];
 
   // settings ------------------------------------------------------------------
@@ -8209,7 +8297,7 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
         // influence could end up nowhere near the value the chart's x-axis
         // claimed it was swept to.
         const locks = { ...(base?.lockedConcepts || {}), [sensInput]: v };
-        const sc = { ...base, initialOverrides: { ...base?.initialOverrides, [sensInput]: v }, lockedConcepts: locks };
+        const sc = { ...base, initialOverrides: { ...base?.initialOverrides, [sensInput]: v }, lockedConcepts: locks, timing: timingWithout(base?.timing, sensInput) };
         const r = simulate(concepts, edges, sc, settings);
         sensOutputs.forEach((outId) => {
           row[multi ? `${outId}__${scId}` : outId] = round2(r.final[outId]);
@@ -8237,8 +8325,8 @@ function SensitivityAnalysisTab({ concepts, edges, scenarios, activeScenarioId, 
       // Same fix as the curve sweep above: lock each swept concept at the
       // low/high end instead of only seeding its initial value.
       const baseLocks = { ...(baseSc?.lockedConcepts || {}) };
-      const scLo = { ...baseSc, initialOverrides: { ...baseSc?.initialOverrides, [c.id]: sensMin }, lockedConcepts: { ...baseLocks, [c.id]: sensMin } };
-      const scHi = { ...baseSc, initialOverrides: { ...baseSc?.initialOverrides, [c.id]: sensMax }, lockedConcepts: { ...baseLocks, [c.id]: sensMax } };
+      const scLo = { ...baseSc, initialOverrides: { ...baseSc?.initialOverrides, [c.id]: sensMin }, lockedConcepts: { ...baseLocks, [c.id]: sensMin }, timing: timingWithout(baseSc?.timing, c.id) };
+      const scHi = { ...baseSc, initialOverrides: { ...baseSc?.initialOverrides, [c.id]: sensMax }, lockedConcepts: { ...baseLocks, [c.id]: sensMax }, timing: timingWithout(baseSc?.timing, c.id) };
       const lo = simulate(concepts, edges, scLo, settings).final[primaryOutput] ?? 0;
       const hi = simulate(concepts, edges, scHi, settings).final[primaryOutput] ?? 0;
       return { name: c.name, low: round2(lo), high: round2(hi), impact: round2(hi - lo) };
@@ -9618,6 +9706,7 @@ function runTransitionSweep(concepts, edges, baseScenario, settings, interventio
       ...baseScenario,
       initialOverrides: { ...overrides, [interventionId]: driverValue },
       lockedConcepts: { ...locks, [interventionId]: driverValue },
+      timing: timingWithout(baseScenario?.timing, interventionId),
     };
     const r = simulate(concepts, edges, sc, sim);
     if (!r.converged) notPrecise += 1;
@@ -11411,6 +11500,7 @@ async function buildAnalysisWorkbook({
   addDataSheet(workbook, "Scenarios Summary", [
     { header: "Name", key: "name" }, { header: "Type", key: "type" }, { header: "Description", key: "description" },
     { header: "# Interventions", key: "interventions" },
+    { header: "Timing (staged interventions)", key: "timing" },
     { header: "Run?", key: "run" }, { header: "Converged", key: "converged" }, { header: "Iterations Run", key: "iterations" },
     { header: "Stale (model edited since run)", key: "stale" },
   ], scenarios.map((s) => {
@@ -11418,6 +11508,7 @@ async function buildAnalysisWorkbook({
     return {
       name: s.name, type: s.type, description: s.description || "",
       interventions: scenarioInterventionCount(s),
+      timing: Object.keys(s.timing || {}).map((id) => `${analysisConcepts.find((c) => c.id === id)?.name || id}: ${describeTiming(s.timing[id])}`).filter((x) => !x.endsWith(": ")).join("; "),
       run: r ? "Yes" : "No", converged: r ? (r.converged ? "Yes" : "No") : "", iterations: r ? r.iterationsRun : "",
       stale: r ? (resultsStale ? "Yes" : "No") : "",
     };
@@ -14175,11 +14266,15 @@ function SpaghettiEngineApp() {
     return `${c}|${e}|${JSON.stringify(settings)}`;
   }, [aConcepts, aEdges, settings]);
   const [modelVersion, setModelVersion] = useState(0);
+  // The same number, readable at once (results restored from storage are
+  // stamped with it; the state only catches up on the next render).
+  const modelVersionRef = useRef(0);
   const simSignatureRef = useRef(simSignature);
   useEffect(() => {
     if (simSignatureRef.current !== simSignature) {
       simSignatureRef.current = simSignature;
-      setModelVersion((v) => v + 1);
+      modelVersionRef.current += 1;
+      setModelVersion(modelVersionRef.current);
     }
   }, [simSignature]);
   // `results` (Scenarios & Simulation's comparison runs) additionally
@@ -14189,7 +14284,7 @@ function SpaghettiEngineApp() {
   // directly), so its staleness check needs a broader signature: simSignature
   // plus every scenario's initialOverrides/lockedConcepts/weightOverrides.
   const resultsSimSignature = useMemo(() => {
-    const sc = scenarios.map((s) => `${s.id}:${s.type}:${JSON.stringify(s.initialOverrides)}:${JSON.stringify(s.lockedConcepts)}:${JSON.stringify(s.weightOverrides)}`).join(",");
+    const sc = scenarios.map((s) => `${s.id}:${s.type}:${JSON.stringify(s.initialOverrides)}:${JSON.stringify(s.lockedConcepts)}:${JSON.stringify(s.weightOverrides)}:${JSON.stringify(s.timing || {})}`).join(",");
     return `${simSignature}||${sc}`;
   }, [simSignature, scenarios]);
   // The signature at the moment `results` was last computed by runAll;
@@ -14232,6 +14327,73 @@ function SpaghettiEngineApp() {
       return { ...c, outcomes, levers, precedence };
     });
   }, [conceptIdSignature]);
+  // ---- saved analysis results (resultStore.js) ----------------------------
+  // The last results of every analysis are kept per model in this browser, so
+  // that a reload or a visit to another model does not lose them. Each result
+  // is stamped with the signature of the model and scenarios it was computed
+  // on (resultsSimSignature); restored into a model that has changed since,
+  // it comes back marked as out of date, as after an edit in the session.
+  const resultStamps = useRef(new WeakMap());
+  const resultsRestoredFor = useRef(null); // the model whose saved results have been read
+  const [pendingRestore, setPendingRestore] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    resultsRestoredFor.current = null;
+    setPendingRestore(null);
+    loadResults(activeModelId).then((record) => {
+      if (cancelled) return;
+      if (record) setPendingRestore({ id: activeModelId, record });
+      else resultsRestoredFor.current = activeModelId;
+    });
+    return () => { cancelled = true; };
+  }, [activeModelId]);
+  useEffect(() => {
+    if (!pendingRestore) return;
+    if (pendingRestore.id !== activeModelIdRef.current) { setPendingRestore(null); return; }
+    const { entries = {}, extra = {} } = pendingRestore.record;
+    const version = modelVersionRef.current;
+    const revive = (e) => {
+      if (!e || !e.value || typeof e.value !== "object") return null;
+      const value = { ...e.value, __modelVersion: e.sig && e.sig === resultsSimSignature ? version : -1 };
+      resultStamps.current.set(value, e.sig || null);
+      return value;
+    };
+    // a result produced in the moment before the saved ones were read wins
+    setBaselineResult((r) => r || revive(entries.baseline));
+    setSensitivityResult((r) => r || revive(entries.sensitivity));
+    setMonteCarloResult((r) => r || revive(entries.monteCarlo));
+    setTransitionResult((r) => r || revive(entries.transition));
+    setPathwayResult((r) => r || revive(entries.pathways));
+    const sc = entries.scenarios?.value;
+    if (sc && sc.results && typeof sc.results === "object" && Object.keys(sc.results).length) {
+      setResults((r) => (Object.keys(r).length ? r : sc.results));
+      setResultsSignatureAtRun((x) => x ?? sc.signature ?? null);
+    }
+    if (extra.baselineInit && typeof extra.baselineInit === "object") setBaselineInit((b) => ({ ...b, ...extra.baselineInit }));
+    // the scenarios that were compared, and the one that was open
+    if (Array.isArray(extra.compareIds)) setCompareIds((c) => (c.length ? c : extra.compareIds.filter((id) => scenarios.some((x) => x.id === id))));
+    if (extra.activeScenarioId && scenarios.some((x) => x.id === extra.activeScenarioId)) setActiveScenarioId((a) => (a === "baseline" ? extra.activeScenarioId : a));
+    resultsRestoredFor.current = pendingRestore.id;
+    setPendingRestore(null);
+  }, [pendingRestore]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const id = activeModelIdRef.current;
+    if (!id || resultsRestoredFor.current !== id) return; // not before this model's saved results are read
+    const version = modelVersionRef.current;
+    const stamp = (r) => {
+      if (!r) return null;
+      // a fresh result is stamped with the signature it was computed on; one
+      // that was already out of date when it got here is stamped as such
+      if (!resultStamps.current.has(r)) resultStamps.current.set(r, r.__modelVersion === version ? resultsSimSignature : null);
+      return { sig: resultStamps.current.get(r), value: r };
+    };
+    saveResults(id, {
+      baseline: stamp(baselineResult), sensitivity: stamp(sensitivityResult), monteCarlo: stamp(monteCarloResult),
+      transition: stamp(transitionResult), pathways: stamp(pathwayResult),
+      scenarios: Object.keys(results).length ? { sig: resultsSignatureAtRun, value: { results, signature: resultsSignatureAtRun } } : null,
+    }, { baselineInit, compareIds, activeScenarioId });
+  }, [baselineResult, sensitivityResult, monteCarloResult, transitionResult, pathwayResult, results, resultsSignatureAtRun, baselineInit, compareIds, activeScenarioId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const [exportingWorkbook, setExportingWorkbook] = useState(false);
   // Captured chart PNGs, keyed by chart (see useCachedChart / captureAnalysisCharts
   // above): each chart-bearing tab refreshes its own entry a moment after it
@@ -14550,8 +14712,9 @@ function SpaghettiEngineApp() {
     const s = scenarios.find((s) => s.id === scenarioId);
     if (!s) return;
     const next = { ...s.lockedConcepts };
-    if (next[conceptId] !== undefined) delete next[conceptId]; else next[conceptId] = value;
-    updateScenario(scenarioId, { lockedConcepts: next });
+    const timing = { ...(s.timing || {}) };
+    if (next[conceptId] !== undefined) { delete next[conceptId]; delete timing[conceptId]; } else next[conceptId] = value;
+    updateScenario(scenarioId, { lockedConcepts: next, timing });
   };
   const setDriver = (scenarioId, conceptId, direction) => {
     const s = scenarios.find((s) => s.id === scenarioId);
@@ -14560,7 +14723,8 @@ function SpaghettiEngineApp() {
     if (isSameDriver) {
       const nextOv = { ...s.initialOverrides }; delete nextOv[conceptId];
       const nextLocked = { ...s.lockedConcepts }; delete nextLocked[conceptId];
-      updateScenario(scenarioId, { initialOverrides: nextOv, lockedConcepts: nextLocked });
+      const nextTiming = { ...(s.timing || {}) }; delete nextTiming[conceptId];
+      updateScenario(scenarioId, { initialOverrides: nextOv, lockedConcepts: nextLocked, timing: nextTiming });
     } else {
       updateScenario(scenarioId, {
         initialOverrides: { ...s.initialOverrides, [conceptId]: direction },
@@ -14578,6 +14742,8 @@ function SpaghettiEngineApp() {
     const ids = [...new Set([...Object.keys(sc.lockedConcepts || {}), ...Object.keys(sc.initialOverrides || {})])];
     const out = ids.map((id) => {
       const lock = sc.lockedConcepts?.[id], ov = sc.initialOverrides?.[id];
+      const when = lock !== undefined ? describeTiming(sc.timing?.[id]) : "";
+      if (when) return { id, name: nameOf(id), kind: lock > 0 ? "up" : lock < 0 ? "down" : "hold", text: `${lock === 1 ? "▲ pushed up" : lock === -1 ? "▼ pushed down" : `held at ${round2(lock)}`}, ${when}`, timed: true };
       if (lock === 1 && (ov === undefined || ov === 1)) return { id, name: nameOf(id), kind: "up", text: "▲ pushed up" };
       if (lock === -1 && (ov === undefined || ov === -1)) return { id, name: nameOf(id), kind: "down", text: "▼ pushed down" };
       if (lock !== undefined) return { id, name: nameOf(id), kind: "hold", text: `held at ${round2(lock)}` };
@@ -14599,7 +14765,17 @@ function SpaghettiEngineApp() {
     }
     const ov = { ...(sc.initialOverrides || {}) }; delete ov[changeId];
     const lk = { ...(sc.lockedConcepts || {}) }; delete lk[changeId];
-    updateScenario(scenarioId, { initialOverrides: ov, lockedConcepts: lk });
+    const tm = { ...(sc.timing || {}) }; delete tm[changeId];
+    updateScenario(scenarioId, { initialOverrides: ov, lockedConcepts: lk, timing: tm });
+  };
+  // Staged interventions: the timing of a held concept (see interventionTiming).
+  const setInterventionTiming = (scenarioId, conceptId, patch) => {
+    const sc = scenarios.find((x) => x.id === scenarioId);
+    if (!sc) return;
+    const merged = { start: 0, duration: 0, ramp: 0, ...(sc.timing?.[conceptId] || {}), ...patch };
+    const timing = { ...(sc.timing || {}) };
+    if (interventionTiming(merged)) timing[conceptId] = merged; else delete timing[conceptId];
+    updateScenario(scenarioId, { timing });
   };
   const applyScenarioChange = (scenarioId, kind) => {
     const sc = scenarios.find((x) => x.id === scenarioId);
@@ -14951,6 +15127,7 @@ function SpaghettiEngineApp() {
     });
     if (!ok) return;
     const idx = deleteModel(id);
+    deleteResults(id);
     setLibrary(idx);
     if (id !== activeModelId) return;
     if (idx?.activeId) switchToModel(idx.activeId, cleanStored(loadModel(idx.activeId)));
@@ -15549,6 +15726,35 @@ function SpaghettiEngineApp() {
                       </ul>
                     )}
                   </div>
+
+                  {!basic && Object.keys(activeScenario.lockedConcepts || {}).length > 0 && (
+                    <details className="text-xs rounded-md border border-slate-200 bg-slate-50/60 px-2 py-1.5" open={Object.keys(activeScenario.timing || {}).length > 0}>
+                      <summary className="cursor-pointer text-neutral-800 font-medium">{tr("Timing of the measures")} <span className="font-normal text-neutral-600">({tr("staged interventions")})</span></summary>
+                      <p className="mt-1.5 text-neutral-700 max-w-3xl">{tr("By default a measure is held from the first iteration to the end. Give it a start to introduce it later, a duration to stop it again, or a ramp to phase it in step by step. Iterations are steps of the model, not years.")}</p>
+                      <table className="mt-1.5 text-xs">
+                        <thead><tr className="text-left text-neutral-600"><th className="pr-3 py-0.5 font-medium">{tr("Measure")}</th><th className="pr-3 py-0.5 font-medium">{tr("Starts in iteration")}</th><th className="pr-3 py-0.5 font-medium">{tr("Held for (0 = to the end)")}</th><th className="pr-3 py-0.5 font-medium">{tr("Phased in over")}</th></tr></thead>
+                        <tbody>
+                          {Object.keys(activeScenario.lockedConcepts).filter((id) => aConcepts.some((c) => c.id === id)).map((id) => {
+                            const t = activeScenario.timing?.[id] || {};
+                            const field = (key, label) => (
+                              <input type="number" min={0} max={MAX_TIMING} step={1} value={t[key] ?? 0} aria-label={`${label}: ${aConcepts.find((c) => c.id === id)?.name}`}
+                                onChange={(e) => setInterventionTiming(activeScenario.id, id, { [key]: Math.max(0, Math.min(MAX_TIMING, Math.round(Number(e.target.value) || 0))) })}
+                                className="w-16 border border-slate-300 rounded px-1.5 py-0.5 font-mono bg-white" />
+                            );
+                            return (
+                              <tr key={id}>
+                                <td className="pr-3 py-0.5 text-neutral-900">{aConcepts.find((c) => c.id === id)?.name} <span className="text-neutral-500">({round2(activeScenario.lockedConcepts[id])})</span></td>
+                                <td className="pr-3 py-0.5">{field("start", tr("Starts in iteration"))}</td>
+                                <td className="pr-3 py-0.5">{field("duration", tr("Held for"))} <span className="text-neutral-500">{tr("iterations")}</span></td>
+                                <td className="pr-3 py-0.5">{field("ramp", tr("Phased in over"))} <span className="text-neutral-500">{tr("iterations")}</span></td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                      {lastTimingEvent(activeScenario) >= (settings.maxIterations ?? 100) && <p className="mt-1.5 text-amber-800">{tr("A measure changes at or after the last iteration ({n}). Raise the maximum number of iterations in the simulation settings.", { n: settings.maxIterations ?? 100 })}</p>}
+                    </details>
+                  )}
 
                   <div className="flex flex-wrap items-center gap-2 text-xs">
                     <span className="text-neutral-700 font-medium">{tr("Add a change:")}</span>

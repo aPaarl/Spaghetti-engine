@@ -12,4 +12,4 @@ const store = {};
 const ls = { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); }, removeItem: (k) => { delete store[k]; } };
 const TR_STUB = "const tr = (x, v) => (v ? x.replace(/\\{(\\w+)\\}/g, (m, q) => (v[q] !== undefined ? String(v[q]) : m)) : x); const getLang = () => \"en\"; const pick = (en) => en;\n";
 module.exports = new Function("localStorage", "performance", "ExcelJS", "document", "window", "ELK", "forceSimulation", "forceManyBody", "forceLink", "forceCenter", "forceCollide", "domNodeToPngBlob",
-  TR_STUB + "function layoutByModule(c){ return c; }\n" + code + "\nreturn { DEFAULT_SETTINGS, BASELINE_SCENARIO, simulate, sanitizeModel, edgeLag };")(ls, { now: () => Date.now() }, {}, {}, {}, class {}, stub, stub, stub, stub, stub, stub);
+  TR_STUB + "function layoutByModule(c){ return c; }\n" + code + "\nreturn { DEFAULT_SETTINGS, BASELINE_SCENARIO, simulate, sanitizeModel, edgeLag, interventionTiming, lastTimingEvent, describeTiming };")(ls, { now: () => Date.now() }, {}, {}, {}, class {}, stub, stub, stub, stub, stub, stub);
